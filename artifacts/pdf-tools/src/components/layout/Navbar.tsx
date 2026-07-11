@@ -1,0 +1,76 @@
+import { Link, useLocation } from "wouter";
+import { Menu, X, FileText } from "lucide-react";
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+
+export function Navbar() {
+  const [location] = useLocation();
+  const [isOpen, setIsOpen] = useState(false);
+
+  const links = [
+    { href: "/tools", label: "All Tools" },
+    { href: "/blog", label: "Blog" },
+    { href: "/about", label: "About" },
+    { href: "/contact", label: "Contact" },
+  ];
+
+  return (
+    <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-md">
+      <div className="container mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
+        <Link href="/" className="flex items-center gap-2 transition-opacity hover:opacity-80">
+          <div className="bg-primary text-primary-foreground p-1.5 rounded-lg">
+            <FileText className="w-5 h-5" />
+          </div>
+          <span className="font-bold text-lg tracking-tight">PDF Tools</span>
+        </Link>
+
+        {/* Desktop Nav */}
+        <nav className="hidden md:flex items-center gap-8">
+          {links.map((link) => (
+            <Link
+              key={link.href}
+              href={link.href}
+              className={`text-sm font-medium transition-colors hover:text-primary ${
+                location.startsWith(link.href) ? "text-primary" : "text-muted-foreground"
+              }`}
+            >
+              {link.label}
+            </Link>
+          ))}
+        </nav>
+
+        {/* Mobile Nav */}
+        <Sheet open={isOpen} onOpenChange={setIsOpen}>
+          <SheetTrigger asChild className="md:hidden">
+            <Button variant="ghost" size="icon" aria-label="Open menu">
+              <Menu className="w-6 h-6" />
+            </Button>
+          </SheetTrigger>
+          <SheetContent side="right" className="flex flex-col border-l-0">
+            <div className="flex items-center gap-2 mb-8">
+              <div className="bg-primary text-primary-foreground p-1.5 rounded-lg">
+                <FileText className="w-5 h-5" />
+              </div>
+              <span className="font-bold text-lg tracking-tight">PDF Tools</span>
+            </div>
+            <div className="flex flex-col gap-4">
+              {links.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  onClick={() => setIsOpen(false)}
+                  className={`text-lg font-medium transition-colors hover:text-primary ${
+                    location.startsWith(link.href) ? "text-primary" : "text-muted-foreground"
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </div>
+          </SheetContent>
+        </Sheet>
+      </div>
+    </header>
+  );
+}

@@ -1,0 +1,359 @@
+You are a senior Full Stack Engineer, UI/UX Designer, SEO Expert, and Software Architect.
+
+Build a production-quality PDF tools website similar to iLovePDF, but optimized for free deployment during the MVP/testing phase.
+
+The goal is to create a clean, modern, lightning-fast website that can later scale into a commercial SaaS.
+
+Tech Stack
+
+Use only free technologies.
+
+Frontend
+
+Next.js 15 (App Router)
+React 19
+TypeScript
+Tailwind CSS
+shadcn/ui
+Framer Motion
+Lucide Icons
+
+Backend
+
+Next.js API Routes
+Node.js
+TypeScript
+
+Database
+
+SQLite during development
+Prisma ORM
+
+Storage
+
+Local storage (/uploads folder)
+
+Authentication
+
+No authentication for MVP
+
+Deployment
+
+Vercel (Frontend + API)
+GitHub Repository
+Environment Variables
+
+Do NOT use AWS, Azure, GCP, Supabase Pro, Cloudflare Workers Paid, or any paid services.
+
+Website Requirements
+
+The website should look more modern than iLovePDF.
+
+Design should be
+
+Minimal
+Premium
+Mobile First
+Responsive
+Fast
+Clean
+Large whitespace
+Rounded corners
+Smooth animations
+Excellent typography
+Accessible
+Main Pages
+
+Home
+
+Tools
+
+About
+
+Privacy Policy
+
+Terms
+
+Contact
+
+404
+
+Homepage
+
+Hero section
+
+Popular PDF tools
+
+Categories
+
+Features
+
+Why Choose Us
+
+Frequently Asked Questions
+
+Latest Blog Posts
+
+Footer
+
+PDF Tools
+
+Implement these tools one by one with modular architecture:
+
+Merge PDF
+Split PDF
+Compress PDF
+PDF to Word
+Word to PDF
+JPG to PDF
+PDF to JPG
+Rotate PDF
+Organize PDF
+Delete Pages
+Extract Pages
+Unlock PDF
+Protect PDF
+Watermark PDF
+Add Page Numbers
+
+Create reusable architecture so additional tools can easily be added later.
+
+Upload Component
+
+Drag & Drop
+
+Browse Button
+
+Progress Bar
+
+File Validation
+
+Multiple Files
+
+Large Icons
+
+Animated Upload Area
+
+Preview Files
+
+Remove Files
+
+Tool Workflow
+
+Upload
+
+↓
+
+Preview
+
+↓
+
+Options
+
+↓
+
+Processing
+
+↓
+
+Success
+
+↓
+
+Download
+
+Everything should happen in a clean user experience.
+
+SEO
+
+Implement complete SEO.
+
+Every page should have
+
+Dynamic Metadata
+Open Graph
+Twitter Cards
+JSON-LD Schema
+Sitemap
+robots.txt
+Canonical URL
+Semantic HTML
+Breadcrumbs
+Internal Linking
+
+Each tool should have
+
+SEO Title
+SEO Description
+FAQ
+Blog Link
+
+Generate SEO content automatically.
+
+Blog
+
+Create blog architecture.
+
+Example posts
+
+"How to Merge PDFs"
+
+"Best Free PDF Compressor"
+
+"How to Convert PDF to Word"
+
+"Tips for Reducing PDF Size"
+
+These blogs should improve SEO.
+
+Performance
+
+Target Lighthouse
+
+Performance 95+
+
+Accessibility 95+
+
+SEO 100
+
+Best Practices 100
+
+Implement
+
+Lazy Loading
+Code Splitting
+Image Optimization
+Dynamic Imports
+Font Optimization
+Static Generation where possible
+Server Components
+Caching
+Security
+
+Validate uploaded files.
+
+Limit upload size.
+
+Delete uploaded files after processing.
+
+Prevent XSS.
+
+Prevent CSRF.
+
+Handle invalid files gracefully.
+
+UI Components
+
+Create reusable components
+
+Navbar
+
+Footer
+
+Sidebar
+
+Cards
+
+Buttons
+
+Upload Area
+
+Progress Bar
+
+Modal
+
+Toast
+
+Loading Skeleton
+
+Tool Card
+
+FAQ Section
+
+Hero Section
+
+Blog Card
+
+Breadcrumb
+
+Search Bar
+
+Pagination
+
+Everything should be reusable.
+
+Folder Structure
+
+Design a scalable folder structure.
+
+Example
+
+app/
+
+components/
+
+lib/
+
+hooks/
+
+utils/
+
+prisma/
+
+uploads/
+
+public/
+
+styles/
+
+Code Quality
+
+Use
+
+TypeScript
+
+Reusable Components
+
+Custom Hooks
+
+Clean Architecture
+
+SOLID Principles
+
+Comments where necessary
+
+No duplicated code
+
+Future Ready
+
+Even though the MVP is free, architect the project so it can later support:
+
+Authentication
+Premium Accounts
+Payments
+Team Workspace
+Cloud Storage
+API Access
+AI Tools
+Subscription Plans
+
+without requiring major refactoring.
+
+Deliverables
+
+Generate the project incrementally.
+
+Start by generating:
+
+Complete folder structure.
+Install commands.
+Required dependencies.
+Project architecture.
+Homepage.
+Navigation.
+Footer.
+Upload component.
+Tool page template.
+SEO configuration.
+
+Only after these are complete should we build each PDF tool individually.

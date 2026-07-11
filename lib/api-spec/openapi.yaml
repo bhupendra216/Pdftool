@@ -10,6 +10,12 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: tools
+    description: PDF tool catalog
+  - name: blog
+    description: Blog content
+  - name: contact
+    description: Contact form
 paths:
   /healthz:
     get:
@@ -24,6 +30,121 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /tools:
+    get:
+      operationId: listTools
+      tags: [tools]
+      summary: List all PDF tools
+      description: Returns the catalog of PDF tools, including popular/category flags
+      responses:
+        "200":
+          description: List of tools
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Tool"
+  /tools/{slug}:
+    get:
+      operationId: getTool
+      tags: [tools]
+      summary: Get a single tool's detail page content
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Tool detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ToolDetail"
+        "404":
+          description: Tool not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /blog:
+    get:
+      operationId: listBlogPosts
+      tags: [blog]
+      summary: List blog posts
+      responses:
+        "200":
+          description: List of blog posts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/BlogPost"
+  /blog/{slug}:
+    get:
+      operationId: getBlogPost
+      tags: [blog]
+      summary: Get a single blog post's full content
+      parameters:
+        - name: slug
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Blog post detail
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/BlogPostDetail"
+        "404":
+          description: Post not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /faq:
+    get:
+      operationId: listFaqs
+      tags: [tools]
+      summary: List general homepage FAQ entries
+      responses:
+        "200":
+          description: List of FAQ entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FaqItem"
+  /contact:
+    post:
+      operationId: submitContact
+      tags: [contact]
+      summary: Submit the contact form
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ContactMessageInput"
+      responses:
+        "201":
+          description: Message received
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ContactMessageResult"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +154,117 @@ components:
           type: string
       required:
         - status
-
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
+    FaqItem:
+      type: object
+      required: [question, answer]
+      properties:
+        question:
+          type: string
+        answer:
+          type: string
+    Tool:
+      type: object
+      required:
+        [
+          slug,
+          name,
+          shortDescription,
+          category,
+          icon,
+          popular,
+          status,
+        ]
+      properties:
+        slug:
+          type: string
+        name:
+          type: string
+        shortDescription:
+          type: string
+        category:
+          type: string
+          description: "Grouping such as 'Organize', 'Convert', 'Edit & Sign', 'Security'"
+        icon:
+          type: string
+          description: "Lucide icon name, e.g. 'Merge', 'Scissors', 'FileArchive'"
+        popular:
+          type: boolean
+        status:
+          type: string
+          enum: [available, comingSoon]
+    ToolDetail:
+      allOf:
+        - $ref: "#/components/schemas/Tool"
+        - type: object
+          required: [seoTitle, seoDescription, steps, faqs, blogSlug]
+          properties:
+            seoTitle:
+              type: string
+            seoDescription:
+              type: string
+            steps:
+              type: array
+              items:
+                type: string
+              description: "Ordered plain-language steps describing the tool workflow"
+            faqs:
+              type: array
+              items:
+                $ref: "#/components/schemas/FaqItem"
+            blogSlug:
+              type: ["string", "null"]
+              description: "Slug of a related blog post, if any"
+    BlogPost:
+      type: object
+      required:
+        [slug, title, excerpt, category, publishedAt, readingMinutes]
+      properties:
+        slug:
+          type: string
+        title:
+          type: string
+        excerpt:
+          type: string
+        category:
+          type: string
+        publishedAt:
+          type: string
+          format: date-time
+        readingMinutes:
+          type: integer
+    BlogPostDetail:
+      allOf:
+        - $ref: "#/components/schemas/BlogPost"
+        - type: object
+          required: [content, relatedToolSlug]
+          properties:
+            content:
+              type: string
+              description: "Full post body as Markdown"
+            relatedToolSlug:
+              type: ["string", "null"]
+    ContactMessageInput:
+      type: object
+      required: [name, email, message]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        email:
+          type: string
+          minLength: 1
+        message:
+          type: string
+          minLength: 1
+    ContactMessageResult:
+      type: object
+      required: [success]
+      properties:
+        success:
+          type: boolean

@@ -1,0 +1,263 @@
+import { useState, useEffect } from "react";
+import { useParams, Link } from "wouter";
+import { useGetTool, useGetBlogPost } from "@workspace/api-client-react";
+import { useSEO } from "@/hooks/use-seo";
+import { UploadArea } from "@/components/shared/UploadArea";
+import { FilePreviewList } from "@/components/shared/FilePreviewList";
+import { FaqSection } from "@/components/shared/FaqSection";
+import { Button } from "@/components/ui/button";
+import { Icon } from "@/components/ui/icon";
+import { Progress } from "@/components/ui/progress";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Card, CardContent } from "@/components/ui/card";
+import { ArrowLeft, ChevronRight, Settings2, Download, AlertCircle, Badge } from "lucide-react";
+
+export function ToolDetail() {
+  const { slug } = useParams<{ slug: string }>();
+  const { data: tool, isLoading, isError } = useGetTool(slug);
+  const { data: blogPost } = useGetBlogPost(tool?.blogSlug || "", { 
+    query: { enabled: !!tool?.blogSlug } 
+  });
+
+  const [files, setFiles] = useState<File[]>([]);
+  const [status, setStatus] = useState<"idle" | "options" | "processing" | "success">("idle");
+  const [progress, setProgress] = useState(0);
+
+  // Reset state when slug changes
+  useEffect(() => {
+    setFiles([]);
+    setStatus("idle");
+    setProgress(0);
+  }, [slug]);
+
+  useSEO({
+    title: tool?.seoTitle || "Loading...",
+    description: tool?.seoDescription || "PDF tool"
+  });
+
+  if (isLoading) {
+    return (
+      <div className="container mx-auto px-4 py-20 max-w-4xl space-y-8">
+        <Skeleton className="h-10 w-48" />
+        <Skeleton className="h-20 w-full" />
+        <Skeleton className="h-[400px] w-full rounded-3xl" />
+      </div>
+    );
+  }
+
+  if (isError || !tool) {
+    return (
+      <div className="container mx-auto px-4 py-32 text-center max-w-2xl">
+        <h1 className="text-4xl font-bold mb-6">Tool not found</h1>
+        <p className="text-xl text-muted-foreground mb-8">We couldn't find the tool you're looking for.</p>
+        <Button asChild><Link href="/tools">Back to All Tools</Link></Button>
+      </div>
+    );
+  }
+
+  const isComingSoon = tool.status === "comingSoon";
+
+  const handleFilesSelected = (newFiles: File[]) => {
+    setFiles(prev => [...prev, ...newFiles]);
+    setStatus("options");
+  };
+
+  const handleRemoveFile = (index: number) => {
+    setFiles(prev => {
+      const updated = [...prev];
+      updated.splice(index, 1);
+      if (updated.length === 0) {
+        setStatus("idle");
+      }
+      return updated;
+    });
+  };
+
+  const handleProcess = () => {
+    setStatus("processing");
+    setProgress(0);
+    
+    // Simulate processing
+    const interval = setInterval(() => {
+      setProgress(prev => {
+        if (prev >= 100) {
+          clearInterval(interval);
+          setStatus("success");
+          return 100;
+        }
+        return prev + Math.floor(Math.random() * 15) + 5;
+      });
+    }, 400);
+  };
+
+  return (
+    <div className="flex flex-col min-h-screen bg-background">
+      {/* Breadcrumb & Header */}
+      <div className="bg-card border-b border-border pt-8 pb-12">
+        <div className="container mx-auto px-4 md:px-6 max-w-5xl">
+          <nav className="flex items-center text-sm font-medium text-muted-foreground mb-8">
+            <Link href="/tools" className="hover:text-primary transition-colors">Tools</Link>
+            <ChevronRight className="w-4 h-4 mx-2 opacity-50" />
+            <span className="text-foreground">{tool.name}</span>
+          </nav>
+          
+          <div className="flex items-center gap-5 mb-4">
+            <div className="p-4 bg-primary text-primary-foreground rounded-2xl shadow-sm">
+              <Icon name={tool.icon} className="w-8 h-8" />
+            </div>
+            <div>
+              <h1 className="text-3xl md:text-5xl font-bold flex items-center gap-3">
+                {tool.name}
+                {isComingSoon && (
+                  <span className="text-sm font-medium px-3 py-1 bg-muted text-muted-foreground rounded-full border">
+                    Coming Soon
+                  </span>
+                )}
+              </h1>
+            </div>
+          </div>
+          <p className="text-lg md:text-xl text-muted-foreground max-w-3xl ml-[72px]">
+            {tool.shortDescription}
+          </p>
+        </div>
+      </div>
+
+      {/* Main Workspace Area */}
+      <div className="container mx-auto px-4 md:px-6 py-12 max-w-5xl flex-1">
+        
+        {isComingSoon ? (
+          <div className="bg-secondary/30 rounded-3xl p-12 text-center border border-border">
+            <div className="w-20 h-20 bg-secondary text-primary mx-auto rounded-full flex items-center justify-center mb-6">
+              <AlertCircle className="w-10 h-10" />
+            </div>
+            <h2 className="text-2xl font-bold mb-4">We're working on this tool</h2>
+            <p className="text-lg text-muted-foreground max-w-lg mx-auto">
+              This feature is currently in development and will be available soon. Check back later!
+            </p>
+          </div>
+        ) : (
+          <div className="bg-card rounded-3xl shadow-sm border border-border p-6 md:p-10 transition-all">
+            
+            {status === "idle" && (
+              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
+                <UploadArea 
+                  onFilesSelected={handleFilesSelected} 
+                  multiple={tool.slug !== "split-pdf"} // Just a mock example of tool-specific logic
+                />
+              </div>
+            )}
+
+            {status === "options" && (
+              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500 flex flex-col md:flex-row gap-10">
+                <div className="flex-1">
+                  <FilePreviewList 
+                    files={files} 
+                    onRemove={handleRemoveFile} 
+                    status="idle" 
+                  />
+                  
+                  <div className="mt-8 flex gap-4">
+                    <Button variant="outline" onClick={() => setStatus("idle")} className="flex-1 rounded-xl h-12">
+                      <ArrowLeft className="w-4 h-4 mr-2" /> Add More
+                    </Button>
+                    <Button onClick={handleProcess} className="flex-[2] rounded-xl h-12 text-lg shadow-md shadow-primary/20">
+                      Process PDF
+                    </Button>
+                  </div>
+                </div>
+                
+                <div className="w-full md:w-80 bg-background border rounded-2xl p-6 h-fit shrink-0">
+                  <div className="flex items-center gap-2 mb-6 font-semibold pb-4 border-b">
+                    <Settings2 className="w-5 h-5 text-primary" />
+                    Options
+                  </div>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    In a real implementation, tool-specific options would appear here (e.g., compression level, page ranges to extract).
+                  </p>
+                  <div className="space-y-4 opacity-50 pointer-events-none">
+                    <div className="h-10 bg-secondary rounded-lg w-full"></div>
+                    <div className="h-10 bg-secondary rounded-lg w-full"></div>
+                    <div className="h-10 bg-secondary rounded-lg w-2/3"></div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {status === "processing" && (
+              <div className="py-20 text-center animate-in fade-in duration-500 max-w-md mx-auto">
+                <Icon name={tool.icon} className="w-16 h-16 text-primary mx-auto mb-8 animate-pulse" />
+                <h3 className="text-2xl font-bold mb-6">Processing your files...</h3>
+                <Progress value={progress} className="h-3 mb-4" />
+                <p className="text-muted-foreground font-medium">{progress}% Complete</p>
+              </div>
+            )}
+
+            {status === "success" && (
+              <div className="py-12 text-center animate-in zoom-in-95 duration-500 max-w-xl mx-auto">
+                <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-8 shadow-inner">
+                  <Download className="w-12 h-12" />
+                </div>
+                <h3 className="text-3xl font-bold mb-4 text-foreground">Task Complete!</h3>
+                <p className="text-lg text-muted-foreground mb-10">Your files have been processed successfully and are ready to download.</p>
+                
+                <Button size="lg" className="w-full rounded-2xl h-16 text-lg mb-6 shadow-xl shadow-primary/20 hover:-translate-y-1 transition-transform">
+                  Download Processed File
+                </Button>
+                
+                <Button variant="ghost" onClick={() => { setStatus("idle"); setFiles([]); }} className="text-muted-foreground">
+                  Start Over
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* How it works */}
+      {tool.steps && tool.steps.length > 0 && (
+        <section className="py-20 bg-card border-t border-border">
+          <div className="container mx-auto px-4 md:px-6 max-w-4xl">
+            <h2 className="text-3xl font-bold text-center mb-12">How to {tool.name.toLowerCase()}</h2>
+            <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-8">
+              {tool.steps.map((step, index) => (
+                <div key={index} className="relative pt-6">
+                  <div className="absolute top-0 left-0 w-10 h-10 bg-secondary text-primary font-bold rounded-xl flex items-center justify-center -mt-5 shadow-sm border border-background">
+                    {index + 1}
+                  </div>
+                  <Card className="h-full border-none shadow-none bg-background">
+                    <CardContent className="p-6 pt-8">
+                      <p className="text-muted-foreground leading-relaxed">{step}</p>
+                    </CardContent>
+                  </Card>
+                </div>
+              ))}
+            </div>
+          </div>
+        </section>
+      )}
+
+      {/* FAQ */}
+      {tool.faqs && tool.faqs.length > 0 && (
+        <FaqSection faqs={tool.faqs} title={`${tool.name} FAQ`} />
+      )}
+
+      {/* Related Blog Post */}
+      {blogPost && (
+        <section className="py-20 bg-primary text-primary-foreground">
+          <div className="container mx-auto px-4 md:px-6 max-w-4xl text-center">
+            <Badge className="bg-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/30 mb-6 border-none">
+              Featured Guide
+            </Badge>
+            <h2 className="text-3xl md:text-4xl font-bold mb-6">{blogPost.title}</h2>
+            <p className="text-primary-foreground/80 text-lg mb-10 max-w-2xl mx-auto">
+              {blogPost.excerpt}
+            </p>
+            <Button variant="secondary" size="lg" asChild className="rounded-full px-8 text-primary">
+              <Link href={`/blog/${blogPost.slug}`}>Read the Full Guide</Link>
+            </Button>
+          </div>
+        </section>
+      )}
+    </div>
+  );
+}

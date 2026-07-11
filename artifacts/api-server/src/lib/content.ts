@@ -1,0 +1,495 @@
+// Static content catalog for the PDF Tools MVP.
+//
+// No database is used for this content: tools, blog posts, and FAQs are
+// simple editorial data that changes rarely and doesn't need persistence
+// or user-generated writes. Keeping it here (instead of the DB) avoids
+// unnecessary schema/migrations for content that is effectively static
+// config. If this ever needs an admin UI or user-submitted content, it
+// can move to `lib/db` without touching the route contracts.
+
+export interface FaqItem {
+  question: string;
+  answer: string;
+}
+
+export interface ToolRecord {
+  slug: string;
+  name: string;
+  shortDescription: string;
+  category: string;
+  icon: string;
+  popular: boolean;
+  status: "available" | "comingSoon";
+  seoTitle: string;
+  seoDescription: string;
+  steps: string[];
+  faqs: FaqItem[];
+  blogSlug: string | null;
+}
+
+export interface BlogPostRecord {
+  slug: string;
+  title: string;
+  excerpt: string;
+  category: string;
+  publishedAt: string;
+  readingMinutes: number;
+  content: string;
+  relatedToolSlug: string | null;
+}
+
+export const homepageFaqs: FaqItem[] = [
+  {
+    question: "Is PDF Tools really free to use?",
+    answer:
+      "Yes. Every tool on this site is free during our MVP phase, with no account required. We may introduce optional paid plans for heavy or automated use later, but the core tools stay free.",
+  },
+  {
+    question: "Are my files kept private?",
+    answer:
+      "Files are processed only to perform the action you request and are deleted from our servers shortly afterward. We never inspect, share, or use your documents for anything else.",
+  },
+  {
+    question: "Do I need to install anything?",
+    answer:
+      "No. PDF Tools runs entirely in your browser and works on desktop, tablet, and mobile without installing an app or plugin.",
+  },
+  {
+    question: "Is there a file size limit?",
+    answer:
+      "Each tool enforces a reasonable upload limit to keep processing fast and reliable for everyone. Most everyday documents are well within that limit.",
+  },
+  {
+    question: "Can I use PDF Tools on my phone?",
+    answer:
+      "Yes. The entire site is designed mobile-first, so every tool works the same way on a phone browser as it does on desktop.",
+  },
+];
+
+export const tools: ToolRecord[] = [
+  {
+    slug: "merge-pdf",
+    name: "Merge PDF",
+    shortDescription: "Combine multiple PDFs into a single organized file.",
+    category: "Organize",
+    icon: "Merge",
+    popular: true,
+    status: "available",
+    seoTitle: "Merge PDF Files Online Free | PDF Tools",
+    seoDescription:
+      "Combine two or more PDF files into one document in seconds. Free, fast, and works on any device.",
+    steps: [
+      "Upload the PDF files you want to combine.",
+      "Drag to reorder the files into the order you want them merged.",
+      "Click Merge and download your combined PDF.",
+    ],
+    faqs: [
+      {
+        question: "How many PDFs can I merge at once?",
+        answer:
+          "You can merge as many files as you need in a single batch. For very large batches, splitting into a couple of merges keeps things fast.",
+      },
+      {
+        question: "Will the page order be preserved?",
+        answer:
+          "Yes, pages are merged in exactly the order you arrange the files, and each file's internal page order is preserved.",
+      },
+    ],
+    blogSlug: "how-to-merge-pdfs",
+  },
+  {
+    slug: "split-pdf",
+    name: "Split PDF",
+    shortDescription: "Break a PDF into separate files or page ranges.",
+    category: "Organize",
+    icon: "Scissors",
+    popular: true,
+    status: "available",
+    seoTitle: "Split PDF Online Free | PDF Tools",
+    seoDescription:
+      "Extract or divide pages from a PDF into separate files. Free and easy to use, right in your browser.",
+    steps: [
+      "Upload the PDF you want to split.",
+      "Choose how to split it: by page ranges or every page separately.",
+      "Click Split and download your new files.",
+    ],
+    faqs: [
+      {
+        question: "Can I split by custom page ranges?",
+        answer:
+          "Yes, you can specify exact page ranges, or split every page into its own file.",
+      },
+    ],
+    blogSlug: null,
+  },
+  {
+    slug: "compress-pdf",
+    name: "Compress PDF",
+    shortDescription: "Reduce PDF file size while keeping good quality.",
+    category: "Optimize",
+    icon: "FileArchive",
+    popular: true,
+    status: "available",
+    seoTitle: "Compress PDF Online Free | PDF Tools",
+    seoDescription:
+      "Shrink large PDF files for easier sharing and storage without losing readability.",
+    steps: [
+      "Upload the PDF you want to shrink.",
+      "Pick a compression level: balanced, or maximum compression.",
+      "Click Compress and download your smaller PDF.",
+    ],
+    faqs: [
+      {
+        question: "How much smaller will my file get?",
+        answer:
+          "It depends on the content: PDFs with lots of high-resolution images shrink the most, while text-only PDFs are already small.",
+      },
+    ],
+    blogSlug: "best-free-pdf-compressor",
+  },
+  {
+    slug: "pdf-to-word",
+    name: "PDF to Word",
+    shortDescription: "Convert a PDF into an editable Word document.",
+    category: "Convert",
+    icon: "FileText",
+    popular: true,
+    status: "comingSoon",
+    seoTitle: "Convert PDF to Word Online Free | PDF Tools",
+    seoDescription:
+      "Turn a PDF into an editable .docx file while preserving layout and formatting.",
+    steps: [
+      "Upload the PDF you want to convert.",
+      "Wait while we convert your file to Word format.",
+      "Download your editable .docx document.",
+    ],
+    faqs: [
+      {
+        question: "Will formatting be preserved?",
+        answer:
+          "We aim to preserve text, layout, and images as closely as possible, though very complex layouts may need minor cleanup.",
+      },
+    ],
+    blogSlug: "how-to-convert-pdf-to-word",
+  },
+  {
+    slug: "word-to-pdf",
+    name: "Word to PDF",
+    shortDescription: "Convert a Word document into a shareable PDF.",
+    category: "Convert",
+    icon: "FileOutput",
+    popular: false,
+    status: "comingSoon",
+    seoTitle: "Convert Word to PDF Online Free | PDF Tools",
+    seoDescription:
+      "Turn a .docx or .doc file into a polished, shareable PDF in seconds.",
+    steps: [
+      "Upload the Word document you want to convert.",
+      "Wait while we generate your PDF.",
+      "Download your finished PDF file.",
+    ],
+    faqs: [],
+    blogSlug: null,
+  },
+  {
+    slug: "jpg-to-pdf",
+    name: "JPG to PDF",
+    shortDescription: "Turn one or more images into a single PDF file.",
+    category: "Convert",
+    icon: "Image",
+    popular: true,
+    status: "comingSoon",
+    seoTitle: "Convert JPG to PDF Online Free | PDF Tools",
+    seoDescription:
+      "Combine JPG or PNG images into one PDF document, in the order you choose.",
+    steps: [
+      "Upload the images you want to convert.",
+      "Arrange them in the order they should appear.",
+      "Click Convert and download your PDF.",
+    ],
+    faqs: [],
+    blogSlug: null,
+  },
+  {
+    slug: "pdf-to-jpg",
+    name: "PDF to JPG",
+    shortDescription: "Export each PDF page as a high-quality JPG image.",
+    category: "Convert",
+    icon: "ImageDown",
+    popular: false,
+    status: "comingSoon",
+    seoTitle: "Convert PDF to JPG Online Free | PDF Tools",
+    seoDescription:
+      "Turn PDF pages into individual JPG images you can use anywhere.",
+    steps: [
+      "Upload the PDF you want to convert.",
+      "Choose image quality.",
+      "Download your images as a zip file.",
+    ],
+    faqs: [],
+    blogSlug: null,
+  },
+  {
+    slug: "rotate-pdf",
+    name: "Rotate PDF",
+    shortDescription: "Fix sideways or upside-down pages permanently.",
+    category: "Edit",
+    icon: "RotateCw",
+    popular: false,
+    status: "available",
+    seoTitle: "Rotate PDF Pages Online Free | PDF Tools",
+    seoDescription:
+      "Rotate one or all pages of a PDF to fix orientation, then save a corrected copy.",
+    steps: [
+      "Upload the PDF you want to fix.",
+      "Choose which pages to rotate and by how much.",
+      "Click Rotate and download your corrected PDF.",
+    ],
+    faqs: [],
+    blogSlug: null,
+  },
+  {
+    slug: "organize-pdf",
+    name: "Organize PDF",
+    shortDescription: "Reorder, add, or remove pages visually.",
+    category: "Organize",
+    icon: "LayoutGrid",
+    popular: false,
+    status: "comingSoon",
+    seoTitle: "Organize PDF Pages Online Free | PDF Tools",
+    seoDescription:
+      "Drag and drop to reorder pages, or remove the ones you don't need.",
+    steps: [
+      "Upload the PDF you want to organize.",
+      "Drag pages into the order you want, or remove unwanted pages.",
+      "Click Save and download the reorganized PDF.",
+    ],
+    faqs: [],
+    blogSlug: null,
+  },
+  {
+    slug: "delete-pages",
+    name: "Delete Pages",
+    shortDescription: "Remove specific pages from a PDF file.",
+    category: "Organize",
+    icon: "FileMinus",
+    popular: false,
+    status: "comingSoon",
+    seoTitle: "Delete PDF Pages Online Free | PDF Tools",
+    seoDescription:
+      "Select and remove unwanted pages from any PDF document.",
+    steps: [
+      "Upload your PDF.",
+      "Select the pages you want to remove.",
+      "Click Delete and download your updated PDF.",
+    ],
+    faqs: [],
+    blogSlug: null,
+  },
+  {
+    slug: "extract-pages",
+    name: "Extract Pages",
+    shortDescription: "Pull specific pages out into a new PDF file.",
+    category: "Organize",
+    icon: "FilePlus2",
+    popular: false,
+    status: "comingSoon",
+    seoTitle: "Extract PDF Pages Online Free | PDF Tools",
+    seoDescription:
+      "Select and export a subset of pages from a PDF into a brand new document.",
+    steps: [
+      "Upload your PDF.",
+      "Select the pages you want to extract.",
+      "Click Extract and download the new PDF.",
+    ],
+    faqs: [],
+    blogSlug: null,
+  },
+  {
+    slug: "unlock-pdf",
+    name: "Unlock PDF",
+    shortDescription: "Remove a known password from a protected PDF.",
+    category: "Security",
+    icon: "LockOpen",
+    popular: false,
+    status: "comingSoon",
+    seoTitle: "Unlock PDF Online Free | PDF Tools",
+    seoDescription:
+      "Remove password protection from a PDF you own the password to.",
+    steps: [
+      "Upload the protected PDF.",
+      "Enter the current password.",
+      "Click Unlock and download the unprotected PDF.",
+    ],
+    faqs: [],
+    blogSlug: null,
+  },
+  {
+    slug: "protect-pdf",
+    name: "Protect PDF",
+    shortDescription: "Add a password to keep a PDF private.",
+    category: "Security",
+    icon: "Lock",
+    popular: false,
+    status: "comingSoon",
+    seoTitle: "Password Protect PDF Online Free | PDF Tools",
+    seoDescription:
+      "Add a password to a PDF so only people you share it with can open it.",
+    steps: [
+      "Upload the PDF you want to protect.",
+      "Set a password.",
+      "Click Protect and download your secured PDF.",
+    ],
+    faqs: [],
+    blogSlug: null,
+  },
+  {
+    slug: "watermark-pdf",
+    name: "Watermark PDF",
+    shortDescription: "Stamp text or a logo across every page.",
+    category: "Edit",
+    icon: "Stamp",
+    popular: false,
+    status: "comingSoon",
+    seoTitle: "Add Watermark to PDF Online Free | PDF Tools",
+    seoDescription:
+      "Add a text or image watermark to every page of a PDF document.",
+    steps: [
+      "Upload your PDF.",
+      "Choose a text or image watermark and adjust its position.",
+      "Click Apply and download your watermarked PDF.",
+    ],
+    faqs: [],
+    blogSlug: null,
+  },
+  {
+    slug: "add-page-numbers",
+    name: "Add Page Numbers",
+    shortDescription: "Number every page automatically.",
+    category: "Edit",
+    icon: "Hash",
+    popular: false,
+    status: "comingSoon",
+    seoTitle: "Add Page Numbers to PDF Online Free | PDF Tools",
+    seoDescription:
+      "Automatically insert page numbers into a PDF with your choice of position and style.",
+    steps: [
+      "Upload your PDF.",
+      "Choose a position and starting number.",
+      "Click Apply and download your numbered PDF.",
+    ],
+    faqs: [],
+    blogSlug: null,
+  },
+];
+
+export const blogPosts: BlogPostRecord[] = [
+  {
+    slug: "how-to-merge-pdfs",
+    title: "How to Merge PDFs (Free and Fast)",
+    excerpt:
+      "A quick guide to combining multiple PDF files into one document without installing any software.",
+    category: "Guides",
+    publishedAt: "2026-05-04T09:00:00.000Z",
+    readingMinutes: 4,
+    relatedToolSlug: "merge-pdf",
+    content: `Merging PDFs is one of the most common document tasks, whether you're combining scanned pages, assembling a report, or putting together a portfolio.
+
+## Why merge PDFs?
+
+Sending a single organized file is almost always better than sending several separate attachments. It's easier for the recipient to review, print, and archive.
+
+## Steps to merge your PDFs
+
+1. Upload every PDF file you want to combine.
+2. Drag the files into the order you want them to appear in the final document.
+3. Click **Merge** and download the combined PDF.
+
+## Tips
+
+- Double-check page order before merging — it's much faster than fixing it afterward.
+- If a file is very large, consider compressing it first so the merged file stays a manageable size.
+
+Merging your files takes seconds and works entirely in your browser, with your files removed from our servers shortly after processing.`,
+  },
+  {
+    slug: "best-free-pdf-compressor",
+    title: "Best Free PDF Compressor: How to Shrink File Size",
+    excerpt:
+      "Learn how PDF compression works and how to reduce file size without losing readability.",
+    category: "Guides",
+    publishedAt: "2026-05-11T09:00:00.000Z",
+    readingMinutes: 5,
+    relatedToolSlug: "compress-pdf",
+    content: `Large PDF files are frustrating to email, upload, or store. Here's how compression works and how to get the best results.
+
+## What makes a PDF large?
+
+Most bloated PDFs are large because of high-resolution images, embedded fonts, or scanned pages saved at unnecessarily high quality.
+
+## How compression helps
+
+A good PDF compressor reduces image resolution and re-encodes embedded assets while keeping text sharp and legible.
+
+## Choosing a compression level
+
+- **Balanced** — noticeably smaller file size with virtually no visible quality loss. Good for most documents.
+- **Maximum compression** — the smallest possible file, best for documents that are mostly text or will only be viewed on screen.
+
+Compressing a PDF takes just a few seconds and can often cut file size by more than half.`,
+  },
+  {
+    slug: "how-to-convert-pdf-to-word",
+    title: "How to Convert PDF to Word",
+    excerpt:
+      "Turn a PDF into an editable Word document while keeping your formatting intact.",
+    category: "Guides",
+    publishedAt: "2026-05-18T09:00:00.000Z",
+    readingMinutes: 4,
+    relatedToolSlug: "pdf-to-word",
+    content: `Sometimes you need to edit a document that only exists as a PDF. Converting it to Word makes that possible.
+
+## When you need this
+
+Common cases include editing a contract, updating an old resume, or repurposing content from a report.
+
+## What to expect
+
+Conversion tools work best on PDFs that were originally created from text documents. Scanned PDFs may need OCR for accurate results.
+
+## Steps
+
+1. Upload your PDF file.
+2. Wait a moment while the conversion runs.
+3. Download your new, editable .docx file.
+
+Once it's back in Word, you can edit freely and export to PDF again whenever you need to share it.`,
+  },
+  {
+    slug: "tips-for-reducing-pdf-size",
+    title: "5 Tips for Reducing PDF Size Before You Compress",
+    excerpt:
+      "Simple habits that keep your PDFs small from the start, so you spend less time compressing later.",
+    category: "Tips",
+    publishedAt: "2026-05-25T09:00:00.000Z",
+    readingMinutes: 3,
+    relatedToolSlug: "compress-pdf",
+    content: `Compression tools help after the fact, but a few habits keep your files small in the first place.
+
+1. **Scan at a reasonable resolution.** 200–300 DPI is plenty for most documents; higher resolutions mostly add file size, not clarity.
+2. **Avoid embedding unnecessary fonts.** Stick to standard fonts when you can.
+3. **Resize images before inserting them.** A 4000px-wide photo doesn't need to stay that large inside a document.
+4. **Export instead of print-to-PDF when possible.** Native exports are usually more efficient than print drivers.
+5. **Compress once you're done editing.** Repeatedly compressing an already-compressed file has diminishing returns.
+
+Combine these habits with our Compress PDF tool for the smallest, cleanest files.`,
+  },
+];
+
+export function findTool(slug: string): ToolRecord | undefined {
+  return tools.find((tool) => tool.slug === slug);
+}
+
+export function findBlogPost(slug: string): BlogPostRecord | undefined {
+  return blogPosts.find((post) => post.slug === slug);
+}

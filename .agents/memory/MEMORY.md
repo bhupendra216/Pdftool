@@ -1,0 +1,1 @@
+- [Orval zod v3 vs v4](orval-zod-email-format.md) — `format: email` in openapi.yaml breaks codegen typecheck on this workspace's zod version.
