@@ -19,8 +19,32 @@ export function Home() {
   const { data: posts, isLoading: loadingPosts } = useListBlogPosts();
   const { data: faqs, isLoading: loadingFaqs } = useListFaqs();
 
-  const popularTools = tools?.filter(t => t.popular).slice(0, 6) || [];
-  const latestPosts = posts?.slice(0, 3) || [];
+  console.log("TOOLS:", tools);
+console.log("POSTS:", posts);
+console.log("FAQS:", faqs);
+
+console.log("tools:", tools);
+console.log("tools isArray:", Array.isArray(tools));
+
+console.log("posts:", posts);
+console.log("posts isArray:", Array.isArray(posts));
+
+console.log("faqs:", faqs);
+console.log("faqs isArray:", Array.isArray(faqs));
+
+ // const popularTools = tools?.filter(t => t.popular).slice(0, 6) || [];
+
+ //temp solution
+ console.log("tools =", tools);
+
+const popularTools = Array.isArray(tools)
+  ? tools.filter((t) => t.popular).slice(0, 6)
+  : [];
+ 
+ // const latestPosts = posts?.slice(0, 3) || [];
+const latestPosts = Array.isArray(posts)
+  ? posts.slice(0, 3)
+  : [];
 
   return (
     <div className="flex flex-col min-h-screen">

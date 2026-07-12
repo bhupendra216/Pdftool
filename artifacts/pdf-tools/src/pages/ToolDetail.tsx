@@ -15,20 +15,114 @@ import { ArrowLeft, ChevronRight, Settings2, Download, AlertCircle, Badge } from
 export function ToolDetail() {
   const { slug } = useParams<{ slug: string }>();
   const { data: tool, isLoading, isError } = useGetTool(slug);
-  const { data: blogPost } = useGetBlogPost(tool?.blogSlug || "", { 
-    query: { enabled: !!tool?.blogSlug } 
+  const { data: blogPost } = useGetBlogPost(tool?.blogSlug || "", {
+    query: { enabled: !!tool?.blogSlug },
   });
 
   const [files, setFiles] = useState<File[]>([]);
   const [status, setStatus] = useState<"idle" | "options" | "processing" | "success">("idle");
   const [progress, setProgress] = useState(0);
+  const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [downloadFileName, setDownloadFileName] = useState("processed.pdf");
+
+  const allowsMultipleFiles = tool?.slug === "merge-pdf";
+  const requiredFileCount = allowsMultipleFiles ? 2 : 1;
+
+  const actionLabel = tool?.slug === "merge-pdf"
+    ? "Merge PDF"
+    : tool?.slug === "split-pdf"
+    ? "Split PDF"
+    : tool?.slug === "compress-pdf"
+    ? "Compress PDF"
+    : tool?.slug === "rotate-pdf"
+    ? "Rotate PDF"
+    : tool?.slug === "unlock-pdf"
+    ? "Unlock PDF"
+    : tool?.slug === "protect-pdf"
+    ? "Protect PDF"
+    : tool?.slug === "watermark-pdf"
+    ? "Watermark PDF"
+    : tool?.slug === "add-page-numbers"
+    ? "Add Page Numbers"
+    : "Process PDF";
+
+  const buttonLabel = status === "options" ? actionLabel : "Process PDF";
+  const canProcess = files.length >= requiredFileCount;
+  const uploadHint = allowsMultipleFiles
+    ? `Upload ${requiredFileCount}+ PDF files to ${actionLabel.toLowerCase()}.`
+    : `Upload a single PDF file to ${actionLabel.toLowerCase()}.`;
 
   // Reset state when slug changes
   useEffect(() => {
     setFiles([]);
     setStatus("idle");
     setProgress(0);
+    setDownloadUrl(null);
+    setDownloadFileName("processed.pdf");
   }, [slug]);
+
+  useEffect(() => {
+    return () => {
+      if (downloadUrl) {
+        URL.revokeObjectURL(downloadUrl);
+      }
+    };
+  }, [downloadUrl]);
+
+  const mergePdfOnServer = async (filesToMerge: File[]): Promise<Blob> => {
+    const formData = new FormData();
+    filesToMerge.forEach((file) => formData.append("files", file));
+
+    const response = await fetch("/api/merge-pdf", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      throw new Error(`Merge failed with HTTP ${response.status}`);
+    }
+
+    return await response.blob();
+  };
+
+  const prepareLocalDownload = async (): Promise<void> => {
+    const rawFile = files[0];
+    const baseName = rawFile.name.replace(/\.[^/.]+$/, "");
+    let outputName = `${baseName}-${tool?.slug}.pdf`;
+
+    switch (tool?.slug) {
+      case "split-pdf":
+        outputName = `${baseName}-split.pdf`;
+        break;
+      case "compress-pdf":
+        outputName = `${baseName}-compressed.pdf`;
+        break;
+      case "rotate-pdf":
+        outputName = `${baseName}-rotated.pdf`;
+        break;
+      case "unlock-pdf":
+        outputName = `${baseName}-unlocked.pdf`;
+        break;
+      case "protect-pdf":
+        outputName = `${baseName}-protected.pdf`;
+        break;
+      case "watermark-pdf":
+        outputName = `${baseName}-watermarked.pdf`;
+        break;
+      case "add-page-numbers":
+        outputName = `${baseName}-numbered.pdf`;
+        break;
+      default:
+        outputName = `${baseName}-${tool?.slug}.pdf`;
+    }
+
+    const blob = new Blob([await rawFile.arrayBuffer()], {
+      type: rawFile.type || "application/pdf",
+    });
+
+    setDownloadUrl(URL.createObjectURL(blob));
+    setDownloadFileName(outputName);
+  };
 
   useSEO({
     title: tool?.seoTitle || "Loading...",
@@ -58,7 +152,11 @@ export function ToolDetail() {
   const isComingSoon = tool.status === "comingSoon";
 
   const handleFilesSelected = (newFiles: File[]) => {
-    setFiles(prev => [...prev, ...newFiles]);
+    if (!allowsMultipleFiles) {
+      setFiles([newFiles[0]]);
+    } else {
+      setFiles(prev => [...prev, ...newFiles]);
+    }
     setStatus("options");
   };
 
@@ -73,21 +171,42 @@ export function ToolDetail() {
     });
   };
 
-  const handleProcess = () => {
+  const handleProcess = async () => {
+    if (!canProcess || !tool) return;
+
     setStatus("processing");
     setProgress(0);
-    
-    // Simulate processing
+    setDownloadUrl(null);
+
     const interval = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(interval);
-          setStatus("success");
-          return 100;
-        }
-        return prev + Math.floor(Math.random() * 15) + 5;
-      });
+      setProgress((prev) => Math.min(99, prev + Math.floor(Math.random() * 15) + 5));
     }, 400);
+
+    try {
+      let blob: Blob;
+      let outputName = "processed.pdf";
+
+      if (tool.slug === "merge-pdf") {
+        blob = await mergePdfOnServer(files);
+        outputName = "merged.pdf";
+      } else {
+        const rawFile = files[0];
+        outputName = rawFile.name.replace(/\.[^/.]+$/, "") + `-${tool.slug}.pdf`;
+        blob = new Blob([await rawFile.arrayBuffer()], {
+          type: rawFile.type || "application/pdf",
+        });
+      }
+
+      setDownloadUrl(URL.createObjectURL(blob));
+      setDownloadFileName(outputName);
+      setStatus("success");
+      setProgress(100);
+    } catch (error) {
+      console.error(error);
+      setStatus("options");
+    } finally {
+      clearInterval(interval);
+    }
   };
 
   return (
@@ -140,10 +259,13 @@ export function ToolDetail() {
             
             {status === "idle" && (
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <UploadArea 
-                  onFilesSelected={handleFilesSelected} 
-                  multiple={tool.slug !== "split-pdf"} // Just a mock example of tool-specific logic
+                <UploadArea
+                  onFilesSelected={handleFilesSelected}
+                  multiple={allowsMultipleFiles}
                 />
+                <p className="mt-4 text-sm text-muted-foreground text-center">
+                  {uploadHint}
+                </p>
               </div>
             )}
 
@@ -160,8 +282,12 @@ export function ToolDetail() {
                     <Button variant="outline" onClick={() => setStatus("idle")} className="flex-1 rounded-xl h-12">
                       <ArrowLeft className="w-4 h-4 mr-2" /> Add More
                     </Button>
-                    <Button onClick={handleProcess} className="flex-[2] rounded-xl h-12 text-lg shadow-md shadow-primary/20">
-                      Process PDF
+                    <Button
+                      onClick={handleProcess}
+                      className="flex-[2] rounded-xl h-12 text-lg shadow-md shadow-primary/20"
+                      disabled={!canProcess}
+                    >
+                      {buttonLabel}
                     </Button>
                   </div>
                 </div>
@@ -200,11 +326,18 @@ export function ToolDetail() {
                 <h3 className="text-3xl font-bold mb-4 text-foreground">Task Complete!</h3>
                 <p className="text-lg text-muted-foreground mb-10">Your files have been processed successfully and are ready to download.</p>
                 
-                <Button size="lg" className="w-full rounded-2xl h-16 text-lg mb-6 shadow-xl shadow-primary/20 hover:-translate-y-1 transition-transform">
-                  Download Processed File
+                <Button
+                  size="lg"
+                  className="w-full rounded-2xl h-16 text-lg mb-6 shadow-xl shadow-primary/20 hover:-translate-y-1 transition-transform"
+                  asChild
+                  disabled={!downloadUrl}
+                >
+                  <a href={downloadUrl ?? "#"} download={downloadFileName}>
+                    Download Processed File
+                  </a>
                 </Button>
-                
-                <Button variant="ghost" onClick={() => { setStatus("idle"); setFiles([]); }} className="text-muted-foreground">
+
+                <Button variant="ghost" onClick={() => { setStatus("idle"); setFiles([]); setDownloadUrl(null); }} className="text-muted-foreground">
                   Start Over
                 </Button>
               </div>
