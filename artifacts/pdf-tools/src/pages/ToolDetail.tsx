@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useParams, Link } from "wouter";
+import { PDFDocument } from "pdf-lib";
 import { useGetTool, useGetBlogPost } from "@workspace/api-client-react";
 import { useSEO } from "@/hooks/use-seo";
 import { UploadArea } from "@/components/shared/UploadArea";
@@ -24,6 +25,9 @@ export function ToolDetail() {
   const [progress, setProgress] = useState(0);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [downloadFileName, setDownloadFileName] = useState("processed.pdf");
+  const [pageRange, setPageRange] = useState("");
+  const [pageRangeError, setPageRangeError] = useState<string | null>(null);
+  const [totalPages, setTotalPages] = useState<number | null>(null);
 
   const allowsMultipleFiles = tool?.slug === "merge-pdf";
   const requiredFileCount = allowsMultipleFiles ? 2 : 1;
@@ -80,6 +84,59 @@ export function ToolDetail() {
 
     if (!response.ok) {
       throw new Error(`Merge failed with HTTP ${response.status}`);
+    }
+
+    return await response.blob();
+  };
+
+  const parsePageRangeInput = (input: string, total: number): number[] => {
+    if (!input || input.trim() === "") throw new Error("Empty input");
+    const parts = input.split(",").map((p) => p.trim()).filter(Boolean);
+    if (parts.length === 0) throw new Error("Empty input");
+
+    const indices: number[] = [];
+    for (const part of parts) {
+      const rangeMatch = part.match(/^(\d+)-(\d+)$/);
+      if (rangeMatch) {
+        const a = parseInt(rangeMatch[1], 10);
+        const b = parseInt(rangeMatch[2], 10);
+        if (isNaN(a) || isNaN(b)) throw new Error("Invalid syntax");
+        if (a < 1) throw new Error("Page numbers must be >= 1");
+        if (b < a) throw new Error("Range start must be <= range end");
+        if (b > total) throw new Error("Page number exceeds total pages");
+        for (let i = a; i <= b; i++) indices.push(i - 1);
+        continue;
+      }
+
+      const numMatch = part.match(/^(\d+)$/);
+      if (numMatch) {
+        const n = parseInt(numMatch[1], 10);
+        if (isNaN(n)) throw new Error("Invalid syntax");
+        if (n < 1) throw new Error("Page numbers must be >= 1");
+        if (n > total) throw new Error("Page number exceeds total pages");
+        indices.push(n - 1);
+        continue;
+      }
+
+      throw new Error("Invalid syntax");
+    }
+
+    return indices;
+  };
+
+  const splitPdfOnServer = async (fileToSplit: File, range: string): Promise<Blob> => {
+    const formData = new FormData();
+    formData.append("files", fileToSplit);
+    formData.append("pageRange", range);
+
+    const response = await fetch("/api/split-pdf", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => null);
+      throw new Error(text || `Split failed with HTTP ${response.status}`);
     }
 
     return await response.blob();
@@ -153,7 +210,21 @@ export function ToolDetail() {
 
   const handleFilesSelected = (newFiles: File[]) => {
     if (!allowsMultipleFiles) {
-      setFiles([newFiles[0]]);
+      const first = newFiles[0];
+      setFiles([first]);
+      if (tool?.slug === "split-pdf") {
+        (async () => {
+          try {
+            const bytes = await first.arrayBuffer();
+            const pdf = await PDFDocument.load(bytes);
+            setTotalPages(pdf.getPageCount());
+            setPageRangeError(null);
+          } catch (e) {
+            setTotalPages(null);
+            setPageRangeError("Unable to read PDF pages for validation");
+          }
+        })();
+      }
     } else {
       setFiles(prev => [...prev, ...newFiles]);
     }
@@ -189,6 +260,21 @@ export function ToolDetail() {
       if (tool.slug === "merge-pdf") {
         blob = await mergePdfOnServer(files);
         outputName = "merged.pdf";
+      } else if (tool.slug === "split-pdf") {
+        // Validate page range before sending
+        try {
+          if (!pageRange || pageRange.trim() === "") throw new Error("Empty input");
+          if (!totalPages) throw new Error("Unable to read PDF pages");
+          parsePageRangeInput(pageRange, totalPages);
+        } catch (err: any) {
+          setPageRangeError(err.message || "Invalid page range");
+          setStatus("options");
+          clearInterval(interval);
+          return;
+        }
+
+        blob = await splitPdfOnServer(files[0], pageRange);
+        outputName = files[0].name.replace(/\.[^/.]+$/, "") + `-split.pdf`;
       } else {
         const rawFile = files[0];
         outputName = rawFile.name.replace(/\.[^/.]+$/, "") + `-${tool.slug}.pdf`;
@@ -277,6 +363,24 @@ export function ToolDetail() {
                     onRemove={handleRemoveFile} 
                     status="idle" 
                   />
+                  {tool.slug === "split-pdf" && (
+                    <div className="mt-6">
+                      <label className="block text-sm font-medium text-muted-foreground mb-2">Page ranges</label>
+                      <input
+                        value={pageRange}
+                        onChange={(e) => { setPageRange(e.target.value); setPageRangeError(null); }}
+                        placeholder="e.g. 1-3,5,7-9"
+                        className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm"
+                        aria-label="Page ranges"
+                      />
+                      {pageRangeError && (
+                        <p className="text-sm text-destructive mt-2">{pageRangeError}</p>
+                      )}
+                      {totalPages && (
+                        <p className="text-xs text-muted-foreground mt-2">PDF has {totalPages} page{totalPages>1? 's':''}.</p>
+                      )}
+                    </div>
+                  )}
                   
                   <div className="mt-8 flex gap-4">
                     <Button variant="outline" onClick={() => setStatus("idle")} className="flex-1 rounded-xl h-12">
