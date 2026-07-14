@@ -148,6 +148,31 @@ export const tools: ToolRecord[] = [
     blogSlug: "best-free-pdf-compressor",
   },
   {
+    slug: "image-converter",
+    name: "Image Converter",
+    shortDescription: "Convert images between popular formats while maintaining high quality.",
+    category: "Convert",
+    icon: "Image",
+    popular: true,
+    status: "available",
+    seoTitle: "Convert Images Online Free | PDF Tools",
+    seoDescription:
+      "Quickly convert images between PNG, JPG, WEBP, BMP and more while preserving quality.",
+    steps: [
+      "Upload an image using drag & drop or the Browse button.",
+      "Choose the desired output format and click Convert.",
+      "Download the converted image when ready.",
+    ],
+    faqs: [
+      {
+        question: "Which formats are supported?",
+        answer:
+          "We accept PNG, JPG, JPEG, WEBP, BMP, TIFF, and GIF for input, and can output PNG, JPG, JPEG, WEBP, and BMP.",
+      },
+    ],
+    blogSlug: null,
+  },
+  {
     slug: "pdf-to-word",
     name: "PDF to Word",
     shortDescription: "Convert a PDF into an editable Word document.",
@@ -179,7 +204,7 @@ export const tools: ToolRecord[] = [
     category: "Convert",
     icon: "FileOutput",
     popular: false,
-    status: "comingSoon",
+    status: "available",
     seoTitle: "Convert Word to PDF Online Free | PDF Tools",
     seoDescription:
       "Turn a .docx or .doc file into a polished, shareable PDF in seconds.",
@@ -198,7 +223,7 @@ export const tools: ToolRecord[] = [
     category: "Convert",
     icon: "Image",
     popular: true,
-    status: "comingSoon",
+    status: "available",
     seoTitle: "Convert JPG to PDF Online Free | PDF Tools",
     seoDescription:
       "Combine JPG or PNG images into one PDF document, in the order you choose.",
@@ -217,7 +242,7 @@ export const tools: ToolRecord[] = [
     category: "Convert",
     icon: "ImageDown",
     popular: false,
-    status: "comingSoon",
+    status: "available",
     seoTitle: "Convert PDF to JPG Online Free | PDF Tools",
     seoDescription:
       "Turn PDF pages into individual JPG images you can use anywhere.",
@@ -225,6 +250,63 @@ export const tools: ToolRecord[] = [
       "Upload the PDF you want to convert.",
       "Choose image quality.",
       "Download your images as a zip file.",
+    ],
+    faqs: [],
+    blogSlug: null,
+  },
+  {
+    slug: "image-resize",
+    name: "Image Resize",
+    shortDescription: "Resize image dimensions while preserving quality.",
+    category: "Images",
+    icon: "Crop",
+    popular: false,
+    status: "available",
+    seoTitle: "Resize Images Online Free | PDF Tools",
+    seoDescription:
+      "Resize images to new dimensions while keeping them sharp and ready for web or print.",
+    steps: [
+      "Upload the image you want to resize.",
+      "Enter a width, height, or both.",
+      "Download the resized image.",
+    ],
+    faqs: [],
+    blogSlug: null,
+  },
+  {
+    slug: "image-compress",
+    name: "Image Compress",
+    shortDescription: "Reduce image file size with minimal quality loss.",
+    category: "Images",
+    icon: "Image",
+    popular: false,
+    status: "available",
+    seoTitle: "Compress Images Online Free | PDF Tools",
+    seoDescription:
+      "Shrink image file sizes for faster loading without sacrificing visual quality.",
+    steps: [
+      "Upload your image.",
+      "Choose a compression quality.",
+      "Download the compressed image.",
+    ],
+    faqs: [],
+    blogSlug: null,
+  },
+  {
+    slug: "image-upscale",
+    name: "Image Upscale",
+    shortDescription: "Increase image resolution for larger displays.",
+    category: "Images",
+    icon: "Zap",
+    popular: false,
+    status: "available",
+    seoTitle: "Upscale Images Online Free | PDF Tools",
+    seoDescription:
+      "Enlarge images with sharp results so they look great at higher resolutions.",
+    steps: [
+      "Upload the image you want to upscale.",
+      "Choose an upscale factor.",
+      "Download the larger image.",
     ],
     faqs: [],
     blogSlug: null,
@@ -312,7 +394,7 @@ export const tools: ToolRecord[] = [
     category: "Security",
     icon: "LockOpen",
     popular: false,
-    status: "comingSoon",
+    status: "available",
     seoTitle: "Unlock PDF Online Free | PDF Tools",
     seoDescription:
       "Remove password protection from a PDF you own the password to.",
@@ -331,7 +413,7 @@ export const tools: ToolRecord[] = [
     category: "Security",
     icon: "Lock",
     popular: false,
-    status: "comingSoon",
+    status: "available",
     seoTitle: "Password Protect PDF Online Free | PDF Tools",
     seoDescription:
       "Add a password to a PDF so only people you share it with can open it.",
@@ -380,6 +462,46 @@ export const tools: ToolRecord[] = [
     ],
     faqs: [],
     blogSlug: null,
+  },
+  {
+    slug: "ocr-image-to-text",
+    name: "OCR Image to Text",
+    shortDescription: "Extract editable text from images and scanned PDFs.",
+    category: "AI",
+    icon: "Type",
+    popular: false,
+    status: "available",
+    seoTitle: "OCR Image to Text | Extract Text from Images Online Free",
+    seoDescription:
+      "Extract editable text from images and scanned PDFs. Supports English and Nepali OCR. Free online OCR tool.",
+    steps: [
+      "Upload an image or scanned PDF.",
+      "Wait while the document is processed with OCR.",
+      "Edit, copy, or download the extracted text.",
+    ],
+    faqs: [
+      {
+        question: "What is OCR?",
+        answer: "OCR (Optical Character Recognition) converts images of text into editable, searchable text.",
+      },
+      {
+        question: "Does OCR support Nepali?",
+        answer: "Yes — this tool supports English and Nepali recognition (eng+nep) using Tesseract.",
+      },
+      {
+        question: "Can OCR read handwritten notes?",
+        answer: "Handwritten text has mixed results; clear printed text or high-quality scans work best.",
+      },
+      {
+        question: "Does OCR work on scanned PDFs?",
+        answer: "Yes. Upload a scanned PDF and we convert pages to images before running OCR.",
+      },
+      {
+        question: "Is my uploaded file private?",
+        answer: "Files are processed temporarily and removed from our servers shortly after processing.",
+      },
+    ],
+    blogSlug: "how-to-convert-image-to-text-using-ocr",
   },
 ];
 
@@ -483,6 +605,31 @@ Once it's back in Word, you can edit freely and export to PDF again whenever you
 5. **Compress once you're done editing.** Repeatedly compressing an already-compressed file has diminishing returns.
 
 Combine these habits with our Compress PDF tool for the smallest, cleanest files.`,
+  },
+  {
+    slug: "how-to-convert-image-to-text-using-ocr",
+    title: "How to Convert Image to Text Using OCR",
+    excerpt: "A practical guide to extracting editable text from images and scanned PDFs using OCR.",
+    category: "Guides",
+    publishedAt: "2026-07-13T09:00:00.000Z",
+    readingMinutes: 4,
+    relatedToolSlug: "ocr-image-to-text",
+    content: `Optical Character Recognition (OCR) turns images of text into editable text you can copy, search, and save.
+
+## Steps to extract text from images or scanned PDFs
+
+1. Upload a clear image or a scanned PDF.
+2. Wait while OCR processes each page — we auto-rotate and enhance images for better accuracy.
+3. Edit or copy the extracted text, or download it as a TXT file.
+
+## Tips for best results
+
+- Use high-contrast scans (200–300 DPI) for printed text.
+- Crop out margins and non-text areas where possible.
+- Handwritten notes are harder to recognize; typed text works best.
+
+Our OCR tool supports English and Nepali (eng+nep) and processes scanned PDFs by converting pages to images before recognition.
+`,
   },
 ];
 

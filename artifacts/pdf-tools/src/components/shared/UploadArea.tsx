@@ -7,11 +7,45 @@ interface UploadAreaProps {
   multiple?: boolean;
   accept?: string;
   maxSizeMB?: number;
+  label?: string;
+  description?: string;
 }
 
-export function UploadArea({ onFilesSelected, multiple = true, accept = "application/pdf", maxSizeMB = 50 }: UploadAreaProps) {
+export function UploadArea({
+  onFilesSelected,
+  multiple = true,
+  accept = "application/pdf",
+  maxSizeMB = 50,
+  label = "PDF file",
+  description = "or drop PDF here.",
+}: UploadAreaProps) {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const parseAcceptTypes = () => {
+    return accept
+      .split(",")
+      .map((item) => item.trim().toLowerCase())
+      .filter(Boolean);
+  };
+
+  const isAcceptableFile = (file: File) => {
+    const acceptTypes = parseAcceptTypes();
+    if (acceptTypes.length === 0) return true;
+
+    const fileType = file.type.toLowerCase();
+    const fileName = file.name.toLowerCase();
+
+    return acceptTypes.some((type) => {
+      if (type.startsWith(".")) {
+        return fileName.endsWith(type);
+      }
+      if (type.endsWith("/*")) {
+        return fileType.startsWith(type.replace("/*", ""));
+      }
+      return fileType === type;
+    });
+  };
 
   const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
@@ -30,12 +64,17 @@ export function UploadArea({ onFilesSelected, multiple = true, accept = "applica
     
     const validFiles: File[] = [];
     Array.from(files).forEach(file => {
-      // Very basic validation - in reality we might want to check mimetypes strictly
-      if (file.size <= maxSizeMB * 1024 * 1024) {
-        validFiles.push(file);
-      } else {
-        alert(`File ${file.name} exceeds the maximum size of ${maxSizeMB}MB.`);
+      if (!isAcceptableFile(file)) {
+        alert(`File ${file.name} is not a supported file type.`);
+        return;
       }
+
+      if (file.size > maxSizeMB * 1024 * 1024) {
+        alert(`File ${file.name} exceeds the maximum size of ${maxSizeMB}MB.`);
+        return;
+      }
+
+      validFiles.push(file);
     });
 
     if (validFiles.length > 0) {
@@ -84,10 +123,10 @@ export function UploadArea({ onFilesSelected, multiple = true, accept = "applica
       </div>
       
       <h3 className="text-2xl font-bold mb-3">
-        Select PDF file{multiple ? 's' : ''}
+        Select {label}{multiple ? 's' : ''}
       </h3>
       <p className="text-muted-foreground mb-8 max-w-sm">
-        or drop PDF{multiple ? 's' : ''} here. Maximum file size is {maxSizeMB}MB.
+        {description} Maximum file size is {maxSizeMB}MB.
       </p>
       
       <Button 

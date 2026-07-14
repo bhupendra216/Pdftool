@@ -6,6 +6,13 @@ import faqRouter from "./faq";
 import contactRouter from "./contact";
 import mergeRouter from "./merge";
 import splitRouter from "./split";
+import imageRouter from "./image";
+import officeRouter from "./office";
+import ocrRouter from "./ocr";
+import organizeRouter from "./organize";
+import deletePagesRouter from "./delete-pages";
+import extractPagesRouter from "./extract-pages";
+import adminRouter from "./admin";
 
 const router: IRouter = Router();
 
@@ -16,5 +23,12 @@ router.use(faqRouter);
 router.use(contactRouter);
 router.use(mergeRouter);
 router.use(splitRouter);
+router.use(imageRouter);
+router.use(officeRouter);
+router.use(ocrRouter);
+router.use(organizeRouter);
+router.use(deletePagesRouter);
+router.use(extractPagesRouter);
+router.use(adminRouter);
 
 export default router;

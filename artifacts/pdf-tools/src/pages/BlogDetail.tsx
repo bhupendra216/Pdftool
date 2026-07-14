@@ -15,7 +15,7 @@ export function BlogDetail() {
   
   // Conditionally fetch related tool if it exists
   const { data: relatedTool } = useGetTool(post?.relatedToolSlug || "", {
-    query: { enabled: !!post?.relatedToolSlug }
+    query: { enabled: !!post?.relatedToolSlug, queryKey: ["getTool", post?.relatedToolSlug] } as any
   });
 
   useSEO({

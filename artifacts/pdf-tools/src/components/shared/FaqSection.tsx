@@ -1,4 +1,4 @@
-import { FaqItem } from "@workspace/api-client-react/src/generated/api.schemas";
+import type { FaqItem } from "@workspace/api-client-react";
 import {
   Accordion,
   AccordionContent,

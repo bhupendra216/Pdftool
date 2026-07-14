@@ -1,18 +1,27 @@
+import { pathToFileURL } from "node:url";
 import app from "./app";
 import { logger } from "./lib/logger";
 
-const port = Number(process.env.PORT) || 3000;
+const rawPort = process.env.PORT;
+const port = rawPort ? Number(rawPort) : 3000;
 
-
-if (Number.isNaN(port) || port <= 0) {
+if (rawPort && (Number.isNaN(port) || port <= 0)) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-app.listen(port, (err) => {
-  if (err) {
-    logger.error({ err }, "Error listening on port");
-    process.exit(1);
-  }
+export default app;
 
-  logger.info({ port }, "Server listening");
-});
+export function startServer() {
+  return app.listen(port, (err) => {
+    if (err) {
+      logger.error({ err }, "Error listening on port");
+      process.exit(1);
+    }
+
+    logger.info({ port }, "Server listening");
+  });
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  startServer();
+}

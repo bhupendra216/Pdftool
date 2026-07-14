@@ -47,22 +47,22 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
-  port,
-  strictPort: true,
-  host: "0.0.0.0",
-  allowedHosts: true,
+    port,
+    strictPort: true,
+    host: "0.0.0.0",
+    allowedHosts: true,
 
-  proxy: {
-    "/api": {
-      target: "http://localhost:3000",
-      changeOrigin: true,
+    proxy: {
+      "/api": {
+        target: process.env.API_SERVER_URL || "http://localhost:3000",
+        changeOrigin: true,
+      },
+    },
+
+    fs: {
+      strict: true,
     },
   },
-
-  fs: {
-    strict: true,
-  },
-},
   preview: {
   port,
   host: "0.0.0.0",

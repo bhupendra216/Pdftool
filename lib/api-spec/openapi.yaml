@@ -145,6 +145,40 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /ocr-image-to-text:
+    post:
+      operationId: ocrImageToText
+      tags: [tools]
+      summary: Run OCR on an uploaded image or scanned PDF
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              properties:
+                files:
+                  type: string
+                  format: binary
+      responses:
+        "200":
+          description: OCR result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/OcrResult"
+        "400":
+          description: Invalid input
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "500":
+          description: OCR processing failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthStatus:
@@ -268,3 +302,17 @@ components:
       properties:
         success:
           type: boolean
+    OcrResult:
+      type: object
+      required: [text, pages]
+      properties:
+        text:
+          type: string
+          description: Combined extracted text from all pages
+        confidence:
+          type: number
+          nullable: true
+          description: Average confidence (0-100) if available
+        pages:
+          type: integer
+          description: Number of pages processed (1 for images)

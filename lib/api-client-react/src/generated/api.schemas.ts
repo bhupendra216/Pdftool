@@ -80,3 +80,10 @@ export interface ContactMessageResult {
   success: boolean;
 }
 
+export interface OcrResult {
+  text: string;
+  /** @nullable */
+  confidence?: number | null;
+  pages: number;
+}
+

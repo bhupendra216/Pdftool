@@ -3,6 +3,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { Layout } from '@/components/layout/Layout';
+import { ScrollToTop } from '@/components/shared/ScrollToTop';
 
 // Pages
 import { Home } from '@/pages/Home';
@@ -14,6 +15,8 @@ import { About } from '@/pages/About';
 import { Privacy } from '@/pages/Privacy';
 import { Terms } from '@/pages/Terms';
 import { Contact } from '@/pages/Contact';
+import { AdminLogin } from '@/pages/admin/AdminLogin';
+import { AdminDashboard } from '@/pages/admin/AdminDashboard';
 import NotFound from '@/pages/not-found';
 
 const queryClient = new QueryClient({
@@ -38,6 +41,8 @@ function Router() {
         <Route path="/privacy" component={Privacy} />
         <Route path="/terms" component={Terms} />
         <Route path="/contact" component={Contact} />
+        <Route path="/admin/login" component={AdminLogin} />
+        <Route path="/admin/dashboard" component={AdminDashboard} />
         <Route component={NotFound} />
       </Switch>
     </Layout>
@@ -49,6 +54,7 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+          <ScrollToTop />
           <Router />
         </WouterRouter>
         <Toaster />

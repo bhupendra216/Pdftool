@@ -28,7 +28,8 @@ import type {
   FaqItem,
   HealthStatus,
   Tool,
-  ToolDetail
+  ToolDetail,
+  OcrResult,
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -592,4 +593,57 @@ export const useSubmitContact = <TError = ErrorType<ErrorResponse>,
       > => {
       return useMutation(getSubmitContactMutationOptions(options));
     }
+
+
+  export const getOcrImageToTextUrl = () => {
+    return `/api/ocr-image-to-text`
+  }
+
+  /**
+   * Run OCR on an uploaded image or scanned PDF
+   */
+  export const ocrImageToText = async (formData: BodyType<FormData>, options?: RequestInit): Promise<OcrResult> => {
+    return customFetch<OcrResult>(getOcrImageToTextUrl(), {
+      ...options,
+      method: 'POST',
+      body: formData as unknown as BodyInit,
+    });
+  }
+
+  export const getOcrImageToTextMutationOptions = <TError = ErrorType<ErrorResponse>,
+      TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ocrImageToText>>, TError,{data: BodyType<FormData>}, TContext>, request?: SecondParameter<typeof customFetch>}
+  ): UseMutationOptions<Awaited<ReturnType<typeof ocrImageToText>>, TError,{data: BodyType<FormData>}, TContext> => {
+
+  const mutationKey = ['ocrImageToText'];
+  const {mutation: mutationOptions, request: requestOptions} = options ?
+        options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+        options
+        : {...options, mutation: {...options.mutation, mutationKey}}
+        : {mutation: { mutationKey, }, request: undefined};
+
+        const mutationFn: MutationFunction<Awaited<ReturnType<typeof ocrImageToText>>, {data: BodyType<FormData>}> = (props) => {
+            const {data} = props ?? {};
+
+            return  ocrImageToText(data as unknown as BodyType<FormData>,requestOptions)
+          }
+
+    return  { mutationFn, ...mutationOptions }}
+
+      export type OcrImageToTextMutationResult = NonNullable<Awaited<ReturnType<typeof ocrImageToText>>>
+      export type OcrImageToTextMutationBody = BodyType<FormData>
+      export type OcrImageToTextMutationError = ErrorType<ErrorResponse>
+
+      /**
+   * Run OCR on an uploaded image or scanned PDF
+   */
+  export const useOcrImageToText = <TError = ErrorType<ErrorResponse>,
+      TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof ocrImageToText>>, TError,{data: BodyType<FormData>}, TContext>, request?: SecondParameter<typeof customFetch>}
+   ): UseMutationResult<
+          Awaited<ReturnType<typeof ocrImageToText>>,
+          TError,
+          {data: BodyType<FormData>},
+          TContext
+        > => {
+        return useMutation(getOcrImageToTextMutationOptions(options));
+      }
 

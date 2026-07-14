@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { BlogPost } from "@workspace/api-client-react/src/generated/api.schemas";
+import type { BlogPost } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { format } from "date-fns";

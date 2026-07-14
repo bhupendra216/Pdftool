@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { Tool } from "@workspace/api-client-react/src/generated/api.schemas";
+import type { Tool } from "@workspace/api-client-react";
 import { Icon } from "@/components/ui/icon";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";

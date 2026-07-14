@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "react-day-picker";
+import { Button } from "@/components/ui/button";
 
 export function ToolsIndex() {
   useSEO({
