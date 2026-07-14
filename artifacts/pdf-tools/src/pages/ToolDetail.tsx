@@ -47,6 +47,11 @@ export function ToolDetail() {
   const [upscaleHeight, setUpscaleHeight] = useState<string>("");
   const [password, setPassword] = useState<string>("");
   const [ocrText, setOcrText] = useState<string>("");
+  const [watermarkText, setWatermarkText] = useState<string>("CONFIDENTIAL");
+  const [watermarkPosition, setWatermarkPosition] = useState<string>("bottom-right");
+  const [watermarkLogo, setWatermarkLogo] = useState<File | null>(null);
+  const [pageNumberStart, setPageNumberStart] = useState<string>("1");
+  const [pageNumberPosition, setPageNumberPosition] = useState<string>("bottom-right");
   const SUPPORTED_INPUT = ["png", "jpg", "jpeg", "webp", "bmp", "tiff", "gif"];
   const SUPPORTED_OUTPUT = ["png", "jpg", "jpeg", "webp", "bmp"];
 
@@ -367,6 +372,47 @@ export function ToolDetail() {
     if (!response.ok) {
       const text = await response.text().catch(() => null);
       throw new Error(text || `Unlock PDF failed with HTTP ${response.status}`);
+    }
+
+    return await response.blob();
+  };
+
+  const watermarkPdfOnServer = async (fileToWatermark: File, text: string, position: string, logoFile: File | null): Promise<Blob> => {
+    const formData = new FormData();
+    formData.append("files", fileToWatermark);
+    formData.append("text", text);
+    formData.append("position", position);
+    if (logoFile) {
+      formData.append("logo", logoFile);
+    }
+
+    const response = await fetch("/api/watermark-pdf", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => null);
+      throw new Error(text || `Watermark PDF failed with HTTP ${response.status}`);
+    }
+
+    return await response.blob();
+  };
+
+  const addPageNumbersOnServer = async (fileToNumber: File, startNumber: number, position: string): Promise<Blob> => {
+    const formData = new FormData();
+    formData.append("files", fileToNumber);
+    formData.append("startNumber", String(startNumber));
+    formData.append("position", position);
+
+    const response = await fetch("/api/add-page-numbers", {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => null);
+      throw new Error(text || `Add Page Numbers failed with HTTP ${response.status}`);
     }
 
     return await response.blob();
@@ -733,6 +779,13 @@ export function ToolDetail() {
       } else if (tool.slug === "unlock-pdf") {
         blob = await unlockPdfOnServer(files[0], password);
         outputName = files[0].name.replace(/\.[^/.]+$/, "") + "-unlocked.pdf";
+      } else if (tool.slug === "watermark-pdf") {
+        blob = await watermarkPdfOnServer(files[0], watermarkText, watermarkPosition, watermarkLogo);
+        outputName = files[0].name.replace(/\.[^/.]+$/, "") + "-watermarked.pdf";
+      } else if (tool.slug === "add-page-numbers") {
+        const startNumber = Number(pageNumberStart || 1);
+        blob = await addPageNumbersOnServer(files[0], Number.isFinite(startNumber) ? startNumber : 1, pageNumberPosition);
+        outputName = files[0].name.replace(/\.[^/.]+$/, "") + "-numbered.pdf";
       } else if (tool.slug === "organize-pdf") {
         const pageOrder = pdfPages.map((page) => page.pageNumber);
         const rotations = pdfPages.map((page) => page.rotation);
@@ -1018,6 +1071,72 @@ export function ToolDetail() {
                         className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm"
                         aria-label="PDF password"
                       />
+                    </div>
+                  )}
+
+                  {tool.slug === "watermark-pdf" && (
+                    <div className="mt-6 space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-muted-foreground mb-2">Upload company logo (PNG recommended)</label>
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp"
+                          onChange={(e) => setWatermarkLogo(e.target.files?.[0] || null)}
+                          className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-muted-foreground mb-2">Watermark text</label>
+                        <input
+                          value={watermarkText}
+                          onChange={(e) => setWatermarkText(e.target.value)}
+                          placeholder="Enter watermark text"
+                          className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm"
+                          aria-label="Watermark text"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-muted-foreground mb-2">Position</label>
+                        <select
+                          value={watermarkPosition}
+                          onChange={(e) => setWatermarkPosition(e.target.value)}
+                          className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm"
+                        >
+                          <option value="top-left">Top left</option>
+                          <option value="top-right">Top right</option>
+                          <option value="bottom-left">Bottom left</option>
+                          <option value="bottom-right">Bottom right</option>
+                        </select>
+                      </div>
+                    </div>
+                  )}
+
+                  {tool.slug === "add-page-numbers" && (
+                    <div className="mt-6 space-y-4">
+                      <div>
+                        <label className="block text-sm font-medium text-muted-foreground mb-2">Starting number</label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={pageNumberStart}
+                          onChange={(e) => setPageNumberStart(e.target.value)}
+                          className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm"
+                          aria-label="Starting page number"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-sm font-medium text-muted-foreground mb-2">Position</label>
+                        <select
+                          value={pageNumberPosition}
+                          onChange={(e) => setPageNumberPosition(e.target.value)}
+                          className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm"
+                        >
+                          <option value="top-left">Top left</option>
+                          <option value="top-right">Top right</option>
+                          <option value="bottom-left">Bottom left</option>
+                          <option value="bottom-right">Bottom right</option>
+                        </select>
+                      </div>
                     </div>
                   )}
 

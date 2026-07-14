@@ -1,6 +1,13 @@
 import { pathToFileURL } from "node:url";
+import path from "node:path";
+import "dotenv/config";
 import app from "./app";
 import { logger } from "./lib/logger";
+
+const envPath = path.resolve(process.cwd(), ".env");
+if (process.env.NODE_ENV !== "test") {
+  logger.info({ envPath }, "Loaded environment file");
+}
 
 const rawPort = process.env.PORT;
 const port = rawPort ? Number(rawPort) : 3000;

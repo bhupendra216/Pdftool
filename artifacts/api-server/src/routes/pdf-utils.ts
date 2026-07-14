@@ -8,6 +8,10 @@ export function isPdfFile(file: Express.Multer.File | undefined): file is Expres
   return ext === "pdf";
 }
 
+export function buildDefaultPageOrder(totalPages: number): number[] {
+  return Array.from({ length: totalPages }, (_, index) => index + 1);
+}
+
 export function parsePageList(
   raw: unknown,
   totalPages: number,

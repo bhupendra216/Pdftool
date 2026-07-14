@@ -12,6 +12,7 @@ import ocrRouter from "./ocr";
 import organizeRouter from "./organize";
 import deletePagesRouter from "./delete-pages";
 import extractPagesRouter from "./extract-pages";
+import pdfAnnotationsRouter from "./pdf-annotations-route";
 import adminRouter from "./admin";
 
 const router: IRouter = Router();
@@ -29,6 +30,7 @@ router.use(ocrRouter);
 router.use(organizeRouter);
 router.use(deletePagesRouter);
 router.use(extractPagesRouter);
+router.use(pdfAnnotationsRouter);
 router.use(adminRouter);
 
 export default router;

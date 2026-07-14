@@ -337,7 +337,7 @@ export const tools: ToolRecord[] = [
     category: "Organize",
     icon: "LayoutGrid",
     popular: false,
-    status: "comingSoon",
+    status: "available",
     seoTitle: "Organize PDF Pages Online Free | PDF Tools",
     seoDescription:
       "Drag and drop to reorder pages, or remove the ones you don't need.",
@@ -356,7 +356,7 @@ export const tools: ToolRecord[] = [
     category: "Organize",
     icon: "FileMinus",
     popular: false,
-    status: "comingSoon",
+    status: "available",
     seoTitle: "Delete PDF Pages Online Free | PDF Tools",
     seoDescription:
       "Select and remove unwanted pages from any PDF document.",
@@ -375,7 +375,7 @@ export const tools: ToolRecord[] = [
     category: "Organize",
     icon: "FilePlus2",
     popular: false,
-    status: "comingSoon",
+    status: "available",
     seoTitle: "Extract PDF Pages Online Free | PDF Tools",
     seoDescription:
       "Select and export a subset of pages from a PDF into a brand new document.",
@@ -432,7 +432,7 @@ export const tools: ToolRecord[] = [
     category: "Edit",
     icon: "Stamp",
     popular: false,
-    status: "comingSoon",
+    status: "available",
     seoTitle: "Add Watermark to PDF Online Free | PDF Tools",
     seoDescription:
       "Add a text or image watermark to every page of a PDF document.",
@@ -451,7 +451,7 @@ export const tools: ToolRecord[] = [
     category: "Edit",
     icon: "Hash",
     popular: false,
-    status: "comingSoon",
+    status: "available",
     seoTitle: "Add Page Numbers to PDF Online Free | PDF Tools",
     seoDescription:
       "Automatically insert page numbers into a PDF with your choice of position and style.",

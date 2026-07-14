@@ -1,15 +1,15 @@
 import { Router } from "express";
 import multer from "multer";
 import { degrees, PDFDocument } from "pdf-lib";
-import { loadPdf, parsePageList, parseRotationValues, preservePdfMetadata, isPdfFile } from "./pdf-utils";
+import { buildDefaultPageOrder, loadPdf, parsePageList, parseRotationValues, preservePdfMetadata, isPdfFile } from "./pdf-utils";
 
 const upload = multer({ storage: multer.memoryStorage() });
 const router = Router();
 
 router.post("/organize-pdf", upload.single("files"), async (req, res) => {
   const file = req.file as Express.Multer.File | undefined;
-  const rawPageOrder = req.body.pageOrder;
-  const rawRotations = req.body.rotations;
+  const rawPageOrder = req.body?.pageOrder ?? req.body?.pageorder;
+  const rawRotations = req.body?.rotations ?? req.body?.pageRotations;
 
   if (!isPdfFile(file)) {
     res.status(400).json({ error: "No PDF file uploaded" });
@@ -19,7 +19,12 @@ router.post("/organize-pdf", upload.single("files"), async (req, res) => {
   try {
     const srcPdf = await loadPdf(file.buffer);
     const totalPages = srcPdf.getPageCount();
-    const pageIndices = parsePageList(rawPageOrder, totalPages, "pageOrder", { allowDuplicates: true, required: true });
+
+    const hasExplicitPageOrder = rawPageOrder != null && String(rawPageOrder).trim() !== "";
+    const pageIndices = hasExplicitPageOrder
+      ? parsePageList(rawPageOrder, totalPages, "pageOrder", { allowDuplicates: true, required: true })
+      : buildDefaultPageOrder(totalPages).map((pageNumber) => pageNumber - 1);
+
     const rotations = parseRotationValues(rawRotations, pageIndices.length);
 
     const outPdf = await PDFDocument.create();

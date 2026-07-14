@@ -86,6 +86,8 @@ function inferToolName(path: string) {
     "/api/ocr-image-to-text": "OCR Image to Text",
     "/api/protect-pdf": "Protect PDF",
     "/api/unlock-pdf": "Unlock PDF",
+    "/api/watermark-pdf": "Watermark PDF",
+    "/api/add-page-numbers": "Add Page Numbers",
     "/api/organize-pdf": "Organize PDF",
     "/api/delete-pages": "Delete Pages",
     "/api/extract-pages": "Extract Pages",

@@ -1,15 +1,15 @@
 import { createAdminSession, deleteAdminSession, getAdminSession, isLoginBlocked, registerLoginAttempt, resetLoginAttempts } from "./admin-store";
 
-const ADMIN_USERNAME = process.env.ADMIN_USERNAME;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD;
-
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 
 export function getAdminCredentials() {
-  if (!ADMIN_USERNAME || !ADMIN_PASSWORD) {
+  const username = process.env.ADMIN_USERNAME?.trim();
+  const password = process.env.ADMIN_PASSWORD?.trim();
+
+  if (!username || !password) {
     throw new Error("ADMIN_USERNAME and ADMIN_PASSWORD must be set in the environment");
   }
-  return { username: ADMIN_USERNAME, password: ADMIN_PASSWORD };
+  return { username, password };
 }
 
 export function getClientIp(req: any) {
