@@ -1,4 +1,4 @@
-import { PDFDocument, rgb, StandardFonts } from "pdf-lib";
+import { degrees, PDFDocument, rgb, StandardFonts } from "pdf-lib";
 
 export type WatermarkPosition = "top-left" | "top-right" | "bottom-left" | "bottom-right";
 export type PageNumberPosition = "top-left" | "top-right" | "bottom-left" | "bottom-right";
@@ -50,7 +50,7 @@ export async function applyWatermarkToPdf(sourcePdf: PDFDocument, text: string, 
       font,
       color,
       opacity,
-      rotate: { type: "degrees", angle: -30 },
+      rotate: degrees(-30),
     });
   });
 }

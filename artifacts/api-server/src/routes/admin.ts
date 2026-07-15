@@ -57,8 +57,13 @@ router.get("/admin/search", requireAdmin, (_req, res) => {
 });
 
 router.post("/admin/track", (req, res) => {
+  const eventType = req.body?.type;
+  const type = eventType === "page_view" || eventType === "api_request" || eventType === "tool_use"
+    ? eventType
+    : "api_request";
+
   const event = {
-    type: req.body?.type === "page_view" ? "page_view" : "api_request",
+    type,
     path: req.body?.path || "/",
     method: req.body?.method || "GET",
     tool: req.body?.tool || null,

@@ -1,6 +1,6 @@
 import { Router } from "express";
 import multer from "multer";
-import sharp from "sharp";
+import sharp, { type Sharp } from "sharp";
 import path from "path";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } }); // 20MB limit
@@ -17,13 +17,12 @@ const INPUT_MIMES = new Set([
   "image/gif",
 ]);
 
-const OUTPUT_FORMATS = new Set(["png", "jpg", "jpeg", "webp", "bmp"]);
+const OUTPUT_FORMATS = new Set(["png", "jpg", "jpeg", "webp"]);
 
 function extForFormat(format: string) {
   if (format === "jpg" || format === "jpeg") return "jpg";
   if (format === "png") return "png";
   if (format === "webp") return "webp";
-  if (format === "bmp") return "bmp";
   return format;
 }
 
@@ -51,34 +50,36 @@ router.post("/convert-image", upload.array("files"), async (req, res) => {
 
   try {
     const image = sharp(file.buffer, { failOnError: true, limitInputPixels: false });
-    let transformed: any;
-    if (outFormat === "png") {
+    let resolvedFormat = outFormat;
+    let transformed: Sharp = image;
+
+    if (resolvedFormat === "bmp") {
+      resolvedFormat = "png";
+    }
+
+    if (resolvedFormat === "png") {
       transformed = image.png({ quality: 100 });
-    } else if (outFormat === "webp") {
+    } else if (resolvedFormat === "webp") {
       transformed = image.webp({ quality: 90 });
-    } else if (outFormat === "jpg" || outFormat === "jpeg") {
+    } else if (resolvedFormat === "jpg" || resolvedFormat === "jpeg") {
       transformed = image.jpeg({ quality: 90 });
-    } else if (outFormat === "bmp") {
-      transformed = image.bmp();
-    } else {
-      transformed = image;
     }
 
     const outBuffer = await transformed.toBuffer();
 
     const base = path.basename(file.originalname, path.extname(file.originalname));
-    const outExt = extForFormat(outFormat);
+    const outExt = extForFormat(resolvedFormat);
     const outName = `${base}.${outExt}`;
 
-    // Determine content-type
-    const contentType = outFormat === "jpg" || outFormat === "jpeg" ? "image/jpeg" : `image/${outFormat}`;
+    const contentType = resolvedFormat === "jpg" || resolvedFormat === "jpeg" ? "image/jpeg" : `image/${resolvedFormat}`;
 
     res.setHeader("content-type", contentType);
     res.setHeader("content-disposition", `attachment; filename=${outName}`);
     res.send(outBuffer);
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Conversion failed";
     console.error("Image conversion failed", err);
-    res.status(500).json({ error: err.message || "Conversion failed" });
+    res.status(500).json({ error: message });
   }
 });
 
@@ -104,7 +105,7 @@ router.post("/image-resize", upload.single("files"), async (req, res) => {
 
   try {
     const image = sharp(file.buffer, { failOnError: true, limitInputPixels: false });
-    const resizeOptions: any = {
+    const resizeOptions: Parameters<Sharp["resize"]>[0] = {
       fit: "inside",
       withoutEnlargement: true,
     };
@@ -118,9 +119,10 @@ router.post("/image-resize", upload.single("files"), async (req, res) => {
     res.setHeader("content-type", file.mimetype);
     res.setHeader("content-disposition", `attachment; filename=${outputName}`);
     res.send(outBuffer);
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Resize failed";
     console.error("Image resize failed", err);
-    res.status(500).json({ error: err.message || "Resize failed" });
+    res.status(500).json({ error: message });
   }
 });
 
@@ -141,7 +143,7 @@ router.post("/image-compress", upload.single("files"), async (req, res) => {
   try {
     const image = sharp(file.buffer, { failOnError: true, limitInputPixels: false });
     const mime = file.mimetype.toLowerCase();
-    let transformed: any = image;
+    let transformed: Sharp = image;
 
     if (mime === "image/png") {
       transformed = image.png({ compressionLevel: Math.round((100 - quality) / 10), adaptiveFiltering: true });
@@ -150,7 +152,7 @@ router.post("/image-compress", upload.single("files"), async (req, res) => {
     } else if (mime === "image/jpeg" || mime === "image/jpg") {
       transformed = image.jpeg({ quality });
     } else if (mime === "image/bmp") {
-      transformed = image.bmp();
+      transformed = image.png();
     } else if (mime === "image/tiff" || mime === "image/tif") {
       transformed = image.tiff({ quality });
     } else {
@@ -164,9 +166,10 @@ router.post("/image-compress", upload.single("files"), async (req, res) => {
     res.setHeader("content-type", file.mimetype);
     res.setHeader("content-disposition", `attachment; filename=${outputName}`);
     res.send(outBuffer);
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Compression failed";
     console.error("Image compression failed", err);
-    res.status(500).json({ error: err.message || "Compression failed" });
+    res.status(500).json({ error: message });
   }
 });
 
@@ -204,9 +207,10 @@ router.post("/image-upscale", upload.single("files"), async (req, res) => {
     res.setHeader("content-type", file.mimetype);
     res.setHeader("content-disposition", `attachment; filename=${outputName}`);
     res.send(outBuffer);
-  } catch (err: any) {
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Upscale failed";
     console.error("Image upscale failed", err);
-    res.status(500).json({ error: err.message || "Upscale failed" });
+    res.status(500).json({ error: message });
   }
 });
 
