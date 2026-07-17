@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
-import app from "../artifacts/api-server/src/app.js";
+import app from "../artifacts/api-server/dist/index.mjs";
 
 export default function handler(req: IncomingMessage, res: ServerResponse) {
   return (app as any)(req, res);
