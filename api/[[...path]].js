@@ -1,5 +1,4 @@
-const app = require('../artifacts/api-server/dist/index.cjs');
-
-module.exports = function handler(req, res) {
-  return app(req, res);
+module.exports = async function handler(req, res) {
+  const mod = await import('../artifacts/api-server/dist/index.mjs');
+  return mod.default(req, res);
 };
