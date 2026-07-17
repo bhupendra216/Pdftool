@@ -7,9 +7,20 @@
       "config": {
         "distDir": "dist/public"
       }
+    },
+    {
+      "src": "api/[[...path]].ts",
+      "use": "@vercel/node"
     }
   ],
   "routes": [
-    { "src": "/(.*)", "dest": "/index.html" }
+    {
+      "src": "/api/(.*)",
+      "dest": "/api/[[...path]]"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
   ]
 }
