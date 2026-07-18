@@ -1,11 +1,9 @@
 {
   "version": 2,
-  "builds": [
-    { "src": "artifacts/pdf-tools/dist/public/**", "use": "@vercel/static" },
-    { "src": "api/[[...path]].js", "use": "@vercel/node" }
-  ],
   "routes": [
-    { "src": "/api/(.*)", "dest": "/api/[[...path]].js" },
-    { "src": "/(.*)", "dest": "/artifacts/pdf-tools/dist/public/$1" }
+    {
+      "src": "/(.*)",
+      "dest": "/artifacts/pdf-tools/dist/public/$1"
+    }
   ]
 }
