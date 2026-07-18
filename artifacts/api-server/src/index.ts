@@ -12,11 +12,17 @@ if (process.env.NODE_ENV !== "test") {
 const rawPort = process.env.PORT;
 const port = rawPort ? Number(rawPort) : 3000;
 
+console.log("PORT ENV =", process.env.PORT);
+console.log("LISTENING ON =", port);
+
+
 if (rawPort && (Number.isNaN(port) || port <= 0)) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
 export default app;
+
+
 
 export function startServer() {
   logger.info(
