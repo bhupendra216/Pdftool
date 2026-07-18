@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "cd artifacts/api-server && pnpm install --ignore-workspace-root-check && pnpm run build && pnpm run start",
+    "startCommand": "cd artifacts/api-server && pnpm install && pnpm run build && pnpm run start",
     "healthcheckPath": "/healthz",
     "healthcheckTimeout": 180,
     "restartPolicyType": "ON_FAILURE",
