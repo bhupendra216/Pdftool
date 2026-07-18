@@ -1,5 +1,4 @@
-export type { Category, Company, Job, JobType, Location, WorkMode } from "@/lib/ai-jobs-data";
-
+import type { Category, Company, Job, JobType, Location as JobLocation, WorkMode } from "@/lib/ai-jobs-data";
 import { categories, companies, jobs, locations } from "@/lib/ai-jobs-data";
 
 export { categories, companies, jobs, locations };
@@ -10,7 +9,7 @@ const AI_JOBS_REFRESH_INTERVAL_MS = 2 * 60 * 60 * 1000;
 export interface AiJobsSnapshot {
   refreshedAt: number;
   categories: Category[];
-  locations: Location[];
+  locations: JobLocation[];
   companies: Company[];
   jobs: Job[];
 }

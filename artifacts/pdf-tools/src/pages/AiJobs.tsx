@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { useSEO } from "@/hooks/use-seo";
 import { categories, companies, getAiJobsSnapshot, getCompanyCards, jobs, locations, type AiJobsSnapshot } from "@/lib/ai-jobs";
+import type { Job } from "@/lib/ai-jobs-data";
 
 function formatDate(value: string) {
   const date = new Date(value);
@@ -62,21 +63,21 @@ export function AiJobs() {
         !normalizedQuery ||
         card.name.toLowerCase().includes(normalizedQuery) ||
         card.description.toLowerCase().includes(normalizedQuery) ||
-        card.jobs.some((job) => job.title.toLowerCase().includes(normalizedQuery));
+        card.jobs.some((job: Job) => job.title.toLowerCase().includes(normalizedQuery));
 
       const matchesCompany = company === "All Companies" || card.name === company;
       const matchesCategory =
         category === "All Categories" ||
-        card.jobs.some((job) => {
+        card.jobs.some((job: Job) => {
           const matchCategory = categories.find((entry) => entry.id === job.categoryId);
           return matchCategory?.name === category;
         });
-      const matchesMode = mode === "All Modes" || card.jobs.some((job) => job.remote === mode);
-      const matchesCountry = country === "All Countries" || card.jobs.some((job) => {
-        const location = ["Remote", "Hybrid", "Onsite"].includes(country) ? null : null;
-        return false;
+      const matchesMode = mode === "All Modes" || card.jobs.some((job: Job) => job.remote === mode);
+      const matchesCountry = country === "All Countries" || card.jobs.some((job: Job) => {
+        const location = snapshot.locations.find((entry) => entry.id === job.locationId);
+        return location?.country === country || location?.city === country || location?.region === country;
       });
-      const matchesType = jobType === "All Types" || card.jobs.some((job) => job.jobType === jobType);
+      const matchesType = jobType === "All Types" || card.jobs.some((job: Job) => job.jobType === jobType);
 
       return matchesQuery && matchesCompany && matchesCategory && matchesMode && matchesCountry && matchesType;
     });
@@ -240,7 +241,7 @@ export function AiJobs() {
               </div>
 
               <div className="mt-6 flex flex-wrap gap-2">
-                {card.jobs.slice(0, 3).map((job) => (
+                {card.jobs.slice(0, 3).map((job: Job) => (
                   <Badge key={job.id} variant="outline" className="rounded-full px-3 py-1 text-xs">
                     {job.title}
                   </Badge>
