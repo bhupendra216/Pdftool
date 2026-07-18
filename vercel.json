@@ -1,9 +1,9 @@
 {
   "version": 2,
   "routes": [
-    {
-      "src": "/(.*)",
-      "dest": "/artifacts/pdf-tools/dist/public/$1"
-    }
+    { "src": "^/assets/(.*)$", "dest": "/artifacts/pdf-tools/dist/public/assets/$1" },
+    { "src": "^/(favicon.svg|robots.txt|404.html)$", "dest": "/artifacts/pdf-tools/dist/public/$1" },
+    { "src": "^/api/(.*)$", "dest": "/api/[[...path]].js" },
+    { "src": "(.*)", "dest": "/artifacts/pdf-tools/dist/public/index.html" }
   ]
 }
