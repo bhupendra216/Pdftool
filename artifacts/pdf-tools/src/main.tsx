@@ -1,11 +1,9 @@
 import { createRoot } from "react-dom/client";
-import { setBaseUrl } from "@workspace/api-client-react";
-
 import App from "./App";
 import "./index.css";
 
-console.log("VITE_API_BASE_URL =", import.meta.env.VITE_API_BASE_URL);
+import { setBaseUrl } from "@workspace/api-client-react";
 
-setBaseUrl(import.meta.env.VITE_API_BASE_URL || null);
+setBaseUrl(import.meta.env.VITE_API_BASE_URL);
 
 createRoot(document.getElementById("root")!).render(<App />);
