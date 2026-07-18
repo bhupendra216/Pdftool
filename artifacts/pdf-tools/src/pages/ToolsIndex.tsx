@@ -19,16 +19,16 @@ export function ToolsIndex() {
   const [activeCategory, setActiveCategory] = useState<string>("All");
 
   const categories = useMemo(() => {
-    if (!tools) return ["All"];
-    const cats = new Set(tools.map(t => t.category));
+    if (!Array.isArray(tools)) return ["All"];
+    const cats = new Set(tools.map((t) => t.category));
     return ["All", ...Array.from(cats)].sort();
   }, [tools]);
 
   const filteredTools = useMemo(() => {
-    if (!tools) return [];
-    return tools.filter(tool => {
-      const matchesSearch = tool.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                           tool.shortDescription.toLowerCase().includes(searchQuery.toLowerCase());
+    if (!Array.isArray(tools)) return [];
+    return tools.filter((tool) => {
+      const matchesSearch = tool.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        tool.shortDescription.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesCategory = activeCategory === "All" || tool.category === activeCategory;
       return matchesSearch && matchesCategory;
     });
