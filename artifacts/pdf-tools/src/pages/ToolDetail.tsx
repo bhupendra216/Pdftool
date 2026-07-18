@@ -8,6 +8,7 @@ import { UploadArea } from "@/components/shared/UploadArea";
 import { FilePreviewList } from "@/components/shared/FilePreviewList";
 import { FaqSection } from "@/components/shared/FaqSection";
 import { Button } from "@/components/ui/button";
+import OrganizeGrid from "@/components/organize/OrganizeGrid";
 import { Icon } from "@/components/ui/icon";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -32,6 +33,7 @@ export function ToolDetail() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [pdfPages, setPdfPages] = useState<Array<{ id: string; pageNumber: number; rotation: number; selected: boolean }>>([]);
+  const [thumbnailZoom, setThumbnailZoom] = useState<number>(100);
   const [draggedPageIndex, setDraggedPageIndex] = useState<number | null>(null);
 
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
@@ -970,93 +972,29 @@ export function ToolDetail() {
 
                   {(tool.slug === "organize-pdf" || tool.slug === "delete-pages" || tool.slug === "extract-pages") && pdfPages.length > 0 && (
                     <div className="mt-6">
-                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
-                        <div>
-                          <h3 className="text-lg font-semibold">Page preview</h3>
-                          <p className="text-sm text-muted-foreground mt-1">
-                            {tool.slug === "organize-pdf"
-                              ? "Reorder and rotate pages before saving the organized file."
-                              : tool.slug === "delete-pages"
-                              ? "Select pages you want to remove from the PDF."
-                              : "Select pages you want to extract into a new PDF."}
-                          </p>
-                        </div>
-                        {(tool.slug === "delete-pages" || tool.slug === "extract-pages") && (
-                          <span className="text-sm text-muted-foreground">
-                            {selectedPageCount} selected of {pdfPages.length}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="grid gap-3">
-                        {pdfPages.map((page, index) => (
-                          <div
-                            key={page.id}
-                            className={`w-full rounded-3xl border px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${
-                              page.selected ? "border-primary bg-primary/5" : "border-border bg-background"
-                            }`}
-                          >
-                            <button
-                              type="button"
-                              onClick={() => (tool.slug === "delete-pages" || tool.slug === "extract-pages") ? togglePageSelection(index) : undefined}
-                              className="flex items-center gap-3 text-left"
-                            >
-                              {tool.slug !== "organize-pdf" ? (
-                                <span className={`inline-flex h-9 w-9 items-center justify-center rounded-xl border ${page.selected ? "border-primary bg-primary text-primary-foreground" : "border-border bg-muted text-muted-foreground"}`}>
-                                  {page.selected ? <Check className="w-4 h-4" /> : page.pageNumber}
-                                </span>
-                              ) : (
-                                <span className="inline-flex h-9 w-9 items-center justify-center rounded-xl border border-border bg-muted text-muted-foreground">
-                                  {page.pageNumber}
-                                </span>
-                              )}
-                              <div>
-                                <p className="font-medium">Page {page.pageNumber}</p>
-                                <p className="text-xs text-muted-foreground">Rotation: {page.rotation}°</p>
-                              </div>
-                            </button>
-
-                            {tool.slug === "organize-pdf" ? (
-                              <div className="flex flex-wrap items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => movePage(index, "up")}
-                                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border text-muted-foreground hover:border-primary hover:text-primary"
-                                  disabled={index === 0}
-                                >
-                                  <MoveUp className="w-4 h-4" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => movePage(index, "down")}
-                                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border text-muted-foreground hover:border-primary hover:text-primary"
-                                  disabled={index === pdfPages.length - 1}
-                                >
-                                  <MoveDown className="w-4 h-4" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => rotatePage(index, -90)}
-                                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border text-muted-foreground hover:border-primary hover:text-primary"
-                                >
-                                  <RotateCcw className="w-4 h-4" />
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => rotatePage(index, 90)}
-                                  className="inline-flex h-10 w-10 items-center justify-center rounded-xl border border-border text-muted-foreground hover:border-primary hover:text-primary"
-                                >
-                                  <RotateCw className="w-4 h-4" />
-                                </button>
-                              </div>
-                            ) : (
-                              <span className="text-sm font-medium text-muted-foreground">
-                                {page.selected ? "Selected" : "Tap to select"}
-                              </span>
-                            )}
-                          </div>
-                        ))}
-                      </div>
+                      <h3 className="text-lg font-semibold mb-3">Page preview</h3>
+                      <OrganizeGrid
+                        pages={pdfPages}
+                        onUpdate={(next) => setPdfPages(next)}
+                        onRotate={(indexes, delta) => {
+                          setPdfPages((pages) => {
+                            const next = pages.slice();
+                            indexes.forEach((i) => {
+                              next[i] = { ...next[i], rotation: ((next[i].rotation + delta) % 360 + 360) % 360 };
+                            });
+                            return next;
+                          });
+                        }}
+                        onDelete={(indexes) => {
+                          setPdfPages((pages) => pages.filter((_, i) => !indexes.includes(i)));
+                        }}
+                        onExtract={(indexes) => {
+                          // mark selected for extraction and delegate to existing extract flow
+                          setPdfPages((pages) => pages.map((p, i) => ({ ...p, selected: indexes.includes(i) || p.selected })));
+                        }}
+                        zoom={thumbnailZoom}
+                        setZoom={setThumbnailZoom}
+                      />
                     </div>
                   )}
 
