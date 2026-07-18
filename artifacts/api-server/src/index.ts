@@ -19,7 +19,7 @@ if (rawPort && (Number.isNaN(port) || port <= 0)) {
 export default app;
 
 export function startServer() {
-  return app.listen(port, (err) => {
+  return app.listen(port, "0.0.0.0", (err) => {
     if (err) {
       logger.error({ err }, "Error listening on port");
       process.exit(1);
