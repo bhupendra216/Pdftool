@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { categories, companies, jobs, locations } from "../../../pdf-tools/src/lib/ai-jobs";
+import { categories, companies, jobs, locations } from "../lib/ai-jobs-seed";
 
 const router: IRouter = Router();
 
