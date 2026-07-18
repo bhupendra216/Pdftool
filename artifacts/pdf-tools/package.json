@@ -5,8 +5,8 @@
   "type": "module",
   "scripts": {
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
-    "build": "[ -d dist/public ] || vite build --config vite.config.ts",
-    "vercel-build": "[ -d dist/public ] || vite build --config vite.config.ts",
+    "build": "echo \"skip build (static output committed)\"",
+    "vercel-build": "echo \"skip build (static output committed)\"",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
