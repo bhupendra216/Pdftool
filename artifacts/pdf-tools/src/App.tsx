@@ -15,6 +15,7 @@ import { About } from '@/pages/About';
 import { Privacy } from '@/pages/Privacy';
 import { Terms } from '@/pages/Terms';
 import { Contact } from '@/pages/Contact';
+import { AiJobs } from '@/pages/AiJobs';
 import { AdminLogin } from '@/pages/admin/AdminLogin';
 import { AdminDashboard } from '@/pages/admin/AdminDashboard';
 import NotFound from '@/pages/not-found';
@@ -41,6 +42,7 @@ function Router() {
         <Route path="/privacy" component={Privacy} />
         <Route path="/terms" component={Terms} />
         <Route path="/contact" component={Contact} />
+        <Route path="/ai-jobs" component={AiJobs} />
         <Route path="/admin/login" component={AdminLogin} />
         <Route path="/admin/dashboard" component={AdminDashboard} />
         <Route component={NotFound} />

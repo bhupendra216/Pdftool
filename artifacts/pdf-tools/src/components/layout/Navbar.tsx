@@ -1,8 +1,9 @@
 import { Link, useLocation } from "wouter";
-import { Menu, X, FileText } from "lucide-react";
+import { Menu, FileText } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import { ThemeToggle } from "./ThemeToggle";
 
 export function Navbar() {
   const [location] = useLocation();
@@ -11,8 +12,7 @@ export function Navbar() {
   const links = [
     { href: "/tools", label: "All Tools" },
     { href: "/blog", label: "Blog" },
-    { href: "/about", label: "About" },
-    { href: "/contact", label: "Contact" },
+    { href: "/ai-jobs", label: "AI Jobs" },
   ];
 
   return (
@@ -26,7 +26,7 @@ export function Navbar() {
         </Link>
 
         {/* Desktop Nav */}
-        <nav className="hidden md:flex items-center gap-8">
+        <nav className="hidden md:flex items-center gap-6">
           {links.map((link) => (
             <Link
               key={link.href}
@@ -38,6 +38,7 @@ export function Navbar() {
               {link.label}
             </Link>
           ))}
+          <ThemeToggle />
         </nav>
 
         {/* Mobile Nav */}
@@ -67,6 +68,10 @@ export function Navbar() {
                   {link.label}
                 </Link>
               ))}
+              <div className="mt-2 flex items-center justify-between rounded-2xl border border-border/70 bg-background/70 px-3 py-2">
+                <span className="text-sm font-medium text-muted-foreground">Theme</span>
+                <ThemeToggle />
+              </div>
             </div>
           </SheetContent>
         </Sheet>

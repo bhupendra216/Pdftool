@@ -14,6 +14,7 @@ import deletePagesRouter from "./delete-pages";
 import extractPagesRouter from "./extract-pages";
 import pdfAnnotationsRouter from "./pdf-annotations-route";
 import adminRouter from "./admin";
+import aiJobsRouter from "./ai-jobs";
 
 const router: IRouter = Router();
 
@@ -32,5 +33,6 @@ router.use(deletePagesRouter);
 router.use(extractPagesRouter);
 router.use(pdfAnnotationsRouter);
 router.use(adminRouter);
+router.use(aiJobsRouter);
 
 export default router;

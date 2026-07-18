@@ -71,6 +71,14 @@ const latestPosts = Array.isArray(posts)
               <Link href="/tools/merge-pdf">Merge PDF Now</Link>
             </Button>
           </div>
+          <div className="mt-8 rounded-[28px] border border-border/70 bg-card/80 p-6 shadow-sm backdrop-blur">
+            <p className="text-sm font-medium uppercase tracking-[0.2em] text-primary">New</p>
+            <h2 className="mt-2 text-2xl font-semibold text-foreground">Find the Best Remote AI Jobs</h2>
+            <p className="mt-3 text-muted-foreground">Discover curated opportunities from leading AI companies hiring worldwide.</p>
+            <Button variant="secondary" asChild className="mt-4 rounded-full">
+              <Link href="/ai-jobs">Browse AI Jobs</Link>
+            </Button>
+          </div>
         </div>
       </section>
 
