@@ -6,6 +6,16 @@ import os from "node:os";
 import path from "node:path";
 import { PDFDocument } from "pdf-lib";
 
+function formatContentDisposition(filename: string) {
+  const safe = filename.replace(/"/g, "");
+  try {
+    const encoded = encodeURIComponent(safe);
+    return `attachment; filename="${safe}"; filename*=UTF-8''${encoded}`;
+  } catch {
+    return `attachment; filename="${safe}"`;
+  }
+}
+
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
 const router = Router();
 
@@ -265,7 +275,7 @@ router.post("/convert-pdf-to-word", upload.single("files"), async (req, res) => 
   try {
     const { buffer, filename } = await convertFileWithLibreOffice(file, PDF_INPUT_EXTS, "docx");
     res.setHeader("content-type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-    res.setHeader("content-disposition", `attachment; filename=${filename}`);
+    res.setHeader("content-disposition", formatContentDisposition(filename));
     res.send(buffer);
   } catch (error: any) {
     console.error("PDF to Word conversion failed", error);
@@ -301,7 +311,7 @@ router.post("/convert-word-to-pdf", upload.single("files"), async (req, res) => 
   try {
     const { buffer, filename } = await convertFileWithLibreOffice(file, WORD_INPUT_EXTS, "pdf");
     res.setHeader("content-type", "application/pdf");
-    res.setHeader("content-disposition", `attachment; filename=${filename}`);
+    res.setHeader("content-disposition", formatContentDisposition(filename));
     res.send(buffer);
   } catch (error: any) {
     console.error("Word to PDF conversion failed", error);
