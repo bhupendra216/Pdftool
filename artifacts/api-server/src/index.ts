@@ -19,13 +19,30 @@ if (rawPort && (Number.isNaN(port) || port <= 0)) {
 export default app;
 
 export function startServer() {
+  logger.info(
+    {
+      NODE_ENV: process.env.NODE_ENV,
+      PORT_ENV: process.env.PORT,
+      RAILWAY_PUBLIC_DOMAIN: process.env.RAILWAY_PUBLIC_DOMAIN,
+      cwd: process.cwd(),
+    },
+    "Startup information"
+  );
+
   return app.listen(port, "0.0.0.0", (err) => {
     if (err) {
       logger.error({ err }, "Error listening on port");
       process.exit(1);
     }
 
-    logger.info({ port }, "Server listening");
+    logger.info(
+      {
+        host: "0.0.0.0",
+        port,
+        envPort: process.env.PORT,
+      },
+      "Server listening"
+    );
   });
 }
 
