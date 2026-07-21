@@ -38,6 +38,7 @@ export function About() {
           We believe basic document tasks should be accessible to everyone. Our core tools will remain free to use without requiring an account.
         </p>
 
+
         <div className="mt-12 not-prose text-center">
           <Button size="lg" asChild className="rounded-full px-8">
             <Link href="/tools">Explore Our Tools</Link>
