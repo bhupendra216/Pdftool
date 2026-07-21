@@ -173,7 +173,9 @@ export function ToolDetail() {
     const formData = new FormData();
     filesToMerge.forEach((file) => formData.append("files", file));
 
-    const response = await fetch("/api/merge-pdf", {
+    const response = await fetch(
+  `${import.meta.env.VITE_API_BASE_URL}/api/merge-pdf`,
+  {
       method: "POST",
       body: formData,
     });
@@ -258,7 +260,9 @@ export function ToolDetail() {
     formData.append("files", fileToSplit);
     formData.append("pageRange", range);
 
-    const response = await fetch("/api/split-pdf", {
+    const response = await fetch(
+  `${import.meta.env.VITE_API_BASE_URL}/api/split-pdf`,
+  {
       method: "POST",
       body: formData,
     });
@@ -275,7 +279,9 @@ export function ToolDetail() {
     const formData = new FormData();
     formData.append("files", fileToConvert);
 
-    const response = await fetch("/api/convert-pdf-to-word", {
+    const response = await fetch(
+  `${import.meta.env.VITE_API_BASE_URL}/api/convert-pdf-to-word`,
+  {
       method: "POST",
       body: formData,
     });
@@ -292,7 +298,8 @@ export function ToolDetail() {
     const formData = new FormData();
     formData.append("files", fileToConvert);
 
-    const response = await fetch("/api/convert-word-to-pdf", {
+  
+    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/convert-word-to-pdf`, {
       method: "POST",
       body: formData,
     });
@@ -309,7 +316,9 @@ export function ToolDetail() {
     const formData = new FormData();
     filesToConvert.forEach((file) => formData.append("files", file));
 
-    const response = await fetch("/api/convert-jpg-to-pdf", {
+    const response = await fetch(
+  `${import.meta.env.VITE_API_BASE_URL}/api/convert-jpg-to-pdf`,
+  {
       method: "POST",
       body: formData,
     });
@@ -326,7 +335,7 @@ export function ToolDetail() {
     const formData = new FormData();
     formData.append("files", fileToConvert);
 
-    const response = await fetch("/api/convert-pdf-to-jpg", {
+    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/convert-pdf-to-jpg`, {
       method: "POST",
       body: formData,
     });
@@ -348,7 +357,7 @@ export function ToolDetail() {
     formData.append("files", fileToConvert);
     formData.append("password", password);
 
-    const response = await fetch("/api/protect-pdf", {
+    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/protect-pdf`, {
       method: "POST",
       body: formData,
     });
@@ -366,7 +375,7 @@ export function ToolDetail() {
     formData.append("files", fileToConvert);
     formData.append("password", password);
 
-    const response = await fetch("/api/unlock-pdf", {
+    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/unlock-pdf`, {
       method: "POST",
       body: formData,
     });
@@ -388,7 +397,7 @@ export function ToolDetail() {
       formData.append("logo", logoFile);
     }
 
-    const response = await fetch("/api/watermark-pdf", {
+    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/watermark-pdf`, {
       method: "POST",
       body: formData,
     });
@@ -407,7 +416,7 @@ export function ToolDetail() {
     formData.append("startNumber", String(startNumber));
     formData.append("position", position);
 
-    const response = await fetch("/api/add-page-numbers", {
+    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/add-page-numbers`, {
       method: "POST",
       body: formData,
     });
@@ -425,7 +434,7 @@ export function ToolDetail() {
     formData.append("files", fileToConvert);
     formData.append("outputFormat", outFormat);
 
-    const response = await fetch("/api/convert-image", {
+    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/convert-image`, {
       method: "POST",
       body: formData,
     });
@@ -444,7 +453,7 @@ export function ToolDetail() {
     if (width != null) formData.append("width", String(width));
     if (height != null) formData.append("height", String(height));
 
-    const response = await fetch("/api/image-resize", {
+    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/image-resize`, {
       method: "POST",
       body: formData,
     });
@@ -462,7 +471,7 @@ export function ToolDetail() {
     formData.append("files", fileToCompress);
     formData.append("quality", String(quality));
 
-    const response = await fetch("/api/image-compress", {
+    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/image-compress`, {
       method: "POST",
       body: formData,
     });
@@ -482,7 +491,7 @@ export function ToolDetail() {
     if (width != null) formData.append("width", String(width));
     if (height != null) formData.append("height", String(height));
 
-    const response = await fetch("/api/image-upscale", {
+    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/image-upscale`, {
       method: "POST",
       body: formData,
     });
@@ -501,7 +510,7 @@ export function ToolDetail() {
     formData.append("pageOrder", JSON.stringify(pageOrder));
     formData.append("rotations", JSON.stringify(rotations));
 
-    const response = await fetch("/api/organize-pdf", {
+    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/organize-pdf`, {
       method: "POST",
       body: formData,
     });
@@ -537,7 +546,7 @@ export function ToolDetail() {
     formData.append("files", fileToExtractFrom);
     formData.append("pages", pages.join(","));
 
-    const response = await fetch("/api/extract-pages", {
+    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/extract-pages`, {
       method: "POST",
       body: formData,
     });

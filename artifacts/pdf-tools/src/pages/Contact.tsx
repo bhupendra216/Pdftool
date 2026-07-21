@@ -28,7 +28,7 @@ export function Contact() {
               </div>
               <div>
                 <p className="text-sm font-medium uppercase tracking-[0.18em] text-muted-foreground">Email</p>
-                <p className="mt-1 text-lg font-semibold text-foreground">contact@pdftools.com</p>
+                <p className="mt-1 text-lg font-semibold text-foreground">pdfkiraa@gmail.com</p>
               </div>
             </div>
 
@@ -38,7 +38,7 @@ export function Contact() {
               </div>
               <div>
                 <p className="text-sm font-medium uppercase tracking-[0.18em] text-muted-foreground">Support</p>
-                <p className="mt-1 text-lg font-semibold text-foreground">support@pdftools.com</p>
+                <p className="mt-1 text-lg font-semibold text-foreground">pdfkiraa@gmail.com</p>
               </div>
             </div>
 
@@ -63,10 +63,10 @@ export function Contact() {
             <div className="mt-8 rounded-2xl bg-secondary/40 p-5">
               <p className="text-sm font-medium text-foreground">Quick contact</p>
               <p className="mt-2 text-sm text-muted-foreground">
-                Email: <a className="text-primary hover:underline" href="mailto:contact@pdftools.com">contact@pdftools.com</a>
+                Email: <a className="text-primary hover:underline" href="mailto:pdfkiraa@gmail.com">pdfkiraa@gmail.com</a>
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Support: <a className="text-primary hover:underline" href="mailto:support@pdftools.com">support@pdftools.com</a>
+                Support: <a className="text-primary hover:underline" href="mailto:pdfkiraa@gmail.com">pdfkiraa@gmail.com</a>
               </p>
             </div>
           </div>
