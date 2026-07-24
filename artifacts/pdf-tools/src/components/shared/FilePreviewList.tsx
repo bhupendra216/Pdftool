@@ -5,7 +5,7 @@ import { formatBytes } from "@/lib/utils";
 interface FileListProps {
   files: File[];
   onRemove: (index: number) => void;
-  status: "idle" | "processing" | "success";
+  status: "idle" | "options" | "processing" | "success";
 }
 
 export function FilePreviewList({ files, onRemove, status }: FileListProps) {
@@ -20,35 +20,35 @@ export function FilePreviewList({ files, onRemove, status }: FileListProps) {
         {files.map((file, index) => (
           <div 
             key={`${file.name}-${index}`} 
-            className="flex items-center gap-4 bg-background border border-border p-4 rounded-2xl shadow-sm relative group"
+            className="group relative flex items-center gap-4 rounded-2xl border border-border/70 bg-card/90 p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
           >
-            <div className="p-3 bg-secondary text-primary rounded-xl shrink-0">
+            <div className="shrink-0 rounded-xl bg-primary/10 p-3 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
               <FileText className="w-6 h-6" />
             </div>
             
             <div className="flex-1 min-w-0">
-              <p className="font-medium text-sm truncate" title={file.name}>
+              <p className="truncate text-sm font-medium text-foreground" title={file.name}>
                 {file.name}
               </p>
-              <p className="text-xs text-muted-foreground mt-0.5">
+              <p className="mt-0.5 text-xs text-muted-foreground">
                 {formatBytes(file.size)}
               </p>
             </div>
             
-            {status === "idle" && (
+            {status === "idle" || status === "options" ? (
               <Button
                 variant="ghost"
                 size="icon"
-                className="absolute -top-2 -right-2 w-7 h-7 bg-background border border-border shadow-sm rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-destructive hover:text-destructive-foreground hover:border-destructive"
+                className="absolute -right-2 -top-2 h-7 w-7 rounded-full border border-border/70 bg-background/95 opacity-0 shadow-sm transition-all hover:bg-destructive hover:text-destructive-foreground hover:border-destructive group-hover:opacity-100"
                 onClick={() => onRemove(index)}
                 aria-label={`Remove ${file.name}`}
               >
                 <X className="w-4 h-4" />
               </Button>
-            )}
+            ) : null}
             
             {status === "success" && (
-              <div className="text-green-500 mr-2 shrink-0">
+              <div className="mr-2 shrink-0 text-emerald-500 dark:text-emerald-400">
                 <CheckCircle2 className="w-5 h-5" />
               </div>
             )}

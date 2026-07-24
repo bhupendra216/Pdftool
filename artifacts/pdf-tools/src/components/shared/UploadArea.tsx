@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 
 interface UploadAreaProps {
   onFilesSelected: (files: File[]) => void;
+  onError?: (message: string) => void;
   multiple?: boolean;
   accept?: string;
   maxSizeMB?: number;
@@ -13,6 +14,7 @@ interface UploadAreaProps {
 
 export function UploadArea({
   onFilesSelected,
+  onError,
   multiple = true,
   accept = "application/pdf",
   maxSizeMB = 50,
@@ -65,12 +67,12 @@ export function UploadArea({
     const validFiles: File[] = [];
     Array.from(files).forEach(file => {
       if (!isAcceptableFile(file)) {
-        alert(`File ${file.name} is not a supported file type.`);
+        onError?.(`File ${file.name} is not a supported file type.`);
         return;
       }
 
       if (file.size > maxSizeMB * 1024 * 1024) {
-        alert(`File ${file.name} exceeds the maximum size of ${maxSizeMB}MB.`);
+        onError?.(`File ${file.name} exceeds the maximum size of ${maxSizeMB}MB.`);
         return;
       }
 
@@ -103,8 +105,8 @@ export function UploadArea({
 
   return (
     <div
-      className={`relative rounded-3xl border-2 border-dashed transition-all duration-200 ease-in-out p-10 md:p-16 flex flex-col items-center justify-center text-center bg-card
-        ${isDragging ? 'border-primary bg-primary/5 scale-[1.02]' : 'border-border hover:border-primary/50 hover:bg-secondary/20'}`}
+      className={`relative rounded-[28px] border-2 border-dashed transition-all duration-300 ease-out p-8 md:p-14 flex flex-col items-center justify-center text-center bg-card/90 shadow-sm backdrop-blur-sm
+        ${isDragging ? 'border-primary bg-primary/5 shadow-[0_24px_80px_-40px_rgba(59,130,246,0.45)] scale-[1.01]' : 'border-border/80 hover:border-primary/50 hover:bg-secondary/20'}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
@@ -118,20 +120,20 @@ export function UploadArea({
         accept={accept}
       />
       
-      <div className={`p-5 rounded-full mb-6 transition-colors duration-300 ${isDragging ? 'bg-primary text-primary-foreground scale-110' : 'bg-secondary text-primary'}`}>
+      <div className={`p-5 rounded-full mb-6 transition-all duration-300 ${isDragging ? 'bg-primary text-primary-foreground scale-110' : 'bg-primary/10 text-primary'}`}>
         <UploadCloud className="w-10 h-10" />
       </div>
       
-      <h3 className="text-2xl font-bold mb-3">
+      <h3 className="text-2xl md:text-3xl font-semibold tracking-tight mb-3 text-foreground">
         Select {label}{multiple ? 's' : ''}
       </h3>
-      <p className="text-muted-foreground mb-8 max-w-sm">
+      <p className="text-sm md:text-base text-muted-foreground mb-8 max-w-md leading-relaxed">
         {description} Maximum file size is {maxSizeMB}MB.
       </p>
       
       <Button 
         size="lg" 
-        className="rounded-full px-8 text-lg h-14 shadow-lg hover:shadow-xl transition-all"
+        className="rounded-full px-8 text-base md:text-lg h-12 md:h-14 shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/25 transition-all"
         onClick={() => fileInputRef.current?.click()}
       >
         Select Files

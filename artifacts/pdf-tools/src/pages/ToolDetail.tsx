@@ -1,23 +1,186 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useParams, Link } from "wouter";
 import { PDFDocument } from "pdf-lib";
-import { useGetTool, useGetBlogPost, useOcrImageToText } from "@workspace/api-client-react";
+import { useGetTool, useGetBlogPost, useListTools, useListFaqs, useOcrImageToText } from "@workspace/api-client-react";
 import { useSEO } from "@/hooks/use-seo";
 import { formatBytes } from "@/lib/utils";
 import { UploadArea } from "@/components/shared/UploadArea";
 import { FilePreviewList } from "@/components/shared/FilePreviewList";
 import { FaqSection } from "@/components/shared/FaqSection";
+import { ToolCard } from "@/components/shared/ToolCard";
 import { Button } from "@/components/ui/button";
 import OrganizeGrid from "@/components/organize/OrganizeGrid";
 import { Icon } from "@/components/ui/icon";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
-import { ArrowLeft, ChevronRight, Settings2, Download, AlertCircle, Badge, MoveUp, MoveDown, RotateCcw, RotateCw, Trash2, GripVertical, Check, FileMinus, FilePlus } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { ArrowLeft, ChevronRight, Settings2, Download, AlertCircle, MoveUp, MoveDown, RotateCcw, RotateCw, Trash2, GripVertical, Check, FileMinus, FilePlus, ShieldCheck, Zap, Sparkles, FileText, Layers3 } from "lucide-react";
+
+const TRUST_POINTS = [
+  "Secure processing",
+  "Fast",
+  "Free",
+  "No registration",
+];
+
+type UploadConfig = {
+  accept: string;
+  maxSizeMB: number;
+  label: string;
+  description: string;
+  supportedFormats: string[];
+  highlights: string[];
+};
+
+const getUploadConfig = (slug?: string): UploadConfig => {
+  switch (slug) {
+    case "image-converter":
+    case "image-resize":
+    case "image-compress":
+    case "image-upscale":
+      return {
+        accept: "image/png,image/jpeg,image/webp,image/bmp,image/tiff,image/gif,.png,.jpg,.jpeg,.webp,.bmp,.tiff,.tif,.gif",
+        maxSizeMB: 20,
+        label: "image file",
+        description: "or drop an image here.",
+        supportedFormats: ["PNG", "JPG", "JPEG", "WebP", "BMP", "TIFF", "GIF"],
+        highlights: ["Preserve quality", "Batch-friendly workflow", "Preview before download"],
+      };
+    case "word-to-pdf":
+      return {
+        accept: "application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.doc,.docx",
+        maxSizeMB: 50,
+        label: "Word file",
+        description: "or drop a Word document here.",
+        supportedFormats: ["DOC", "DOCX"],
+        highlights: ["Convert documents to PDF", "Keep layout consistent", "Fast upload and download"],
+      };
+    case "pdf-to-word":
+      return {
+        accept: "application/pdf,.pdf",
+        maxSizeMB: 50,
+        label: "PDF file",
+        description: "or drop a PDF here.",
+        supportedFormats: ["PDF"],
+        highlights: ["Extract editable content", "Retain readable structure", "Simple one-file workflow"],
+      };
+    case "ocr-image-to-text":
+      return {
+        accept: "image/png,image/jpeg,application/pdf,.png,.jpg,.jpeg,.pdf",
+        maxSizeMB: 50,
+        label: "image or PDF",
+        description: "or drop an image or scanned PDF here.",
+        supportedFormats: ["PNG", "JPG", "PDF"],
+        highlights: ["Extract text from scans", "Copy or download OCR output", "Works on mobile and desktop"],
+      };
+    case "jpg-to-pdf":
+      return {
+        accept: "image/png,image/jpeg,image/jpg,.png,.jpg,.jpeg",
+        maxSizeMB: 50,
+        label: "image file",
+        description: "or drop one or more images here.",
+        supportedFormats: ["JPG", "JPEG", "PNG"],
+        highlights: ["Combine photos into one PDF", "Drag to reorder pages", "Ideal for scans and receipts"],
+      };
+    case "merge-pdf":
+      return {
+        accept: "application/pdf,.pdf",
+        maxSizeMB: 50,
+        label: "PDF file",
+        description: "or drop multiple PDFs here.",
+        supportedFormats: ["PDF"],
+        highlights: ["Merge files in order", "Rearrange before download", "Supports multiple uploads"],
+      };
+    case "split-pdf":
+      return {
+        accept: "application/pdf,.pdf",
+        maxSizeMB: 50,
+        label: "PDF file",
+        description: "or drop a PDF here.",
+        supportedFormats: ["PDF"],
+        highlights: ["Split by page range", "Preview before export", "Create focused PDFs quickly"],
+      };
+    case "organize-pdf":
+      return {
+        accept: "application/pdf,.pdf",
+        maxSizeMB: 50,
+        label: "PDF file",
+        description: "or drop a PDF here.",
+        supportedFormats: ["PDF"],
+        highlights: ["Drag to reorder pages", "Rotate or delete pages", "Preview every page before saving"],
+      };
+    case "delete-pages":
+      return {
+        accept: "application/pdf,.pdf",
+        maxSizeMB: 50,
+        label: "PDF file",
+        description: "or drop a PDF here.",
+        supportedFormats: ["PDF"],
+        highlights: ["Mark pages for removal", "Review thumbnails first", "Download a trimmed PDF"],
+      };
+    case "extract-pages":
+      return {
+        accept: "application/pdf,.pdf",
+        maxSizeMB: 50,
+        label: "PDF file",
+        description: "or drop a PDF here.",
+        supportedFormats: ["PDF"],
+        highlights: ["Select pages to keep", "Build a new document fast", "Reorder before export"],
+      };
+    case "protect-pdf":
+      return {
+        accept: "application/pdf,.pdf",
+        maxSizeMB: 50,
+        label: "PDF file",
+        description: "or drop a PDF here.",
+        supportedFormats: ["PDF"],
+        highlights: ["Add password protection", "Keep confidential files secure", "Simple one-step flow"],
+      };
+    case "unlock-pdf":
+      return {
+        accept: "application/pdf,.pdf",
+        maxSizeMB: 50,
+        label: "PDF file",
+        description: "or drop a locked PDF here.",
+        supportedFormats: ["PDF"],
+        highlights: ["Remove password protection", "Recover access quickly", "Keep your workflow moving"],
+      };
+    case "watermark-pdf":
+      return {
+        accept: "application/pdf,.pdf",
+        maxSizeMB: 50,
+        label: "PDF file",
+        description: "or drop a PDF here.",
+        supportedFormats: ["PDF"],
+        highlights: ["Add text or logo watermarks", "Choose placement and opacity", "Professional branding for documents"],
+      };
+    case "add-page-numbers":
+      return {
+        accept: "application/pdf,.pdf",
+        maxSizeMB: 50,
+        label: "PDF file",
+        description: "or drop a PDF here.",
+        supportedFormats: ["PDF"],
+        highlights: ["Add sequential page numbers", "Choose placement", "Keep documents organized"],
+      };
+    default:
+      return {
+        accept: "application/pdf,.pdf",
+        maxSizeMB: 50,
+        label: "PDF file",
+        description: "or drop PDF here.",
+        supportedFormats: ["PDF"],
+        highlights: ["Secure processing", "Fast results", "Designed for easy review"],
+      };
+  }
+};
 
 export function ToolDetail() {
   const { slug } = useParams<{ slug: string }>();
   const { data: tool, isLoading, isError } = useGetTool(slug);
+  const { data: catalogTools } = useListTools();
+  const { data: siteFaqs } = useListFaqs();
   const { data: blogPost } = useGetBlogPost(tool?.blogSlug || "", {
     query: { enabled: !!tool?.blogSlug, queryKey: ["getBlogPost", tool?.blogSlug] } as any,
   });
@@ -54,7 +217,22 @@ export function ToolDetail() {
   const [watermarkLogo, setWatermarkLogo] = useState<File | null>(null);
   const [pageNumberStart, setPageNumberStart] = useState<string>("1");
   const [pageNumberPosition, setPageNumberPosition] = useState<string>("bottom-right");
-  const SUPPORTED_INPUT = ["png", "jpg", "jpeg", "webp", "bmp", "tiff", "gif"];
+  const uploadConfig = useMemo(() => getUploadConfig(tool?.slug), [tool?.slug]);
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, "") ?? "";
+  const apiUrl = (path: string) => `${apiBaseUrl}${path}`;
+  const relatedTools = useMemo(() => {
+    if (!Array.isArray(catalogTools) || !tool) return [];
+
+    return catalogTools
+      .filter((candidate) => candidate.slug !== tool.slug && candidate.status === "available" && candidate.category === tool.category)
+      .slice(0, 4);
+  }, [catalogTools, tool]);
+  const landingSteps = tool?.steps?.length ? tool.steps.slice(0, 3) : ["Upload your file", "Adjust the options", "Download the result"];
+  const fallbackFaqs = Array.isArray(siteFaqs) ? siteFaqs.slice(0, 5) : [];
+  const faqsToShow = tool?.faqs && tool.faqs.length > 0 ? tool.faqs : fallbackFaqs;
+  const supportedFormats = uploadConfig.supportedFormats;
+  const highlights = uploadConfig.highlights;
+  const trustedPoints = TRUST_POINTS;
   const SUPPORTED_OUTPUT = ["png", "jpg", "jpeg", "webp", "bmp"];
 
   const estimateCompressedSize = (size: number, quality: number) => {
@@ -173,9 +351,7 @@ export function ToolDetail() {
     const formData = new FormData();
     filesToMerge.forEach((file) => formData.append("files", file));
 
-    const response = await fetch(
-  `${import.meta.env.VITE_API_BASE_URL}/api/merge-pdf`,
-  {
+    const response = await fetch(apiUrl("/api/merge-pdf"), {
       method: "POST",
       body: formData,
     });
@@ -260,9 +436,7 @@ export function ToolDetail() {
     formData.append("files", fileToSplit);
     formData.append("pageRange", range);
 
-    const response = await fetch(
-  `${import.meta.env.VITE_API_BASE_URL}/api/split-pdf`,
-  {
+    const response = await fetch(apiUrl("/api/split-pdf"), {
       method: "POST",
       body: formData,
     });
@@ -279,9 +453,7 @@ export function ToolDetail() {
     const formData = new FormData();
     formData.append("files", fileToConvert);
 
-    const response = await fetch(
-  `${import.meta.env.VITE_API_BASE_URL}/api/convert-pdf-to-word`,
-  {
+    const response = await fetch(apiUrl("/api/convert-pdf-to-word"), {
       method: "POST",
       body: formData,
     });
@@ -299,7 +471,7 @@ export function ToolDetail() {
     formData.append("files", fileToConvert);
 
   
-    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/convert-word-to-pdf`, {
+    const response = await fetch(apiUrl("/api/convert-word-to-pdf"), {
       method: "POST",
       body: formData,
     });
@@ -316,9 +488,7 @@ export function ToolDetail() {
     const formData = new FormData();
     filesToConvert.forEach((file) => formData.append("files", file));
 
-    const response = await fetch(
-  `${import.meta.env.VITE_API_BASE_URL}/api/convert-jpg-to-pdf`,
-  {
+    const response = await fetch(apiUrl("/api/convert-jpg-to-pdf"), {
       method: "POST",
       body: formData,
     });
@@ -335,7 +505,7 @@ export function ToolDetail() {
     const formData = new FormData();
     formData.append("files", fileToConvert);
 
-    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/convert-pdf-to-jpg`, {
+    const response = await fetch(apiUrl("/api/convert-pdf-to-jpg"), {
       method: "POST",
       body: formData,
     });
@@ -357,7 +527,7 @@ export function ToolDetail() {
     formData.append("files", fileToConvert);
     formData.append("password", password);
 
-    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/protect-pdf`, {
+    const response = await fetch(apiUrl("/api/protect-pdf"), {
       method: "POST",
       body: formData,
     });
@@ -375,7 +545,7 @@ export function ToolDetail() {
     formData.append("files", fileToConvert);
     formData.append("password", password);
 
-    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/unlock-pdf`, {
+    const response = await fetch(apiUrl("/api/unlock-pdf"), {
       method: "POST",
       body: formData,
     });
@@ -397,7 +567,7 @@ export function ToolDetail() {
       formData.append("logo", logoFile);
     }
 
-    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/watermark-pdf`, {
+    const response = await fetch(apiUrl("/api/watermark-pdf"), {
       method: "POST",
       body: formData,
     });
@@ -416,7 +586,7 @@ export function ToolDetail() {
     formData.append("startNumber", String(startNumber));
     formData.append("position", position);
 
-    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/add-page-numbers`, {
+    const response = await fetch(apiUrl("/api/add-page-numbers"), {
       method: "POST",
       body: formData,
     });
@@ -434,7 +604,7 @@ export function ToolDetail() {
     formData.append("files", fileToConvert);
     formData.append("outputFormat", outFormat);
 
-    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/convert-image`, {
+    const response = await fetch(apiUrl("/api/convert-image"), {
       method: "POST",
       body: formData,
     });
@@ -453,7 +623,7 @@ export function ToolDetail() {
     if (width != null) formData.append("width", String(width));
     if (height != null) formData.append("height", String(height));
 
-    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/image-resize`, {
+    const response = await fetch(apiUrl("/api/image-resize"), {
       method: "POST",
       body: formData,
     });
@@ -471,7 +641,7 @@ export function ToolDetail() {
     formData.append("files", fileToCompress);
     formData.append("quality", String(quality));
 
-    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/image-compress`, {
+    const response = await fetch(apiUrl("/api/image-compress"), {
       method: "POST",
       body: formData,
     });
@@ -491,7 +661,7 @@ export function ToolDetail() {
     if (width != null) formData.append("width", String(width));
     if (height != null) formData.append("height", String(height));
 
-    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/image-upscale`, {
+    const response = await fetch(apiUrl("/api/image-upscale"), {
       method: "POST",
       body: formData,
     });
@@ -510,7 +680,7 @@ export function ToolDetail() {
     formData.append("pageOrder", JSON.stringify(pageOrder));
     formData.append("rotations", JSON.stringify(rotations));
 
-    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/organize-pdf`, {
+    const response = await fetch(apiUrl("/api/organize-pdf"), {
       method: "POST",
       body: formData,
     });
@@ -528,7 +698,7 @@ export function ToolDetail() {
     formData.append("files", fileToDeleteFrom);
     formData.append("pages", pagesToDelete.join(","));
 
-    const response = await fetch("/api/delete-pages", {
+    const response = await fetch(apiUrl("/api/delete-pages"), {
       method: "POST",
       body: formData,
     });
@@ -546,7 +716,7 @@ export function ToolDetail() {
     formData.append("files", fileToExtractFrom);
     formData.append("pages", pages.join(","));
 
-    const response = await fetch(`${import.meta.env.VITE_API_BASE_URL}/api/extract-pages`, {
+    const response = await fetch(apiUrl("/api/extract-pages"), {
       method: "POST",
       body: formData,
     });
@@ -886,70 +1056,120 @@ export function ToolDetail() {
               This feature is currently in development and will be available soon. Check back later!
             </p>
           </div>
+        ) : status === "idle" ? (
+          <div className="relative overflow-hidden rounded-3xl border border-border/70 bg-card/90 p-6 md:p-10 shadow-sm">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,theme(colors.primary/12),transparent_32%),radial-gradient(circle_at_bottom_left,theme(colors.accent/10),transparent_28%)] opacity-80" />
+            <div className="relative grid gap-8 lg:grid-cols-[minmax(0,1.25fr)_360px] lg:items-start">
+              <div className="space-y-8">
+                <Badge variant="secondary" className="rounded-full border border-border/60 bg-background/80 px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  Secure processing · Fast · Free · No registration
+                </Badge>
+
+                <div className="flex items-start gap-4">
+                  <div className="rounded-3xl bg-primary p-4 text-primary-foreground shadow-lg shadow-primary/20">
+                    <Icon name={tool.icon} className="h-8 w-8" />
+                  </div>
+                  <div className="space-y-4">
+                    <h2 className="text-4xl font-bold tracking-tight text-foreground md:text-5xl">
+                      {tool.name}
+                    </h2>
+                    <p className="max-w-2xl text-lg leading-relaxed text-muted-foreground md:text-xl">
+                      {tool.shortDescription}
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap gap-2">
+                  {trustedPoints.map((point) => (
+                    <Badge key={point} variant="outline" className="rounded-full border-border/70 bg-background/80 px-3 py-1.5 text-xs font-medium text-foreground">
+                      {point}
+                    </Badge>
+                  ))}
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-3">
+                  {highlights.map((highlight) => (
+                    <div key={highlight} className="rounded-2xl border border-border/70 bg-background/80 p-4 shadow-sm">
+                      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                        <Sparkles className="h-5 w-5" />
+                      </div>
+                      <p className="text-sm font-medium text-foreground">{highlight}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-3">
+                  {landingSteps.map((step, index) => (
+                    <div key={step} className="rounded-2xl border border-border/70 bg-background/80 p-4 shadow-sm transition-transform duration-200 hover:-translate-y-0.5">
+                      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+                        {index + 1}
+                      </div>
+                      <p className="text-sm leading-relaxed text-muted-foreground">{step}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="space-y-4 rounded-[28px] border border-border/70 bg-background/90 p-5 shadow-sm backdrop-blur-sm">
+                <UploadArea
+                  onFilesSelected={handleFilesSelected}
+                  onError={setErrorMessage}
+                  multiple={allowsMultipleFiles}
+                  accept={uploadConfig.accept}
+                  maxSizeMB={uploadConfig.maxSizeMB}
+                  label={uploadConfig.label}
+                  description={uploadConfig.description}
+                />
+
+                {errorMessage && (
+                  <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                    {errorMessage}
+                  </div>
+                )}
+
+                <div className="grid gap-3 rounded-2xl border border-border/70 bg-card/80 p-4">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                    <ShieldCheck className="h-4 w-4 text-primary" />
+                    Supported formats
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {supportedFormats.map((format) => (
+                      <Badge key={format} variant="secondary" className="rounded-full px-3 py-1 text-xs">
+                        {format}
+                      </Badge>
+                    ))}
+                  </div>
+                  <div className="grid gap-2 text-sm text-muted-foreground">
+                    <div className="flex items-center gap-2">
+                      <Zap className="h-4 w-4 text-primary" />
+                      Smooth drag-and-drop upload
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <FileText className="h-4 w-4 text-primary" />
+                      Friendly preview before processing
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Layers3 className="h-4 w-4 text-primary" />
+                      Built for desktop and mobile
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         ) : (
           <div className="bg-card rounded-3xl shadow-sm border border-border p-6 md:p-10 transition-all">
             
-            {(status === "idle" || status === "options") && (
+            {status === "options" && (
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <UploadArea
                   onFilesSelected={handleFilesSelected}
+                  onError={setErrorMessage}
                   multiple={allowsMultipleFiles}
-                  accept={
-                    tool?.slug === "image-converter" ||
-                    tool?.slug === "image-resize" ||
-                    tool?.slug === "image-compress" ||
-                    tool?.slug === "image-upscale"
-                      ? "image/png,image/jpeg,image/webp,image/bmp,image/tiff,image/gif,.png,.jpg,.jpeg,.webp,.bmp,.tiff,.tif,.gif"
-                      : tool?.slug === "word-to-pdf"
-                      ? "application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,.doc,.docx"
-                      : tool?.slug === "pdf-to-word"
-                      ? "application/pdf,.pdf"
-                      : tool?.slug === "ocr-image-to-text"
-                      ? "image/png,image/jpeg,application/pdf,.png,.jpg,.jpeg,.pdf"
-                      : tool?.slug === "jpg-to-pdf"
-                      ? "image/png,image/jpeg,image/jpg,.png,.jpg,.jpeg"
-                      : "application/pdf,.pdf"
-                  }
-                  maxSizeMB={
-                    tool?.slug === "image-converter" ||
-                    tool?.slug === "image-resize" ||
-                    tool?.slug === "image-compress" ||
-                    tool?.slug === "image-upscale"
-                      ? 20
-                      : 50
-                  }
-                  label={
-                    tool?.slug === "image-converter" ||
-                    tool?.slug === "image-resize" ||
-                    tool?.slug === "image-compress" ||
-                    tool?.slug === "image-upscale"
-                      ? "image file"
-                      : tool?.slug === "word-to-pdf"
-                      ? "Word file"
-                      : tool?.slug === "pdf-to-word"
-                      ? "PDF file"
-                      : tool?.slug === "ocr-image-to-text"
-                      ? "Image or PDF"
-                      : tool?.slug === "jpg-to-pdf"
-                      ? "image file"
-                      : "PDF file"
-                  }
-                  description={
-                    tool?.slug === "image-converter" ||
-                    tool?.slug === "image-resize" ||
-                    tool?.slug === "image-compress" ||
-                    tool?.slug === "image-upscale"
-                      ? "or drop an image here."
-                      : tool?.slug === "word-to-pdf"
-                      ? "or drop a Word document here."
-                      : tool?.slug === "pdf-to-word"
-                      ? "or drop a PDF here."
-                      : tool?.slug === "ocr-image-to-text"
-                      ? "or drop an image or scanned PDF here."
-                      : tool?.slug === "jpg-to-pdf"
-                      ? "or drop one or more images here."
-                      : "or drop PDF here."
-                  }
+                  accept={uploadConfig.accept}
+                  maxSizeMB={uploadConfig.maxSizeMB}
+                  label={uploadConfig.label}
+                  description={uploadConfig.description}
                         />
                 <p className="mt-4 text-sm text-muted-foreground text-center">
                   {uploadHint}
@@ -958,30 +1178,12 @@ export function ToolDetail() {
                   <FilePreviewList 
                     files={files} 
                     onRemove={handleRemoveFile} 
-                    status="idle" 
+                    status="options" 
                   />
-                  {tool.slug === "split-pdf" && (
-                    <div className="mt-6">
-                      <label className="block text-sm font-medium text-muted-foreground mb-2">Page ranges</label>
-                      <input
-                        value={pageRange}
-                        onChange={(e) => { setPageRange(e.target.value); setPageRangeError(null); }}
-                        placeholder="e.g. 1-3,5,7-9"
-                        className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm"
-                        aria-label="Page ranges"
-                      />
-                      {pageRangeError && (
-                        <p className="text-sm text-destructive mt-2">{pageRangeError}</p>
-                      )}
-                      {totalPages && (
-                        <p className="text-xs text-muted-foreground mt-2">PDF has {totalPages} page{totalPages>1? 's':''}.</p>
-                      )}
-                    </div>
-                  )}
 
                   {(tool.slug === "organize-pdf" || tool.slug === "delete-pages" || tool.slug === "extract-pages") && pdfPages.length > 0 && (
-                    <div className="mt-6">
-                      <h3 className="text-lg font-semibold mb-3">Page preview</h3>
+                    <div className="mt-6 space-y-3">
+                      <h3 className="text-lg font-semibold text-foreground">Page preview</h3>
                       <OrganizeGrid
                         pages={pdfPages}
                         onUpdate={(next) => setPdfPages(next)}
@@ -995,95 +1197,24 @@ export function ToolDetail() {
                           });
                         }}
                         onDelete={(indexes) => {
-                          setPdfPages((pages) => pages.filter((_, i) => !indexes.includes(i)));
+                            if (tool.slug === "delete-pages") {
+                              setPdfPages((pages) =>
+                                pages.map((page, i) =>
+                                  indexes.includes(i) ? { ...page, selected: true } : page,
+                                ),
+                              );
+                              return;
+                            }
+
+                            setPdfPages((pages) => pages.filter((_, i) => !indexes.includes(i)));
                         }}
                         onExtract={(indexes) => {
-                          // mark selected for extraction and delegate to existing extract flow
                           setPdfPages((pages) => pages.map((p, i) => ({ ...p, selected: indexes.includes(i) || p.selected })));
                         }}
+                          onSaveChanges={handleProcess}
                         zoom={thumbnailZoom}
                         setZoom={setThumbnailZoom}
                       />
-                    </div>
-                  )}
-
-                  {(tool.slug === "protect-pdf" || tool.slug === "unlock-pdf") && (
-                    <div className="mt-6">
-                      <label className="block text-sm font-medium text-muted-foreground mb-2">Password</label>
-                      <input
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        placeholder={tool.slug === "protect-pdf" ? "Enter a password to protect the PDF" : "Enter the current password"}
-                        className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm"
-                        aria-label="PDF password"
-                      />
-                    </div>
-                  )}
-
-                  {tool.slug === "watermark-pdf" && (
-                    <div className="mt-6 space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-muted-foreground mb-2">Upload company logo (PNG recommended)</label>
-                        <input
-                          type="file"
-                          accept="image/png,image/jpeg,image/webp"
-                          onChange={(e) => setWatermarkLogo(e.target.files?.[0] || null)}
-                          className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-muted-foreground mb-2">Watermark text</label>
-                        <input
-                          value={watermarkText}
-                          onChange={(e) => setWatermarkText(e.target.value)}
-                          placeholder="Enter watermark text"
-                          className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm"
-                          aria-label="Watermark text"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-muted-foreground mb-2">Position</label>
-                        <select
-                          value={watermarkPosition}
-                          onChange={(e) => setWatermarkPosition(e.target.value)}
-                          className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm"
-                        >
-                          <option value="top-left">Top left</option>
-                          <option value="top-right">Top right</option>
-                          <option value="bottom-left">Bottom left</option>
-                          <option value="bottom-right">Bottom right</option>
-                        </select>
-                      </div>
-                    </div>
-                  )}
-
-                  {tool.slug === "add-page-numbers" && (
-                    <div className="mt-6 space-y-4">
-                      <div>
-                        <label className="block text-sm font-medium text-muted-foreground mb-2">Starting number</label>
-                        <input
-                          type="number"
-                          min="1"
-                          value={pageNumberStart}
-                          onChange={(e) => setPageNumberStart(e.target.value)}
-                          className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm"
-                          aria-label="Starting page number"
-                        />
-                      </div>
-                      <div>
-                        <label className="block text-sm font-medium text-muted-foreground mb-2">Position</label>
-                        <select
-                          value={pageNumberPosition}
-                          onChange={(e) => setPageNumberPosition(e.target.value)}
-                          className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm"
-                        >
-                          <option value="top-left">Top left</option>
-                          <option value="top-right">Top right</option>
-                          <option value="bottom-left">Bottom left</option>
-                          <option value="bottom-right">Bottom right</option>
-                        </select>
-                      </div>
                     </div>
                   )}
 
@@ -1104,15 +1235,6 @@ export function ToolDetail() {
                           <p className="text-sm text-muted-foreground">Format: {imageFormat || 'Unknown'}</p>
                           <p className="text-sm text-muted-foreground">Dimensions: {imageWidth ? `${imageWidth} × ${imageHeight}` : 'Unknown'}</p>
                           <p className="text-sm text-muted-foreground">Size: {formatBytes(files[0].size)}</p>
-
-                          <div className="mt-4">
-                            <label className="block text-sm font-medium text-muted-foreground mb-2">Output format</label>
-                            <select value={outputFormat} onChange={(e) => setOutputFormat(e.target.value)} className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm">
-                              {SUPPORTED_OUTPUT.map(fmt => (
-                                <option key={fmt} value={fmt}>{fmt.toUpperCase()}</option>
-                              ))}
-                            </select>
-                          </div>
 
                           <div className="mt-6 flex gap-3">
                             <Button variant="outline" onClick={() => {
@@ -1135,73 +1257,6 @@ export function ToolDetail() {
                     </div>
                   )}
 
-                  {(tool.slug === "image-resize" || tool.slug === "image-compress" || tool.slug === "image-upscale") && files[0] && (
-                    <div className="mt-6 grid gap-4">
-                      <div className="grid sm:grid-cols-2 gap-4">
-                        <div>
-                          <label className="block text-sm font-medium text-muted-foreground mb-2">Width</label>
-                          <input
-                            value={tool.slug === "image-upscale" ? upscaleWidth : resizeWidth}
-                            onChange={(e) => tool.slug === "image-upscale" ? setUpscaleWidth(e.target.value) : setResizeWidth(e.target.value)}
-                            placeholder={tool.slug === "image-upscale" ? "Optional width" : "Width in pixels"}
-                            className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm"
-                            aria-label="Image width"
-                            type="number"
-                            min={1}
-                          />
-                        </div>
-                        <div>
-                          <label className="block text-sm font-medium text-muted-foreground mb-2">Height</label>
-                          <input
-                            value={tool.slug === "image-upscale" ? upscaleHeight : resizeHeight}
-                            onChange={(e) => tool.slug === "image-upscale" ? setUpscaleHeight(e.target.value) : setResizeHeight(e.target.value)}
-                            placeholder={tool.slug === "image-upscale" ? "Optional height" : "Height in pixels"}
-                            className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm"
-                            aria-label="Image height"
-                            type="number"
-                            min={1}
-                          />
-                        </div>
-                      </div>
-
-                      {tool.slug === "image-compress" && (
-                        <div>
-                          <label className="block text-sm font-medium text-muted-foreground mb-2">Quality</label>
-                          <input
-                            type="range"
-                            min={10}
-                            max={100}
-                            step={5}
-                            value={compressQuality}
-                            onChange={(e) => setCompressQuality(Number(e.target.value))}
-                            className="w-full"
-                          />
-                          <p className="text-sm text-muted-foreground mt-2">
-                            Quality: {compressQuality}%
-                            <span className="mx-2">·</span>
-                            Estimated size: {formatBytes(estimateCompressedSize(files[0].size, compressQuality))}
-                          </p>
-                        </div>
-                      )}
-
-                      {tool.slug === "image-upscale" && (
-                        <div>
-                          <label className="block text-sm font-medium text-muted-foreground mb-2">Scale Factor</label>
-                          <input
-                            type="number"
-                            min={1}
-                            max={8}
-                            value={upscaleFactor}
-                            onChange={(e) => setUpscaleFactor(Number(e.target.value))}
-                            className="w-full bg-input border border-border rounded-md px-3 py-2 text-sm"
-                            step={1}
-                          />
-                          <p className="text-sm text-muted-foreground mt-2">Upscale by {upscaleFactor}× unless specific width or height is set.</p>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  
                   <div className="mt-8 flex flex-col gap-4 md:flex-row">
                     <Button variant="outline" onClick={() => setStatus("idle")} className="flex-1 rounded-xl h-12">
                       <ArrowLeft className="w-4 h-4 mr-2" /> Add More
@@ -1219,18 +1274,241 @@ export function ToolDetail() {
                   )}
                 </div>
                 
-                <div className="w-full md:w-80 bg-background border rounded-2xl p-6 h-fit shrink-0">
-                  <div className="flex items-center gap-2 mb-6 font-semibold pb-4 border-b">
-                    <Settings2 className="w-5 h-5 text-primary" />
-                    Options
+                <div className="w-full md:w-80 h-fit shrink-0 rounded-2xl border border-border/70 bg-background/90 p-6 shadow-sm">
+                  <div className="mb-6 flex items-center gap-2 border-b border-border/70 pb-4 font-semibold text-foreground">
+                    <Settings2 className="h-5 w-5 text-primary" />
+                    Tool options
                   </div>
-                  <p className="text-sm text-muted-foreground mb-4">
-                    In a real implementation, tool-specific options would appear here (e.g., compression level, page ranges to extract).
-                  </p>
-                  <div className="space-y-4 opacity-50 pointer-events-none">
-                    <div className="h-10 bg-secondary rounded-lg w-full"></div>
-                    <div className="h-10 bg-secondary rounded-lg w-full"></div>
-                    <div className="h-10 bg-secondary rounded-lg w-2/3"></div>
+
+                  <div className="space-y-5">
+                    {(tool.slug === "merge-pdf" || tool.slug === "jpg-to-pdf") && (
+                      <div className="rounded-2xl border border-border/70 bg-card/80 p-4">
+                        <p className="text-sm font-medium text-foreground">Upload order</p>
+                        <p className="mt-1 text-sm text-muted-foreground">Drag files into the order you want before processing.</p>
+                        <div className="mt-4 rounded-xl border border-dashed border-border/70 bg-background/80 px-3 py-2 text-sm text-muted-foreground">
+                          {files.length} file{files.length === 1 ? "" : "s"} selected
+                        </div>
+                      </div>
+                    )}
+
+                    {tool.slug === "split-pdf" && (
+                      <div className="rounded-2xl border border-border/70 bg-card/80 p-4">
+                        <label className="mb-2 block text-sm font-medium text-foreground">Page ranges</label>
+                        <input
+                          value={pageRange}
+                          onChange={(e) => { setPageRange(e.target.value); setPageRangeError(null); }}
+                          placeholder="e.g. 1-3,5,7-9"
+                          className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                          aria-label="Page ranges"
+                        />
+                        {pageRangeError ? (
+                          <p className="mt-2 text-sm text-destructive">{pageRangeError}</p>
+                        ) : (
+                          <p className="mt-2 text-xs text-muted-foreground">Enter pages or ranges to keep in the split output.</p>
+                        )}
+                      </div>
+                    )}
+
+                    {(tool.slug === "protect-pdf" || tool.slug === "unlock-pdf") && (
+                      <div className="rounded-2xl border border-border/70 bg-card/80 p-4">
+                        <label className="mb-2 block text-sm font-medium text-foreground">Password</label>
+                        <input
+                          type="password"
+                          value={password}
+                          onChange={(e) => setPassword(e.target.value)}
+                          placeholder={tool.slug === "protect-pdf" ? "Enter a password to protect the PDF" : "Enter the current password"}
+                          className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                          aria-label="PDF password"
+                        />
+                      </div>
+                    )}
+
+                    {tool.slug === "watermark-pdf" && (
+                      <div className="space-y-4 rounded-2xl border border-border/70 bg-card/80 p-4">
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-foreground">Watermark text</label>
+                          <input
+                            value={watermarkText}
+                            onChange={(e) => setWatermarkText(e.target.value)}
+                            placeholder="Enter watermark text"
+                            className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                            aria-label="Watermark text"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-foreground">Logo</label>
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp"
+                            onChange={(e) => setWatermarkLogo(e.target.files?.[0] || null)}
+                            className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground file:mr-3 file:rounded-full file:border-0 file:bg-primary file:px-3 file:py-1.5 file:text-xs file:font-medium file:text-primary-foreground"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-foreground">Position</label>
+                          <select
+                            value={watermarkPosition}
+                            onChange={(e) => setWatermarkPosition(e.target.value)}
+                            className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                          >
+                            <option value="top-left">Top left</option>
+                            <option value="top-right">Top right</option>
+                            <option value="bottom-left">Bottom left</option>
+                            <option value="bottom-right">Bottom right</option>
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    {tool.slug === "add-page-numbers" && (
+                      <div className="space-y-4 rounded-2xl border border-border/70 bg-card/80 p-4">
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-foreground">Starting number</label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={pageNumberStart}
+                            onChange={(e) => setPageNumberStart(e.target.value)}
+                            className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                            aria-label="Starting page number"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-foreground">Position</label>
+                          <select
+                            value={pageNumberPosition}
+                            onChange={(e) => setPageNumberPosition(e.target.value)}
+                            className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                          >
+                            <option value="top-left">Top left</option>
+                            <option value="top-right">Top right</option>
+                            <option value="bottom-left">Bottom left</option>
+                            <option value="bottom-right">Bottom right</option>
+                          </select>
+                        </div>
+                      </div>
+                    )}
+
+                    {tool.slug === "image-converter" && (
+                      <div className="rounded-2xl border border-border/70 bg-card/80 p-4">
+                        <label className="mb-2 block text-sm font-medium text-foreground">Output format</label>
+                        <select value={outputFormat} onChange={(e) => setOutputFormat(e.target.value)} className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30">
+                          {SUPPORTED_OUTPUT.map((fmt) => (
+                            <option key={fmt} value={fmt}>{fmt.toUpperCase()}</option>
+                          ))}
+                        </select>
+                        <p className="mt-2 text-xs text-muted-foreground">Choose the output file format before conversion.</p>
+                      </div>
+                    )}
+
+                    {(tool.slug === "image-resize" || tool.slug === "image-compress" || tool.slug === "image-upscale") && (
+                      <div className="space-y-4 rounded-2xl border border-border/70 bg-card/80 p-4">
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-foreground">Width</label>
+                          <input
+                            value={tool.slug === "image-upscale" ? upscaleWidth : resizeWidth}
+                            onChange={(e) => tool.slug === "image-upscale" ? setUpscaleWidth(e.target.value) : setResizeWidth(e.target.value)}
+                            placeholder={tool.slug === "image-upscale" ? "Optional width" : "Width in pixels"}
+                            className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                            aria-label="Image width"
+                            type="number"
+                            min={1}
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-foreground">Height</label>
+                          <input
+                            value={tool.slug === "image-upscale" ? upscaleHeight : resizeHeight}
+                            onChange={(e) => tool.slug === "image-upscale" ? setUpscaleHeight(e.target.value) : setResizeHeight(e.target.value)}
+                            placeholder={tool.slug === "image-upscale" ? "Optional height" : "Height in pixels"}
+                            className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                            aria-label="Image height"
+                            type="number"
+                            min={1}
+                          />
+                        </div>
+                        {tool.slug === "image-compress" && (
+                          <div>
+                            <label className="mb-2 block text-sm font-medium text-foreground">Quality</label>
+                            <input
+                              type="range"
+                              min={10}
+                              max={100}
+                              step={5}
+                              value={compressQuality}
+                              onChange={(e) => setCompressQuality(Number(e.target.value))}
+                              className="w-full accent-primary"
+                            />
+                            <p className="mt-2 text-xs text-muted-foreground">Quality: {compressQuality}%</p>
+                          </div>
+                        )}
+                        {tool.slug === "image-upscale" && (
+                          <div>
+                            <label className="mb-2 block text-sm font-medium text-foreground">Scale factor</label>
+                            <input
+                              type="number"
+                              min={1}
+                              max={8}
+                              value={upscaleFactor}
+                              onChange={(e) => setUpscaleFactor(Number(e.target.value))}
+                              className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                              step={1}
+                            />
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {(tool.slug === "organize-pdf" || tool.slug === "delete-pages" || tool.slug === "extract-pages") && (
+                      <div className="rounded-2xl border border-border/70 bg-card/80 p-4">
+                        <p className="text-sm font-medium text-foreground">Selection summary</p>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {selectedPageCount > 0
+                            ? `${selectedPageCount} page${selectedPageCount === 1 ? "" : "s"} selected`
+                            : "Select pages in the preview grid to enable page actions."}
+                        </p>
+                        <div className="mt-4 grid gap-2 text-sm text-muted-foreground">
+                          <div className="flex items-center justify-between rounded-xl bg-background px-3 py-2">
+                            <span>Pages loaded</span>
+                            <span className="font-medium text-foreground">{pdfPages.length}</span>
+                          </div>
+                          <div className="flex items-center justify-between rounded-xl bg-background px-3 py-2">
+                            <span>Zoom level</span>
+                            <span className="font-medium text-foreground">{thumbnailZoom}%</span>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {tool.slug === "ocr-image-to-text" && (
+                      <div className="rounded-2xl border border-border/70 bg-card/80 p-4">
+                        <p className="text-sm font-medium text-foreground">OCR output</p>
+                        <p className="mt-1 text-sm text-muted-foreground">Text extraction starts after you process the uploaded file.</p>
+                      </div>
+                    )}
+
+                    {![
+                      "merge-pdf",
+                      "jpg-to-pdf",
+                      "split-pdf",
+                      "protect-pdf",
+                      "unlock-pdf",
+                      "watermark-pdf",
+                      "add-page-numbers",
+                      "image-converter",
+                      "image-resize",
+                      "image-compress",
+                      "image-upscale",
+                      "organize-pdf",
+                      "delete-pages",
+                      "extract-pages",
+                      "ocr-image-to-text",
+                    ].includes(tool.slug) && (
+                      <div className="rounded-2xl border border-border/70 bg-card/80 p-4">
+                        <p className="text-sm font-medium text-foreground">Ready to process</p>
+                        <p className="mt-1 text-sm text-muted-foreground">Upload your file and review the built-in processing settings before downloading the result.</p>
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1310,31 +1588,72 @@ export function ToolDetail() {
       </div>
 
       {/* How it works */}
-      {tool.steps && tool.steps.length > 0 && (
-        <section className="py-20 bg-card border-t border-border">
-          <div className="container mx-auto px-4 md:px-6 max-w-4xl">
-            <h2 className="text-3xl font-bold text-center mb-12">How to {tool.name.toLowerCase()}</h2>
-            <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-8">
-              {tool.steps.map((step, index) => (
-                <div key={index} className="relative pt-6">
-                  <div className="absolute top-0 left-0 w-10 h-10 bg-secondary text-primary font-bold rounded-xl flex items-center justify-center -mt-5 shadow-sm border border-background">
-                    {index + 1}
-                  </div>
-                  <Card className="h-full border-none shadow-none bg-background">
-                    <CardContent className="p-6 pt-8">
-                      <p className="text-muted-foreground leading-relaxed">{step}</p>
-                    </CardContent>
-                  </Card>
+      <section className="border-t border-border/70 bg-card/60 py-20">
+        <div className="container mx-auto max-w-5xl px-4 md:px-6">
+          <div className="mx-auto mb-12 max-w-2xl text-center">
+            <h2 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">How it works</h2>
+            <p className="mt-4 text-base text-muted-foreground md:text-lg">Three simple steps to get from upload to finished file.</p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            {landingSteps.map((step, index) => (
+              <div key={step} className="rounded-3xl border border-border/70 bg-background/90 p-6 shadow-sm">
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-base font-semibold text-primary-foreground">
+                  {index + 1}
                 </div>
+                <h3 className="mb-3 text-lg font-semibold text-foreground">Step {index + 1}</h3>
+                <p className="leading-relaxed text-muted-foreground">{step}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="py-20">
+        <div className="container mx-auto max-w-5xl px-4 md:px-6">
+          <div className="mx-auto mb-12 max-w-2xl text-center">
+            <h2 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">Feature highlights</h2>
+            <p className="mt-4 text-base text-muted-foreground md:text-lg">Built to be fast, clean, and comfortable in both light and dark mode.</p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            {highlights.map((highlight) => (
+              <Card key={highlight} className="border-border/70 bg-card/90 shadow-sm">
+                <CardContent className="p-6">
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                    <Sparkles className="h-5 w-5" />
+                  </div>
+                  <h3 className="mb-2 text-lg font-semibold text-foreground">{highlight}</h3>
+                  <p className="text-sm leading-relaxed text-muted-foreground">Optimized for a focused document workflow with clear states and simple actions.</p>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* FAQ */}
+      {faqsToShow.length > 0 && (
+        <FaqSection faqs={faqsToShow} title={`${tool.name} FAQ`} />
+      )}
+
+      {relatedTools.length > 0 && (
+        <section className="border-t border-border/70 bg-background py-20">
+          <div className="container mx-auto px-4 md:px-6 max-w-6xl">
+            <div className="mb-10 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+              <div>
+                <h2 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">Related tools</h2>
+                <p className="mt-3 max-w-2xl text-muted-foreground">Try another tool in the same workflow family.</p>
+              </div>
+              <Button variant="ghost" asChild className="w-fit text-primary hover:bg-primary/10 hover:text-primary">
+                <Link href="/tools">Browse all tools</Link>
+              </Button>
+            </div>
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+              {relatedTools.map((relatedTool) => (
+                <ToolCard key={relatedTool.slug} tool={relatedTool} />
               ))}
             </div>
           </div>
         </section>
-      )}
-
-      {/* FAQ */}
-      {tool.faqs && tool.faqs.length > 0 && (
-        <FaqSection faqs={tool.faqs} title={`${tool.name} FAQ`} />
       )}
 
       {/* Related Blog Post */}
