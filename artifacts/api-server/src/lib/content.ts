@@ -179,7 +179,7 @@ export const tools: ToolRecord[] = [
     category: "Convert",
     icon: "FileText",
     popular: true,
-    status: "comingSoon",
+    status: "available",
     seoTitle: "Convert PDF to Word Online Free | PDF Tools",
     seoDescription:
       "Turn a PDF into an editable .docx file while preserving layout and formatting.",

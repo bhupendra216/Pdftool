@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight, Clock, Calendar, FileText } from "lucide-react";
+import { BrandMark } from "@/components/brand/BrandMark";
 
 export function BlogDetail() {
   const { slug } = useParams<{ slug: string }>();
@@ -26,6 +27,7 @@ export function BlogDetail() {
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-20 max-w-3xl space-y-8">
+        <BrandMark className="justify-center" logoClassName="h-10" wordmarkClassName="text-lg" />
         <Skeleton className="h-8 w-32" />
         <Skeleton className="h-16 w-full" />
         <div className="flex gap-4">

@@ -7,11 +7,12 @@ import { Search } from "lucide-react";
 import { useState, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { BrandMark } from "@/components/brand/BrandMark";
 
 export function ToolsIndex() {
   useSEO({
     title: "All PDF Tools",
-    description: "Browse our complete collection of free, secure PDF tools for merging, splitting, compressing, and editing."
+    description: "Browse our complete collection of free, secure PDF tools for merging, splitting, compressing, and editing with PDFKira."
   });
 
   const { data: tools, isLoading } = useListTools();
@@ -38,6 +39,7 @@ export function ToolsIndex() {
     <div className="bg-background min-h-screen pb-24">
       <div className="bg-card border-b border-border pt-16 pb-12 mb-12">
         <div className="container mx-auto px-4 md:px-6 text-center max-w-3xl">
+          <BrandMark className="mb-6 justify-center" logoClassName="h-11 w-11" wordmarkClassName="text-xl" />
           <h1 className="text-4xl md:text-5xl font-bold mb-6">Every tool for your PDFs</h1>
           <p className="text-xl text-muted-foreground mb-10">
             A complete suite to help you manage your documents efficiently and securely.
@@ -90,6 +92,7 @@ export function ToolsIndex() {
           </div>
         ) : (
           <div className="text-center py-20 bg-card rounded-3xl border border-border mt-8">
+            <BrandMark className="mb-6 justify-center" logoClassName="h-9 w-9" wordmarkClassName="text-lg" />
             <p className="text-xl text-muted-foreground">No tools found matching your search.</p>
             <Button 
               variant="link" 

@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { BrandMark } from "@/components/brand/BrandMark";
 
 export function AdminLogin() {
   const [, setLocation] = useLocation();
@@ -46,6 +47,7 @@ export function AdminLogin() {
     <div className="min-h-screen bg-background flex items-center justify-center px-4 py-16">
       <Card className="w-full max-w-md border-border/70 shadow-lg">
         <CardHeader>
+          <BrandMark className="mb-4" logoClassName="h-11" wordmarkClassName="text-2xl" />
           <CardTitle className="text-2xl font-semibold">Admin Login</CardTitle>
         </CardHeader>
         <CardContent>

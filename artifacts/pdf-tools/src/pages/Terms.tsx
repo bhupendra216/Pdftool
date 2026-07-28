@@ -12,10 +12,10 @@ export function Terms() {
       </div>
       <div className="container mx-auto px-4 md:px-6 max-w-3xl prose prose-lg dark:prose-invert">
         <h2>Acceptance of Terms</h2>
-        <p>By accessing and using PDF Tools, you accept and agree to be bound by the terms and provision of this agreement. In addition, when using these particular services, you shall be subject to any posted guidelines or rules applicable to such services.</p>
+        <p>By accessing and using PDFKira, you accept and agree to be bound by the terms and provision of this agreement. In addition, when using these particular services, you shall be subject to any posted guidelines or rules applicable to such services.</p>
 
         <h3>1. Use of Service</h3>
-        <p>PDF Tools provides various tools to process PDF documents. You agree to use these tools only for lawful purposes and in a way that does not infringe the rights of, restrict or inhibit anyone else's use and enjoyment of the website.</p>
+        <p>PDFKira provides various tools to process PDF documents. You agree to use these tools only for lawful purposes and in a way that does not infringe the rights of, restrict or inhibit anyone else's use and enjoyment of the website.</p>
 
         <h3>2. User Content</h3>
         <p>You retain all rights to any documents you process using our tools. We do not claim ownership over any of your content. You represent and warrant that you have the necessary rights to process any documents you upload.</p>

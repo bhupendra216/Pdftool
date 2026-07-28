@@ -12,7 +12,7 @@ export function Privacy() {
       </div>
       <div className="container mx-auto px-4 md:px-6 max-w-3xl prose prose-lg dark:prose-invert">
         <h2>Your Privacy is Our Priority</h2>
-        <p>At PDF Tools, we believe that your documents are your business. This Privacy Policy outlines how we handle your files and data when you use our services.</p>
+        <p>At PDFKira, we believe that your documents are your business. This Privacy Policy outlines how we handle your files and data when you use our services.</p>
         
         <h3>1. File Processing and Storage</h3>
         <p>Most of our tools process files locally in your browser. For tools that require server-side processing, files are uploaded securely via HTTPS. Once processing is complete, all uploaded and generated files are automatically and permanently deleted from our servers within 1 hour.</p>

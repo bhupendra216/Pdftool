@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { BrandMark } from "@/components/brand/BrandMark";
 
 type Overview = {
   totalVisitors: number;
@@ -146,6 +147,7 @@ export function AdminDashboard() {
   if (loading) {
     return (
       <div className="container mx-auto px-4 py-12 space-y-6">
+        <BrandMark className="justify-start" logoClassName="h-10" wordmarkClassName="text-lg" />
         <Skeleton className="h-10 w-64" />
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">{Array.from({ length: 8 }).map((_, index) => <Skeleton key={index} className="h-32 w-full" />)}</div>
       </div>

@@ -1,10 +1,18 @@
-import { Router } from "express";
+import express, { Router } from "express";
 import multer from "multer";
 import { execFile } from "node:child_process";
 import { mkdtemp, rm, writeFile, readFile, readdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { PDFDocument } from "pdf-lib";
+import { AlignmentType, Document, Packer, Paragraph, TextRun } from "docx";
+
+type PdfToWordOptions = {
+  outputFormat: "docx" | "doc";
+  preserveLayout: boolean;
+  extractImages: boolean;
+  ocr: boolean;
+};
 
 function formatContentDisposition(filename: string) {
   const safe = filename.replace(/"/g, "");
@@ -22,11 +30,230 @@ const router = Router();
 const WORD_INPUT_EXTS = new Set([".doc", ".docx"]);
 const PDF_INPUT_EXTS = new Set([".pdf"]);
 const JPG_PDF_INPUT_EXTS = new Set([".jpg", ".jpeg", ".png"]);
+const WORD_OUTPUT_EXTS = new Set(["docx", "doc"]);
+
+function parseBoolean(value: unknown, defaultValue = false): boolean {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "number") return value !== 0;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (["true", "1", "yes", "on"].includes(normalized)) return true;
+    if (["false", "0", "no", "off"].includes(normalized)) return false;
+  }
+  return defaultValue;
+}
+
+function parsePdfToWordOptions(body: Record<string, unknown>): PdfToWordOptions {
+  const outputFormat = String(body.outputFormat || "docx").toLowerCase();
+
+  return {
+    outputFormat: WORD_OUTPUT_EXTS.has(outputFormat) ? (outputFormat as "docx" | "doc") : "docx",
+    preserveLayout: parseBoolean(body.preserveLayout, true),
+    extractImages: parseBoolean(body.extractImages, true),
+    ocr: parseBoolean(body.ocr, false),
+  };
+}
+
+function getReadablePdfError(message: string) {
+  const normalized = message.toLowerCase();
+
+  if (normalized.includes("encrypted") || normalized.includes("password")) {
+    return "Password-protected PDFs are not supported. Remove the password and try again.";
+  }
+
+  if (normalized.includes("invalid pdf") || normalized.includes("failed to parse") || normalized.includes("not a pdf")) {
+    return "The uploaded file is not a valid PDF.";
+  }
+
+  return message;
+}
+
+async function validatePdfBuffer(file: Express.Multer.File) {
+  const filename = file.originalname || "input.pdf";
+  const ext = path.extname(filename).toLowerCase();
+
+  if (!PDF_INPUT_EXTS.has(ext)) {
+    throw new Error("Unsupported input file type. Upload a PDF file.");
+  }
+
+  if (!file.buffer || file.buffer.length === 0) {
+    throw new Error("No file uploaded");
+  }
+
+  try {
+    const pdf = await PDFDocument.load(file.buffer, { ignoreEncryption: false });
+    return { pageCount: pdf.getPageCount(), ext };
+  } catch (error: any) {
+    const message = String(error?.message || error || "Invalid PDF");
+    throw new Error(getReadablePdfError(message));
+  }
+}
+
+async function detectScannedPdf(buffer: Buffer) {
+  try {
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const loadingTask = pdfjs.getDocument({
+      data: new Uint8Array(buffer),
+      useWorkerFetch: false,
+      stopAtErrors: true,
+    });
+    const pdf = await loadingTask.promise;
+    const samplePages = Math.min(pdf.numPages, 3);
+    let extractedLength = 0;
+
+    for (let pageIndex = 1; pageIndex <= samplePages; pageIndex++) {
+      const page = await pdf.getPage(pageIndex);
+      const textContent = await page.getTextContent();
+      extractedLength += textContent.items
+        .map((item: any) => (typeof item?.str === "string" ? item.str : ""))
+        .join(" ")
+        .trim().length;
+
+      if (extractedLength > 150) {
+        break;
+      }
+    }
+
+    return extractedLength < 80;
+  } catch {
+    return true;
+  }
+}
+
+async function buildDocxFromOcrPages(pageTexts: string[], filenameBase: string) {
+  const paragraphs: Paragraph[] = [];
+
+  pageTexts.forEach((pageText, pageIndex) => {
+    const normalizedText = pageText
+      .replace(/\r\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+
+    if (pageIndex > 0) {
+      paragraphs.push(
+        new Paragraph({
+          children: [new TextRun({ text: "", break: 1 })],
+          pageBreakBefore: true,
+        }),
+      );
+    }
+
+    if (!normalizedText) {
+      paragraphs.push(new Paragraph({ children: [new TextRun(" ")], spacing: { after: 120 } }));
+      return;
+    }
+
+    normalizedText.split(/\n+/).forEach((line) => {
+      const trimmedLine = line.trim();
+      if (!trimmedLine) {
+        paragraphs.push(new Paragraph({ children: [new TextRun(" ")], spacing: { after: 120 } }));
+        return;
+      }
+
+      paragraphs.push(
+        new Paragraph({
+          children: [new TextRun(trimmedLine)],
+          spacing: { after: 120 },
+          alignment: AlignmentType.LEFT,
+        }),
+      );
+    });
+  });
+
+  const doc = new Document({
+    sections: [
+      {
+        properties: {},
+        children: paragraphs,
+      },
+    ],
+  });
+
+  return {
+    buffer: Buffer.from(await Packer.toBuffer(doc)),
+    filename: `${filenameBase}.docx`,
+  };
+}
+
+async function convertPdfToWordViaOcr(file: Express.Multer.File, outputFormat: "docx" | "doc") {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "pdf-to-word-ocr-"));
+  const inputFile = path.join(tempDir, "input.pdf");
+  const outputBase = path.join(tempDir, "ocr-output");
+  const baseName = path.basename(file.originalname || "document", path.extname(file.originalname || "")) || "document";
+
+  try {
+    await writeFile(inputFile, file.buffer);
+
+    await new Promise<void>((resolve, reject) => {
+      execFile(
+        "pdftoppm",
+        ["-jpeg", "-r", "250", inputFile, outputBase],
+        { timeout: 180_000, maxBuffer: 20 * 1024 * 1024 },
+        (error, stdout, stderr) => {
+          if (error) {
+            reject(new Error(`PDF OCR image extraction failed: ${error.message}${stderr ? ` - ${stderr}` : ""}${stdout ? ` - ${stdout}` : ""}`));
+            return;
+          }
+          resolve();
+        },
+      );
+    });
+
+    const tesseract: any = await import("tesseract.js");
+    const createWorker: any = tesseract.createWorker;
+    const PSM: any = tesseract.PSM;
+    const worker: any = await createWorker({ logger: () => {} });
+
+    await worker.load();
+    await worker.loadLanguage("eng+nep");
+    await worker.initialize("eng+nep");
+
+    try {
+      await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO });
+    } catch {
+      // ignore if unavailable on the runtime
+    }
+
+    const { readdir, readFile } = await import("node:fs/promises");
+    const pageFiles = (await readdir(tempDir))
+      .filter((name) => /^ocr-output-\d+\.jpg$/i.test(name))
+      .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }));
+
+    const pageTexts: string[] = [];
+
+    for (const pageFile of pageFiles) {
+      const pagePath = path.join(tempDir, pageFile);
+      const pageBuffer = await readFile(pagePath);
+      const { data } = await worker.recognize(pageBuffer);
+      pageTexts.push(String(data?.text || "").trim());
+    }
+
+    await worker.terminate();
+
+    const { buffer: docxBuffer } = await buildDocxFromOcrPages(pageTexts, baseName);
+
+    if (outputFormat === "doc") {
+      const docxInput = path.join(tempDir, `${baseName}.docx`);
+      await writeFile(docxInput, docxBuffer);
+      await execSofficeConvert(docxInput, tempDir, "doc");
+      const outputPath = await findConvertedFile(tempDir, baseName, "doc");
+      return { buffer: await readFile(outputPath), filename: `${baseName}.doc` };
+    }
+
+    const docxPath = path.join(tempDir, `${baseName}.docx`);
+    await writeFile(docxPath, docxBuffer);
+    return { buffer: docxBuffer, filename: `${baseName}.docx` };
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
 
 async function execSofficeConvert(inputPath: string, outputDir: string, outputExt: string) {
   const filters =
     outputExt === "docx"
       ? ["docx:MS Word 2007 XML", "docx"]
+      : outputExt === "doc"
+      ? ["doc:MS Word 97", "doc"]
       : outputExt === "pdf"
       ? ["pdf:writer_pdf_Export", "pdf"]
       : [outputExt];
@@ -67,6 +294,31 @@ async function execSofficeConvert(inputPath: string, outputDir: string, outputEx
   throw new Error(`LibreOffice conversion failed for filters ${filters.join(", ")}: ${errors.join(" | ")}`);
 }
 
+async function findConvertedFile(outputDir: string, expectedBaseName: string, outputExt: string) {
+  const entries = await readdir(outputDir);
+  const exactName = `${expectedBaseName}.${outputExt}`;
+
+  if (entries.includes(exactName)) {
+    return path.join(outputDir, exactName);
+  }
+
+  const candidates = entries.filter((name) => name.toLowerCase().endsWith(`.${outputExt}`));
+  if (candidates.length === 1) {
+    return path.join(outputDir, candidates[0]);
+  }
+
+  const matchingBase = candidates.filter((name) => path.basename(name, path.extname(name)) === expectedBaseName);
+  if (matchingBase.length === 1) {
+    return path.join(outputDir, matchingBase[0]);
+  }
+
+  if (candidates.length > 0) {
+    return path.join(outputDir, candidates[0]);
+  }
+
+  throw new Error(`Converted file not found. Expected ${exactName}. Directory contents: ${entries.join(", ")}`);
+}
+
 async function convertFileWithLibreOffice(file: Express.Multer.File, expectedExts: Set<string>, targetExt: string) {
   const filename = file.originalname || "input";
   const inputExt = path.extname(filename).toLowerCase();
@@ -81,16 +333,41 @@ async function convertFileWithLibreOffice(file: Express.Multer.File, expectedExt
     await writeFile(inputFile, file.buffer);
     await execSofficeConvert(inputFile, tempDir, targetExt);
 
-    const outputFileName = `${path.basename(inputFile, inputExt)}.${targetExt}`;
-    const outputPath = path.join(tempDir, outputFileName);
+    const outputPath = await findConvertedFile(tempDir, path.basename(inputFile, inputExt), targetExt);
+    const outputFileName = path.basename(outputPath);
+
+    return { buffer: await readFile(outputPath), filename: outputFileName };
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
+
+async function convertPdfToWord(file: Express.Multer.File, options: PdfToWordOptions) {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "pdf-to-word-"));
+  const inputFile = path.join(tempDir, "input.pdf");
+  const inputExt = ".pdf";
+  const baseName = path.basename(file.originalname || "document", path.extname(file.originalname || "")) || "document";
+
+  try {
+    await writeFile(inputFile, file.buffer);
+
+    if (options.ocr) {
+      const scanned = await detectScannedPdf(file.buffer);
+      if (scanned) {
+        return await convertPdfToWordViaOcr(file, options.outputFormat);
+      }
+    }
 
     try {
-      return { buffer: await readFile(outputPath), filename: outputFileName };
-    } catch (readError: any) {
-      const dirFiles = await readdir(tempDir).catch(() => []);
-      throw new Error(
-        `Converted file not found. Expected ${outputFileName}. Directory contents: ${dirFiles.join(", ")}. ${readError.message}`,
-      );
+      await execSofficeConvert(inputFile, tempDir, options.outputFormat);
+      const convertedBaseName = path.basename(inputFile, inputExt);
+      const outputPath = await findConvertedFile(tempDir, convertedBaseName, options.outputFormat);
+      const buffer = await readFile(outputPath);
+      return { buffer, filename: `${baseName}.${options.outputFormat}` };
+    } catch (error) {
+      // LibreOffice may not produce a direct Word output for some PDFs.
+      // Fall back to OCR/text extraction instead of failing entirely.
+      return await convertPdfToWordViaOcr(file, options.outputFormat);
     }
   } finally {
     await rm(tempDir, { recursive: true, force: true });
@@ -259,27 +536,54 @@ async function unlockPdf(file: Express.Multer.File, password: string) {
   }
 }
 
-router.post("/convert-pdf-to-word", upload.single("files"), async (req, res) => {
+async function handlePdfToWordRequest(req: express.Request, res: express.Response) {
   const file = req.file as Express.Multer.File | undefined;
   if (!file) {
     res.status(400).json({ error: "No file uploaded" });
     return;
   }
 
-  const ext = path.extname(file.originalname || "").toLowerCase();
-  if (!PDF_INPUT_EXTS.has(ext)) {
-    res.status(400).json({ error: "Unsupported input file type" });
-    return;
-  }
+  const startedAt = Date.now();
+  const options = parsePdfToWordOptions(req.body as Record<string, unknown>);
 
   try {
-    const { buffer, filename } = await convertFileWithLibreOffice(file, PDF_INPUT_EXTS, "docx");
-    res.setHeader("content-type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+    await validatePdfBuffer(file);
+
+    const { buffer, filename } = await convertPdfToWord(file, options);
+    const mimeType = options.outputFormat === "docx"
+      ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      : "application/msword";
+
+    res.setHeader("content-type", mimeType);
     res.setHeader("content-disposition", formatContentDisposition(filename));
+    res.setHeader("x-processing-time-ms", String(Date.now() - startedAt));
+    res.setHeader("x-output-size-bytes", String(buffer.length));
     res.send(buffer);
   } catch (error: any) {
     console.error("PDF to Word conversion failed", error);
     const message = String(error?.message || "Conversion failed");
+
+    if (!options.ocr && (message.includes("Converted file not found") || message.includes("LibreOffice conversion failed"))) {
+      try {
+        const { buffer: ocrBuffer, filename: ocrFilename } = await convertPdfToWordViaOcr(file, options.outputFormat);
+        const mimeType = options.outputFormat === "docx"
+          ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          : "application/msword";
+
+        res.setHeader("content-type", mimeType);
+        res.setHeader("content-disposition", formatContentDisposition(ocrFilename));
+        res.setHeader("x-processing-time-ms", String(Date.now() - startedAt));
+        res.setHeader("x-output-size-bytes", String(ocrBuffer.length));
+        res.send(ocrBuffer);
+        return;
+      } catch (ocrError: any) {
+        console.error("PDF to Word OCR fallback failed", ocrError);
+        const ocrMessage = String(ocrError?.message || message);
+        res.status(500).json({ error: getReadablePdfError(ocrMessage) });
+        return;
+      }
+    }
+
     if (
       message.includes("Could not find a Java Runtime Environment") ||
       message.includes("javaldx") ||
@@ -291,8 +595,16 @@ router.post("/convert-pdf-to-word", upload.single("files"), async (req, res) => 
       });
       return;
     }
-    res.status(500).json({ error: message });
+    res.status(500).json({ error: getReadablePdfError(message) });
   }
+}
+
+router.post("/pdf-to-word", upload.single("files"), async (req, res) => {
+  await handlePdfToWordRequest(req, res);
+});
+
+router.post("/convert-pdf-to-word", upload.single("files"), async (req, res) => {
+  await handlePdfToWordRequest(req, res);
 });
 
 router.post("/convert-word-to-pdf", upload.single("files"), async (req, res) => {

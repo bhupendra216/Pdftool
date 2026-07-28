@@ -1,5 +1,5 @@
 import { Link } from "wouter";
-import { FileText } from "lucide-react";
+import { BrandMark } from "@/components/brand/BrandMark";
 
 export function Footer() {
   return (
@@ -7,14 +7,11 @@ export function Footer() {
       <div className="container mx-auto px-4 md:px-6">
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 md:gap-12">
           <div className="md:col-span-1">
-            <Link href="/" className="flex items-center gap-2 mb-4 transition-opacity hover:opacity-80">
-              <div className="bg-primary text-primary-foreground p-1.5 rounded-lg">
-                <FileText className="w-5 h-5" />
-              </div>
-              <span className="font-bold text-lg tracking-tight">PDF Tools</span>
+            <Link href="/" className="mb-4 inline-flex items-center transition-opacity hover:opacity-80">
+              <BrandMark logoClassName="h-7 w-7" wordmarkClassName="text-base" />
             </Link>
             <p className="text-sm text-muted-foreground leading-relaxed">
-              Premium, fast, and secure PDF tools for modern professionals. 
+              Premium, fast, and secure document tools for modern professionals.
               No clutter, no ads, just tools that work.
             </p>
           </div>
@@ -50,7 +47,7 @@ export function Footer() {
 
         <div className="mt-12 pt-8 border-t border-border flex flex-col md:flex-row items-center justify-between gap-4">
           <p className="text-sm text-muted-foreground">
-            &copy; {new Date().getFullYear()} PDF Tools. All rights reserved.
+            &copy; {new Date().getFullYear()} PDFKira. All rights reserved.
           </p>
         </div>
       </div>

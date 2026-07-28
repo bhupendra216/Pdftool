@@ -8,11 +8,12 @@ import { BlogCard } from "@/components/shared/BlogCard";
 import { FaqSection } from "@/components/shared/FaqSection";
 import { ArrowRight, ShieldCheck, Zap, HeartHandshake } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { BrandMark } from "@/components/brand/BrandMark";
 
 export function Home() {
   useSEO({
-    title: "Free, Fast, and Secure PDF Tools",
-    description: "Merge, split, compress, and edit PDF files with premium, privacy-first tools designed for professionals."
+    title: "PDFKira – Free Online PDF Tools",
+    description: "Merge, split, compress, convert, organize, protect, and edit PDF files online for free with PDFKira."
   });
 
   const { data: tools, isLoading: loadingTools } = useListTools();
@@ -52,6 +53,7 @@ const latestPosts = Array.isArray(posts)
       <section className="relative overflow-hidden bg-background pt-24 pb-32 md:pt-36 md:pb-48">
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
         <div className="container relative mx-auto px-4 md:px-6 text-center z-10 max-w-4xl">
+          <BrandMark className="mb-6 justify-center" logoClassName="h-12 w-12" wordmarkClassName="text-2xl" />
           <Badge className="mb-6 py-1.5 px-4 bg-primary/10 text-primary border-none text-sm font-medium hover:bg-primary/20 transition-colors">
             100% Free & Privacy First
           </Badge>
@@ -118,7 +120,7 @@ const latestPosts = Array.isArray(posts)
       <section className="py-24 md:py-32 bg-background">
         <div className="container mx-auto px-4 md:px-6">
           <div className="text-center max-w-2xl mx-auto mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold mb-6">Why PDF Tools?</h2>
+            <h2 className="text-3xl md:text-4xl font-bold mb-6">Why PDFKira?</h2>
             <p className="text-xl text-muted-foreground">Built to be the last PDF utility you'll ever need to bookmark.</p>
           </div>
 

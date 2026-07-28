@@ -1,20 +1,22 @@
 import { useSEO } from "@/hooks/use-seo";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
+import { BrandMark } from "@/components/brand/BrandMark";
 
 export function About() {
   useSEO({
     title: "About Us",
-    description: "Learn why we built PDF Tools and our commitment to privacy, speed, and craftsmanship."
+    description: "Learn why we built PDFKira and our commitment to privacy, speed, and craftsmanship."
   });
 
   return (
     <div className="bg-background min-h-screen pb-24">
       <div className="bg-card border-b border-border pt-20 pb-16 mb-16">
         <div className="container mx-auto px-4 md:px-6 text-center max-w-3xl">
-          <h1 className="text-4xl md:text-6xl font-bold mb-6 tracking-tight">Built for Craft.</h1>
+          <BrandMark className="mb-6 justify-center" logoClassName="h-11 w-11" wordmarkClassName="text-xl" />
+          <h1 className="text-4xl md:text-6xl font-bold mb-6 tracking-tight">Built for PDFKira.</h1>
           <p className="text-xl text-muted-foreground leading-relaxed">
-            We were tired of ad-ridden, slow, and privacy-invasive PDF tools. So we built the one we wanted to use.
+            We were tired of ad-ridden, slow, and privacy-invasive PDF tools. So we built PDFKira.
           </p>
         </div>
       </div>
@@ -23,7 +25,7 @@ export function About() {
         <h2>Our Mission</h2>
         <p>
           Document management shouldn't be a chore, and it definitely shouldn't mean compromising your privacy or clicking through popups. 
-          PDF Tools was created with a simple mission: provide the absolute best PDF utility experience on the web.
+          PDFKira was created with a simple mission: provide the absolute best PDF utility experience on the web.
         </p>
 
         <h2>Why We're Different</h2>

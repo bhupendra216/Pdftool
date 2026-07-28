@@ -1,6 +1,6 @@
 kind = "web"
 previewPath = "/"
-title = "PDF Tools"
+title = "PDFKira"
 version = "1.0.0"
 id = "artifacts/pdf-tools"
 router = "path"

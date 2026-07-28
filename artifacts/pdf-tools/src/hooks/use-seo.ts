@@ -1,4 +1,25 @@
 import { useEffect } from 'react';
+import logo from '@/assets/pdfkira-logo.png';
+
+const siteName = "PDFKira";
+
+function updateMeta(selector: string, value: string) {
+  let metaTag = document.querySelector(selector);
+
+  if (!metaTag) {
+    metaTag = document.createElement("meta");
+    const attribute = selector.includes("property=") ? "property" : "name";
+    const match = selector.match(/['\"]([^'\"]+)['\"]/);
+
+    if (match?.[1]) {
+      metaTag.setAttribute(attribute, match[1]);
+    }
+
+    document.head.appendChild(metaTag);
+  }
+
+  metaTag.setAttribute("content", value);
+}
 
 export function useSEO({
   title,
@@ -8,7 +29,13 @@ export function useSEO({
   description?: string;
 }) {
   useEffect(() => {
-    document.title = `${title} | PDF Tools`;
+    const pageTitle = title.includes(siteName) ? title : `${title} | ${siteName}`;
+    document.title = pageTitle;
+
+    updateMeta('meta[property="og:title"]', pageTitle);
+    updateMeta('meta[name="twitter:title"]', pageTitle);
+    updateMeta('meta[property="og:image"]', logo);
+    updateMeta('meta[name="twitter:image"]', logo);
 
     if (description) {
       let metaDescription = document.querySelector('meta[name="description"]');
@@ -18,6 +45,9 @@ export function useSEO({
         document.head.appendChild(metaDescription);
       }
       metaDescription.setAttribute('content', description);
+
+      updateMeta('meta[property="og:description"]', description);
+      updateMeta('meta[name="twitter:description"]', description);
     }
   }, [title, description]);
 }

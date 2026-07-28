@@ -16,6 +16,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, ChevronRight, Settings2, Download, AlertCircle, MoveUp, MoveDown, RotateCcw, RotateCw, Trash2, GripVertical, Check, FileMinus, FilePlus, ShieldCheck, Zap, Sparkles, FileText, Layers3 } from "lucide-react";
+import { BrandMark } from "@/components/brand/BrandMark";
 
 const TRUST_POINTS = [
   "Secure processing",
@@ -188,8 +189,11 @@ export function ToolDetail() {
   const [files, setFiles] = useState<File[]>([]);
   const [status, setStatus] = useState<"idle" | "options" | "processing" | "success">("idle");
   const [progress, setProgress] = useState(0);
+  const [progressStage, setProgressStage] = useState("Preparing...");
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [downloadFileName, setDownloadFileName] = useState("processed.pdf");
+  const [downloadSizeBytes, setDownloadSizeBytes] = useState<number | null>(null);
+  const [processingTimeMs, setProcessingTimeMs] = useState<number | null>(null);
   const [pageRange, setPageRange] = useState("");
   const [pageRangeError, setPageRangeError] = useState<string | null>(null);
   const [totalPages, setTotalPages] = useState<number | null>(null);
@@ -217,6 +221,11 @@ export function ToolDetail() {
   const [watermarkLogo, setWatermarkLogo] = useState<File | null>(null);
   const [pageNumberStart, setPageNumberStart] = useState<string>("1");
   const [pageNumberPosition, setPageNumberPosition] = useState<string>("bottom-right");
+  const [pdfToWordPreserveLayout, setPdfToWordPreserveLayout] = useState(true);
+  const [pdfToWordExtractImages, setPdfToWordExtractImages] = useState(true);
+  const [pdfToWordOcr, setPdfToWordOcr] = useState(false);
+  const [pdfToWordOutputFormat, setPdfToWordOutputFormat] = useState<"docx" | "doc">("docx");
+  const [pdfToWordPageCount, setPdfToWordPageCount] = useState<number | null>(null);
   const uploadConfig = useMemo(() => getUploadConfig(tool?.slug), [tool?.slug]);
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, "") ?? "";
   const apiUrl = (path: string) => `${apiBaseUrl}${path}`;
@@ -330,13 +339,21 @@ export function ToolDetail() {
     setFiles([]);
     setStatus("idle");
     setProgress(0);
+    setProgressStage("Preparing...");
     setDownloadUrl(null);
     setDownloadFileName("processed.pdf");
+    setDownloadSizeBytes(null);
+    setProcessingTimeMs(null);
     setPdfPages([]);
     setDraggedPageIndex(null);
     setTotalPages(null);
+    setPdfToWordPageCount(null);
     setPageRangeError(null);
     setErrorMessage(null);
+    setPdfToWordPreserveLayout(true);
+    setPdfToWordExtractImages(true);
+    setPdfToWordOcr(false);
+    setPdfToWordOutputFormat("docx");
   }, [slug]);
 
   useEffect(() => {
@@ -453,10 +470,21 @@ export function ToolDetail() {
     const formData = new FormData();
     formData.append("files", fileToConvert);
 
-    const response = await fetch(apiUrl("/api/convert-pdf-to-word"), {
+    formData.append("outputFormat", pdfToWordOutputFormat);
+    formData.append("preserveLayout", String(pdfToWordPreserveLayout));
+    formData.append("extractImages", String(pdfToWordExtractImages));
+    formData.append("ocr", String(pdfToWordOcr));
+
+    const controller = new AbortController();
+    const timeoutId = window.setTimeout(() => controller.abort(), 180000);
+
+    const response = await fetch(apiUrl("/api/pdf-to-word"), {
       method: "POST",
       body: formData,
+      signal: controller.signal,
     });
+
+    window.clearTimeout(timeoutId);
 
     if (!response.ok) {
       const text = await response.text().catch(() => null);
@@ -799,6 +827,21 @@ export function ToolDetail() {
     setDownloadFileName(outputName);
   };
 
+  const parseFilenameFromDisposition = (contentDisposition: string | null, fallback: string) => {
+    if (!contentDisposition) return fallback;
+    const utf8Match = contentDisposition.match(/filename\*=UTF-8''([^;]+)/i);
+    if (utf8Match?.[1]) {
+      try {
+        return decodeURIComponent(utf8Match[1]);
+      } catch {
+        return utf8Match[1];
+      }
+    }
+
+    const asciiMatch = contentDisposition.match(/filename\s*=\s*"?([^";]+)"?/i);
+    return asciiMatch?.[1] || fallback;
+  };
+
   useSEO({
     title: tool?.seoTitle || "Loading...",
     description: tool?.seoDescription || "PDF tool"
@@ -807,6 +850,7 @@ export function ToolDetail() {
   if (isLoading) {
     return (
       <div className="container mx-auto px-4 py-20 max-w-4xl space-y-8">
+        <BrandMark className="justify-center" logoClassName="h-10" wordmarkClassName="text-lg" />
         <Skeleton className="h-10 w-48" />
         <Skeleton className="h-20 w-full" />
         <Skeleton className="h-[400px] w-full rounded-3xl" />

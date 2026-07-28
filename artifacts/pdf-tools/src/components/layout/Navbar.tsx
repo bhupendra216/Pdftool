@@ -2,11 +2,10 @@ import { Link, useLocation } from "wouter";
 import { Menu } from "lucide-react";
 import { useState } from "react";
 
-import logo from "@/assets/pdfkira-logo.png";
-
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { ThemeToggle } from "./ThemeToggle";
+import { BrandMark } from "@/components/brand/BrandMark";
 
 export function Navbar() {
   const [location] = useLocation();
@@ -27,11 +26,7 @@ export function Navbar() {
           href="/"
           className="flex items-center gap-3 transition-opacity hover:opacity-80"
         >
-          <img
-            src={logo}
-            alt="PDFKira"
-            className="h-11 w-auto"
-          />
+          <BrandMark logoClassName="h-10 w-10" wordmarkClassName="text-lg" />
         </Link>
 
         {/* Desktop Navigation */}
@@ -66,13 +61,9 @@ export function Navbar() {
             <Link
               href="/"
               onClick={() => setIsOpen(false)}
-              className="mb-8"
+              className="mb-8 flex items-center gap-3"
             >
-              <img
-                src={logo}
-                alt="PDFKira"
-                className="h-12 w-auto"
-              />
+              <BrandMark logoClassName="h-11 w-11" wordmarkClassName="text-xl" />
             </Link>
 
             <div className="flex flex-col gap-4">

@@ -14,7 +14,7 @@ function formatDate(value: string) {
 
 export function AiJobs() {
   useSEO({
-    title: "AI Jobs | PDF Tools",
+    title: "AI Jobs | PDFKira",
     description: "Discover remote and hybrid AI jobs from leading companies hiring worldwide.",
   });
 
