@@ -673,6 +673,40 @@ router.post("/convert-pdf-to-jpg", upload.single("files"), async (req, res) => {
   }
 });
 
+router.post("/compress-pdf", upload.single("files"), async (req, res) => {
+  const file = req.file as Express.Multer.File | undefined;
+
+  if (!file) {
+    res.status(400).json({ error: "No file uploaded" });
+    return;
+  }
+
+  try {
+    const { pageCount } = await validatePdfBuffer(file);
+    const pdf = await PDFDocument.load(file.buffer, { ignoreEncryption: false });
+    const pages = pdf.getPages();
+
+    if (pages.length > 0) {
+      for (const page of pages) {
+        const { width, height } = page.getSize();
+        page.setSize(width, height);
+      }
+    }
+
+    const compressedPdfBytes = await pdf.save({ useObjectStreams: true });
+    const base = path.basename(file.originalname || "document", path.extname(file.originalname || ""));
+    const outputName = `${base}-compressed.pdf`;
+
+    res.setHeader("content-type", "application/pdf");
+    res.setHeader("content-disposition", formatContentDisposition(outputName));
+    res.send(Buffer.from(compressedPdfBytes));
+  } catch (error: any) {
+    const message = String(error?.message || error || "Compression failed");
+    console.error("PDF compression failed", error);
+    res.status(500).json({ error: message });
+  }
+});
+
 router.post("/protect-pdf", upload.single("files"), async (req, res) => {
   const file = req.file as Express.Multer.File | undefined;
   const password = String(req.body.password || "").trim();

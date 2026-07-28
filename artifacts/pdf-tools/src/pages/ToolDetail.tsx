@@ -210,8 +210,8 @@ export function ToolDetail() {
   const [outputFormat, setOutputFormat] = useState<string>("png");
   const [resizeWidth, setResizeWidth] = useState<string>("");
   const [resizeHeight, setResizeHeight] = useState<string>("");
-  const [compressQuality, setCompressQuality] = useState<number>(80);
-  const [upscaleFactor, setUpscaleFactor] = useState<number>(2);
+  const [compressQuality, setCompressQuality] = useState<number>(78);
+  const [upscaleFactor, setUpscaleFactor] = useState<number>(4);
   const [upscaleWidth, setUpscaleWidth] = useState<string>("");
   const [upscaleHeight, setUpscaleHeight] = useState<string>("");
   const [password, setPassword] = useState<string>("");
@@ -243,6 +243,55 @@ export function ToolDetail() {
   const highlights = uploadConfig.highlights;
   const trustedPoints = TRUST_POINTS;
   const SUPPORTED_OUTPUT = ["png", "jpg", "jpeg", "webp", "bmp"];
+  const compressionPresets = [
+    { id: "best", label: "Best Quality", quality: 92, estimateFactor: 0.88, description: "Keep more detail and color fidelity while still shaving off noticeable size." },
+    { id: "balanced", label: "Balanced", quality: 78, estimateFactor: 0.65, description: "A practical middle ground for everyday sharing and storage." },
+    { id: "max", label: "Maximum Compression", quality: 55, estimateFactor: 0.4, description: "Prioritize small file sizes for uploads, email, and web delivery." },
+  ] as const;
+
+  const activeCompressionPreset = compressionPresets.find((preset) => preset.quality === compressQuality) ?? compressionPresets[1];
+
+  const compressionEstimate = useMemo(() => {
+    if (!files[0]) return null;
+
+    const originalSize = files[0].size;
+    const estimatedSize = Math.max(1024, Math.round(originalSize * activeCompressionPreset.estimateFactor));
+    const savedPercent = originalSize > 0 ? Math.max(0, Math.round(((originalSize - estimatedSize) / originalSize) * 100)) : 0;
+
+    return {
+      originalSize,
+      estimatedSize,
+      savedPercent,
+    };
+  }, [activeCompressionPreset.estimateFactor, files]);
+
+  const upscalePreviewStats = useMemo(() => {
+    if (tool?.slug !== "image-upscale" || !files[0] || imageWidth == null || imageHeight == null) {
+      return null;
+    }
+
+    const originalWidth = imageWidth;
+    const originalHeight = imageHeight;
+    const originalPixels = originalWidth * originalHeight;
+    const outputWidth = Math.round(originalWidth * upscaleFactor);
+    const outputHeight = Math.round(originalHeight * upscaleFactor);
+    const outputPixels = outputWidth * outputHeight;
+    const originalMegapixels = originalPixels / 1_000_000;
+    const outputMegapixels = outputPixels / 1_000_000;
+    const approximateOutputSize = Math.max(1024, Math.round(files[0].size * (outputPixels / originalPixels)));
+    const estimatedProcessingTimeSeconds = Math.max(8, Math.min(60, Math.round(outputMegapixels * 6 + (upscaleFactor >= 8 ? 8 : 0))));
+
+    return {
+      originalWidth,
+      originalHeight,
+      outputWidth,
+      outputHeight,
+      originalMegapixels,
+      outputMegapixels,
+      approximateOutputSize,
+      estimatedProcessingTimeSeconds,
+    };
+  }, [files, imageHeight, imageWidth, tool?.slug, upscaleFactor]);
 
   const estimateCompressedSize = (size: number, quality: number) => {
     const factor = quality >= 90 ? 0.95
@@ -877,15 +926,17 @@ export function ToolDetail() {
       setPdfPages([]);
       setTotalPages(null);
       setPageRangeError(null);
-      if (tool?.slug === "image-converter") {
+      if (tool?.slug === "image-converter" || tool?.slug === "image-upscale" || tool?.slug === "image-compress") {
         if (imagePreviewUrl) {
           URL.revokeObjectURL(imagePreviewUrl);
         }
         const url = URL.createObjectURL(first);
         setImagePreviewUrl(url);
-        setImageFormat(first.type.replace(/^image\//, "") || null);
+        const inferredFormat = (first.type.replace(/^image\//, "") || first.name.split(".").pop() || "unknown").toUpperCase();
+        setImageFormat(inferredFormat);
         setImageWidth(null);
         setImageHeight(null);
+        setUpscaleFactor(4);
         const img = new Image();
         img.onload = () => {
           setImageWidth(img.naturalWidth);
@@ -896,7 +947,7 @@ export function ToolDetail() {
           setImageHeight(null);
         };
         img.src = url;
-      } else if (tool?.slug === "split-pdf") {
+      } else if (tool?.slug === "split-pdf" || tool?.slug === "compress-pdf") {
         (async () => {
           try {
             const bytes = await first.arrayBuffer();
@@ -928,6 +979,11 @@ export function ToolDetail() {
       if (updated.length === 0) {
         setStatus("idle");
         setPdfPages([]);
+        setImagePreviewUrl(null);
+        setImageWidth(null);
+        setImageHeight(null);
+        setImageFormat(null);
+        setDownloadUrl(null);
       }
       return updated;
     });
@@ -936,6 +992,7 @@ export function ToolDetail() {
   const handleProcess = async () => {
     if (!canProcess || !tool) return;
 
+    const startTime = Date.now();
     setErrorMessage(null);
     setStatus("processing");
     setProgress(0);
@@ -943,7 +1000,18 @@ export function ToolDetail() {
     setPassword("");
 
     const interval = setInterval(() => {
-      setProgress((prev) => Math.min(95, prev + Math.floor(Math.random() * 10) + 5));
+      setProgress((prev) => {
+        const next = prev + Math.floor(Math.random() * 8) + 5;
+        const capped = Math.min(95, next);
+        if (capped < 35) {
+          setProgressStage(tool.slug === "compress-pdf" ? "Analyzing document structure..." : "Preparing optimized output...");
+        } else if (capped < 75) {
+          setProgressStage(tool.slug === "compress-pdf" ? "Compressing pages and streams..." : "Applying quality-preserving compression...");
+        } else {
+          setProgressStage(tool.slug === "compress-pdf" ? "Finalizing download package..." : "Finishing the optimized file...");
+        }
+        return capped;
+      });
     }, 400);
 
     try {
@@ -1044,8 +1112,11 @@ export function ToolDetail() {
 
       setDownloadUrl(URL.createObjectURL(blob));
       setDownloadFileName(outputName);
+      setDownloadSizeBytes(blob.size);
+      setProcessingTimeMs(Date.now() - startTime);
       setStatus("success");
       setProgress(100);
+      setProgressStage("Ready to download");
     } catch (error: any) {
       console.error(error);
       setErrorMessage(error?.message || "Failed to process the file. Please try again.");
@@ -1262,41 +1333,263 @@ export function ToolDetail() {
                     </div>
                   )}
 
-                  {tool.slug === "image-converter" && files[0] && (
-                    <div className="mt-6">
-                      <div className="flex gap-6 items-start">
-                        <div className="w-40 h-40 bg-muted rounded-lg overflow-hidden flex items-center justify-center border">
-                          {imagePreviewUrl ? (
-                            // eslint-disable-next-line jsx-a11y/img-redundant-alt
-                            <img src={imagePreviewUrl} alt="preview" className="w-full h-full object-contain" />
+                  {(tool.slug === "image-converter" || tool.slug === "image-upscale" || tool.slug === "image-compress" || tool.slug === "compress-pdf") && files[0] && (
+                    <div className="mt-6 rounded-3xl border border-border/70 bg-background/80 p-5 shadow-sm">
+                      <div className="flex flex-wrap items-start justify-between gap-4">
+                        <div>
+                          <h3 className="text-lg font-semibold text-foreground">
+                            {tool.slug === "image-upscale"
+                              ? "Image details & upscale preview"
+                              : tool.slug === "image-compress"
+                              ? "Image details & compression preview"
+                              : tool.slug === "compress-pdf"
+                              ? "PDF details & compression preview"
+                              : "Image details"}
+                          </h3>
+                          <p className="mt-1 text-sm text-muted-foreground">
+                            {tool.slug === "image-upscale"
+                              ? "Review the source image and estimate the output before processing."
+                              : tool.slug === "image-compress"
+                              ? "Review the source image and estimate the optimized output before compression."
+                              : tool.slug === "compress-pdf"
+                              ? "Review the source document and estimate the optimized size before compression."
+                              : "Preview the uploaded image and confirm the file details before conversion."}
+                          </p>
+                        </div>
+                        {tool.slug === "image-upscale" && (
+                          <Badge variant="secondary" className="rounded-full border border-primary/20 bg-primary/10 text-primary">
+                            AI-ready preview
+                          </Badge>
+                        )}
+                      </div>
+
+                      <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
+                        <div className="overflow-hidden rounded-2xl border border-border/70 bg-card/70 p-3">
+                          {tool.slug === "compress-pdf" ? (
+                            <div className="flex h-[260px] flex-col items-center justify-center gap-3 rounded-2xl bg-muted/50 px-4 text-center">
+                              <FileText className="h-12 w-12 text-primary" />
+                              <div>
+                                <p className="font-semibold text-foreground">{files[0].name}</p>
+                                <p className="mt-1 text-sm text-muted-foreground">PDF preview will be generated after compression.</p>
+                              </div>
+                            </div>
+                          ) : imagePreviewUrl ? (
+                            <img src={imagePreviewUrl} alt="preview" className="h-full max-h-[320px] w-full object-contain" />
                           ) : (
-                            <div className="text-sm text-muted-foreground">Preview unavailable</div>
+                            <div className="flex h-[240px] items-center justify-center rounded-2xl bg-muted/60 text-sm text-muted-foreground">
+                              Preview unavailable
+                            </div>
                           )}
                         </div>
 
-                        <div className="flex-1">
-                          <p className="font-medium">{files[0].name}</p>
-                          <p className="text-sm text-muted-foreground">Format: {imageFormat || 'Unknown'}</p>
-                          <p className="text-sm text-muted-foreground">Dimensions: {imageWidth ? `${imageWidth} × ${imageHeight}` : 'Unknown'}</p>
-                          <p className="text-sm text-muted-foreground">Size: {formatBytes(files[0].size)}</p>
+                        <div className="space-y-4">
+                          {tool.slug === "image-upscale" && (
+                            <div className="rounded-2xl border border-border/70 bg-background/90 p-4">
+                              <div className="flex items-center gap-2">
+                                <Sparkles className="h-4 w-4 text-primary" />
+                                <p className="text-sm font-semibold text-foreground">Scale factor</p>
+                              </div>
+                              <div className="mt-3 grid gap-2 sm:grid-cols-3">
+                                {[2, 4, 8].map((value) => (
+                                  <button
+                                    key={value}
+                                    type="button"
+                                    onClick={() => setUpscaleFactor(value)}
+                                    className={`rounded-2xl border px-3 py-3 text-left transition-all ${upscaleFactor === value ? "border-primary bg-primary/10 shadow-sm" : "border-border/70 bg-background/70 hover:border-primary/40"}`}
+                                  >
+                                    <div className="flex items-center justify-between">
+                                      <span className="font-semibold text-foreground">{value}×</span>
+                                      {value === 4 && (
+                                        <Badge variant="outline" className="rounded-full border-primary/20 bg-primary/5 text-[10px] font-semibold uppercase tracking-[0.2em] text-primary">
+                                          Recommended
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                              <p className="mt-3 text-xs text-muted-foreground">Choose the target enlargement before processing. Higher values increase detail synthesis and processing time.</p>
+                            </div>
+                          )}
 
-                          <div className="mt-6 flex gap-3">
-                            <Button variant="outline" onClick={() => {
-                              setFiles([]);
-                              setImageFormat(null);
-                              if (imagePreviewUrl) {
-                                URL.revokeObjectURL(imagePreviewUrl);
-                              }
-                              setImagePreviewUrl(null);
-                              setImageWidth(null);
-                              setImageHeight(null);
-                              setStatus('idle');
-                              setDownloadUrl(null);
-                            }} className="rounded-xl h-12">
-                              Reset
-                            </Button>
+                          {(tool.slug === "image-compress" || tool.slug === "compress-pdf") && (
+                            <div className="rounded-2xl border border-border/70 bg-background/90 p-4">
+                              <div className="flex items-center gap-2">
+                                <Sparkles className="h-4 w-4 text-primary" />
+                                <p className="text-sm font-semibold text-foreground">Compression preset</p>
+                              </div>
+                              <div className="mt-3 grid gap-2 md:grid-cols-3">
+                                {compressionPresets.map((preset) => (
+                                  <button
+                                    key={preset.id}
+                                    type="button"
+                                    onClick={() => setCompressQuality(preset.quality)}
+                                    className={`rounded-2xl border px-3 py-3 text-left transition-all ${compressQuality === preset.quality ? "border-primary bg-primary/10 shadow-sm" : "border-border/70 bg-background/70 hover:border-primary/40"}`}
+                                  >
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="font-semibold text-foreground">{preset.label}</span>
+                                      {preset.id === "balanced" && (
+                                        <Badge variant="outline" className="rounded-full border-primary/20 bg-primary/5 text-[10px] font-semibold uppercase tracking-[0.2em] text-primary">
+                                          Preferred
+                                        </Badge>
+                                      )}
+                                    </div>
+                                  </button>
+                                ))}
+                              </div>
+                              <p className="mt-3 text-xs text-muted-foreground">{activeCompressionPreset.description}</p>
+                            </div>
+                          )}
+
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div className="rounded-2xl border border-border/70 bg-card/80 p-3">
+                              <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">{tool.slug === "compress-pdf" ? "Pages" : "Resolution"}</p>
+                              <p className="mt-1 font-semibold text-foreground">{tool.slug === "compress-pdf" ? (totalPages ? `${totalPages} pages` : "Loading...") : imageWidth && imageHeight ? `${imageWidth} × ${imageHeight}` : "Loading..."}</p>
+                            </div>
+                            <div className="rounded-2xl border border-border/70 bg-card/80 p-3">
+                              <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Format</p>
+                              <p className="mt-1 font-semibold text-foreground">{imageFormat || (tool.slug === "compress-pdf" ? "PDF" : "Unknown")}</p>
+                            </div>
+                            <div className="rounded-2xl border border-border/70 bg-card/80 p-3">
+                              <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">{tool.slug === "compress-pdf" ? "Document size" : "Megapixels"}</p>
+                              <p className="mt-1 font-semibold text-foreground">{tool.slug === "compress-pdf" ? formatBytes(files[0].size) : imageWidth && imageHeight ? `${((imageWidth * imageHeight) / 1_000_000).toFixed(2)} MP` : "Loading..."}</p>
+                            </div>
+                            <div className="rounded-2xl border border-border/70 bg-card/80 p-3">
+                              <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">File size</p>
+                              <p className="mt-1 font-semibold text-foreground">{formatBytes(files[0].size)}</p>
+                            </div>
+                          </div>
+
+                          {tool.slug === "image-upscale" && upscalePreviewStats && (
+                            <div className="rounded-3xl border border-primary/20 bg-primary/5 p-4">
+                              <div className="mb-3 flex items-center gap-2">
+                                <Zap className="h-4 w-4 text-primary" />
+                                <p className="text-sm font-semibold text-foreground">Estimated output</p>
+                              </div>
+                              <div className="grid gap-3 md:grid-cols-2">
+                                <div className="rounded-2xl border border-border/70 bg-background/80 p-3">
+                                  <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Output resolution</p>
+                                  <p className="mt-1 font-semibold text-foreground">{upscalePreviewStats.outputWidth} × {upscalePreviewStats.outputHeight}</p>
+                                </div>
+                                <div className="rounded-2xl border border-border/70 bg-background/80 p-3">
+                                  <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Estimated megapixels</p>
+                                  <p className="mt-1 font-semibold text-foreground">{upscalePreviewStats.outputMegapixels.toFixed(2)} MP</p>
+                                </div>
+                                <div className="rounded-2xl border border-border/70 bg-background/80 p-3">
+                                  <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Approx. output size</p>
+                                  <p className="mt-1 font-semibold text-foreground">{formatBytes(upscalePreviewStats.approximateOutputSize)}</p>
+                                </div>
+                                <div className="rounded-2xl border border-border/70 bg-background/80 p-3">
+                                  <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Estimated time</p>
+                                  <p className="mt-1 font-semibold text-foreground">~{upscalePreviewStats.estimatedProcessingTimeSeconds}s</p>
+                                </div>
+                              </div>
+                              <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                                AI upscaling improves resolution and perceived quality, but it cannot recreate details that do not exist in the original image.
+                              </p>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {tool.slug === "image-upscale" && upscalePreviewStats && (
+                        <div className="mt-6 grid gap-4 lg:grid-cols-2">
+                          <div className="rounded-3xl border border-border/70 bg-card/80 p-4">
+                            <div className="mb-3 flex items-center gap-2">
+                              <Badge variant="outline" className="rounded-full border-border/70">Original</Badge>
+                              <p className="text-sm font-semibold text-foreground">Source image metrics</p>
+                            </div>
+                            <div className="space-y-2 text-sm">
+                              <div className="flex items-center justify-between rounded-2xl bg-background/80 px-3 py-2">
+                                <span className="text-muted-foreground">Resolution</span>
+                                <span className="font-medium text-foreground">{upscalePreviewStats.originalWidth} × {upscalePreviewStats.originalHeight}</span>
+                              </div>
+                              <div className="flex items-center justify-between rounded-2xl bg-background/80 px-3 py-2">
+                                <span className="text-muted-foreground">Megapixels</span>
+                                <span className="font-medium text-foreground">{upscalePreviewStats.originalMegapixels.toFixed(2)} MP</span>
+                              </div>
+                              <div className="flex items-center justify-between rounded-2xl bg-background/80 px-3 py-2">
+                                <span className="text-muted-foreground">File size</span>
+                                <span className="font-medium text-foreground">{formatBytes(files[0].size)}</span>
+                              </div>
+                              <div className="flex items-center justify-between rounded-2xl bg-background/80 px-3 py-2">
+                                <span className="text-muted-foreground">Format</span>
+                                <span className="font-medium text-foreground">{imageFormat || "Unknown"}</span>
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="rounded-3xl border border-primary/20 bg-primary/5 p-4">
+                            <div className="mb-3 flex items-center gap-2">
+                              <Badge variant="secondary" className="rounded-full border-primary/20 bg-primary/10 text-primary">Upscaled</Badge>
+                              <p className="text-sm font-semibold text-foreground">Estimated output metrics</p>
+                            </div>
+                            <div className="space-y-2 text-sm">
+                              <div className="flex items-center justify-between rounded-2xl bg-background/80 px-3 py-2">
+                                <span className="text-muted-foreground">Resolution</span>
+                                <span className="font-medium text-foreground">{upscalePreviewStats.outputWidth} × {upscalePreviewStats.outputHeight}</span>
+                              </div>
+                              <div className="flex items-center justify-between rounded-2xl bg-background/80 px-3 py-2">
+                                <span className="text-muted-foreground">Megapixels</span>
+                                <span className="font-medium text-foreground">{upscalePreviewStats.outputMegapixels.toFixed(2)} MP</span>
+                              </div>
+                              <div className="flex items-center justify-between rounded-2xl bg-background/80 px-3 py-2">
+                                <span className="text-muted-foreground">Approx. output size</span>
+                                <span className="font-medium text-foreground">{formatBytes(upscalePreviewStats.approximateOutputSize)}</span>
+                              </div>
+                              <div className="flex items-center justify-between rounded-2xl bg-background/80 px-3 py-2">
+                                <span className="text-muted-foreground">Estimated time</span>
+                                <span className="font-medium text-foreground">~{upscalePreviewStats.estimatedProcessingTimeSeconds}s</span>
+                              </div>
+                            </div>
+                            <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                              Final file size can vary depending on image content, color depth, and compression settings.
+                            </p>
                           </div>
                         </div>
+                      )}
+
+                      {(tool.slug === "image-compress" || tool.slug === "compress-pdf") && compressionEstimate && (
+                        <div className="rounded-3xl border border-primary/20 bg-primary/5 p-4">
+                          <div className="mb-3 flex items-center gap-2">
+                            <Zap className="h-4 w-4 text-primary" />
+                            <p className="text-sm font-semibold text-foreground">Original vs estimated output</p>
+                          </div>
+                          <div className="grid gap-3 md:grid-cols-2">
+                            <div className="rounded-2xl border border-border/70 bg-background/80 p-3">
+                              <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Original</p>
+                              <p className="mt-1 font-semibold text-foreground">{formatBytes(compressionEstimate.originalSize)}</p>
+                            </div>
+                            <div className="rounded-2xl border border-border/70 bg-background/80 p-3">
+                              <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Estimated output</p>
+                              <p className="mt-1 font-semibold text-foreground">{formatBytes(compressionEstimate.estimatedSize)}</p>
+                            </div>
+                          </div>
+                          <div className="mt-3 flex items-center justify-between rounded-2xl bg-background/80 px-3 py-2 text-sm">
+                            <span className="text-muted-foreground">Estimated savings</span>
+                            <span className="font-semibold text-foreground">{compressionEstimate.savedPercent}% smaller</span>
+                          </div>
+                          <p className="mt-3 text-xs leading-relaxed text-muted-foreground">
+                            Final output size may shift slightly depending on file content, color depth, and the way the source is encoded.
+                          </p>
+                        </div>
+                      )}
+
+                      <div className="mt-6 flex gap-3">
+                        <Button variant="outline" onClick={() => {
+                          setFiles([]);
+                          setImageFormat(null);
+                          if (imagePreviewUrl) {
+                            URL.revokeObjectURL(imagePreviewUrl);
+                          }
+                          setImagePreviewUrl(null);
+                          setImageWidth(null);
+                          setImageHeight(null);
+                          setStatus('idle');
+                          setDownloadUrl(null);
+                        }} className="rounded-xl h-12">
+                          Reset
+                        </Button>
                       </div>
                     </div>
                   )}
@@ -1445,7 +1738,7 @@ export function ToolDetail() {
                       </div>
                     )}
 
-                    {(tool.slug === "image-resize" || tool.slug === "image-compress" || tool.slug === "image-upscale") && (
+                    {(tool.slug === "image-resize" || tool.slug === "image-upscale") && (
                       <div className="space-y-4 rounded-2xl border border-border/70 bg-card/80 p-4">
                         <div>
                           <label className="mb-2 block text-sm font-medium text-foreground">Width</label>
@@ -1471,35 +1764,59 @@ export function ToolDetail() {
                             min={1}
                           />
                         </div>
-                        {tool.slug === "image-compress" && (
-                          <div>
-                            <label className="mb-2 block text-sm font-medium text-foreground">Quality</label>
-                            <input
-                              type="range"
-                              min={10}
-                              max={100}
-                              step={5}
-                              value={compressQuality}
-                              onChange={(e) => setCompressQuality(Number(e.target.value))}
-                              className="w-full accent-primary"
-                            />
-                            <p className="mt-2 text-xs text-muted-foreground">Quality: {compressQuality}%</p>
-                          </div>
-                        )}
                         {tool.slug === "image-upscale" && (
                           <div>
                             <label className="mb-2 block text-sm font-medium text-foreground">Scale factor</label>
-                            <input
-                              type="number"
-                              min={1}
-                              max={8}
-                              value={upscaleFactor}
-                              onChange={(e) => setUpscaleFactor(Number(e.target.value))}
-                              className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
-                              step={1}
-                            />
+                            <div className="grid gap-2 sm:grid-cols-3">
+                              {[2, 4, 8].map((value) => (
+                                <button
+                                  key={value}
+                                  type="button"
+                                  onClick={() => setUpscaleFactor(value)}
+                                  className={`rounded-2xl border px-3 py-3 text-left transition-all ${upscaleFactor === value ? "border-primary bg-primary/10 shadow-sm" : "border-border/70 bg-background/70 hover:border-primary/40"}`}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-semibold text-foreground">{value}×</span>
+                                    {value === 4 && (
+                                      <Badge variant="outline" className="rounded-full border-primary/20 bg-primary/5 text-[10px] font-semibold uppercase tracking-[0.2em] text-primary">
+                                        Recommended
+                                      </Badge>
+                                    )}
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
+                            <p className="mt-2 text-xs text-muted-foreground">4× is recommended for a balanced quality boost.</p>
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {(tool.slug === "image-compress" || tool.slug === "compress-pdf") && (
+                      <div className="rounded-2xl border border-border/70 bg-card/80 p-4">
+                        <label className="mb-2 block text-sm font-medium text-foreground">Compression preset</label>
+                        <div className="grid gap-2">
+                          {compressionPresets.map((preset) => (
+                            <button
+                              key={preset.id}
+                              type="button"
+                              onClick={() => setCompressQuality(preset.quality)}
+                              className={`rounded-2xl border px-3 py-3 text-left transition-all ${compressQuality === preset.quality ? "border-primary bg-primary/10 shadow-sm" : "border-border/70 bg-background/70 hover:border-primary/40"}`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <div>
+                                  <p className="font-semibold text-foreground">{preset.label}</p>
+                                  <p className="text-xs text-muted-foreground">{preset.description}</p>
+                                </div>
+                                {preset.id === "balanced" && (
+                                  <Badge variant="outline" className="rounded-full border-primary/20 bg-primary/5 text-[10px] font-semibold uppercase tracking-[0.2em] text-primary">
+                                    Preferred
+                                  </Badge>
+                                )}
+                              </div>
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     )}
 
@@ -1559,11 +1876,33 @@ export function ToolDetail() {
             )}
 
             {status === "processing" && (
-              <div className="py-20 text-center animate-in fade-in duration-500 max-w-md mx-auto">
-                <Icon name={tool.icon} className="w-16 h-16 text-primary mx-auto mb-8 animate-pulse" />
-                <h3 className="text-2xl font-bold mb-6">Processing your files...</h3>
-                <Progress value={progress} className="h-3 mb-4" />
-                <p className="text-muted-foreground font-medium">{progress}% Complete</p>
+              <div className="py-20 animate-in fade-in duration-500 max-w-2xl mx-auto">
+                <div className="rounded-3xl border border-border/70 bg-background/90 p-8 shadow-sm">
+                  <div className="flex items-center justify-center mb-8">
+                    <div className="rounded-2xl bg-primary/10 p-4 text-primary">
+                      <Icon name={tool.icon} className="w-10 h-10 animate-pulse" />
+                    </div>
+                  </div>
+                  <h3 className="text-2xl font-bold mb-3 text-center">Processing your file...</h3>
+                  <p className="text-center text-muted-foreground mb-6">{progressStage}</p>
+                  <Progress value={progress} className="h-3 mb-4" />
+                  <p className="text-center text-sm font-medium text-muted-foreground">{progress}% complete</p>
+                  <div className="mt-6 grid gap-3 sm:grid-cols-3">
+                    {[
+                      tool.slug === "compress-pdf" ? "Analyzing document" : "Preparing source",
+                      tool.slug === "compress-pdf" ? "Reducing file size" : "Applying compression",
+                      "Finalizing download",
+                    ].map((step, index) => {
+                      const isActive = progress < 35 ? index === 0 : progress < 75 ? index === 1 : index === 2;
+                      const isComplete = index < (progress < 35 ? 0 : progress < 75 ? 1 : 2);
+                      return (
+                        <div key={step} className={`rounded-2xl border px-3 py-3 text-sm ${isComplete || isActive ? "border-primary/30 bg-primary/10 text-foreground" : "border-border/70 bg-background/70 text-muted-foreground"}`}>
+                          <div className="font-semibold">{step}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
               </div>
             )}
 
@@ -1602,28 +1941,77 @@ export function ToolDetail() {
                     </div>
                   </div>
                 ) : (
-                  <div className="py-12 text-center">
-                    <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-8 shadow-inner">
-                      <Download className="w-12 h-12" />
+                  (tool.slug === "image-compress" || tool.slug === "compress-pdf") ? (
+                    <div className="rounded-3xl border border-border/70 bg-background/90 p-8 shadow-sm">
+                      <div className="flex items-center justify-center mb-6">
+                        <div className="rounded-2xl bg-primary/10 p-4 text-primary">
+                          <Download className="w-8 h-8" />
+                        </div>
+                      </div>
+                      <h3 className="text-2xl font-bold mb-3 text-center">Compression complete</h3>
+                      <p className="text-center text-muted-foreground mb-8">Your file is ready to download with the estimated savings applied.</p>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="rounded-2xl border border-border/70 bg-card/80 p-4">
+                          <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Original size</p>
+                          <p className="mt-2 text-xl font-semibold text-foreground">{formatBytes(files[0]?.size || 0)}</p>
+                        </div>
+                        <div className="rounded-2xl border border-primary/20 bg-primary/5 p-4">
+                          <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Compressed size</p>
+                          <p className="mt-2 text-xl font-semibold text-foreground">{formatBytes(downloadSizeBytes || files[0]?.size || 0)}</p>
+                        </div>
+                      </div>
+                      <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                        <div className="rounded-2xl border border-border/70 bg-card/80 p-4 text-sm text-muted-foreground">
+                          <div className="flex items-center justify-between">
+                            <span>Estimated savings</span>
+                            <span className="font-semibold text-foreground">{compressionEstimate?.savedPercent ?? 0}%</span>
+                          </div>
+                        </div>
+                        <div className="rounded-2xl border border-border/70 bg-card/80 p-4 text-sm text-muted-foreground">
+                          <div className="flex items-center justify-between">
+                            <span>Processing time</span>
+                            <span className="font-semibold text-foreground">{processingTimeMs ? `${Math.max(1, Math.round(processingTimeMs / 1000))}s` : "Instant"}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <Button
+                        size="lg"
+                        className="mt-8 w-full rounded-2xl h-14 text-lg shadow-xl shadow-primary/20 hover:-translate-y-1 transition-transform"
+                        asChild
+                        disabled={!downloadUrl}
+                      >
+                        <a href={downloadUrl ?? "#"} download={downloadFileName}>
+                          Download Compressed File
+                        </a>
+                      </Button>
+                      <Button variant="ghost" onClick={() => { setStatus("idle"); setFiles([]); setDownloadUrl(null); setDownloadSizeBytes(null); setProcessingTimeMs(null); }} className="mt-4 text-muted-foreground">
+                        Start Over
+                      </Button>
                     </div>
-                    <h3 className="text-3xl font-bold mb-4 text-foreground">Task Complete!</h3>
-                    <p className="text-lg text-muted-foreground mb-10">Your files have been processed successfully and are ready to download.</p>
+                  ) : (
+                    <div className="py-12 text-center">
+                      <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-8 shadow-inner">
+                        <Download className="w-12 h-12" />
+                      </div>
+                      <h3 className="text-3xl font-bold mb-4 text-foreground">Task Complete!</h3>
+                      <p className="text-lg text-muted-foreground mb-10">Your files have been processed successfully and are ready to download.</p>
 
-                    <Button
-                      size="lg"
-                      className="w-full rounded-2xl h-16 text-lg mb-6 shadow-xl shadow-primary/20 hover:-translate-y-1 transition-transform"
-                      asChild
-                      disabled={!downloadUrl}
-                    >
-                      <a href={downloadUrl ?? "#"} download={downloadFileName}>
-                        Download Processed File
-                      </a>
-                    </Button>
+                      <Button
+                        size="lg"
+                        className="w-full rounded-2xl h-16 text-lg mb-6 shadow-xl shadow-primary/20 hover:-translate-y-1 transition-transform"
+                        asChild
+                        disabled={!downloadUrl}
+                      >
+                        <a href={downloadUrl ?? "#"} download={downloadFileName}>
+                          Download Processed File
+                        </a>
+                      </Button>
 
-                    <Button variant="ghost" onClick={() => { setStatus("idle"); setFiles([]); setDownloadUrl(null); }} className="text-muted-foreground">
-                      Start Over
-                    </Button>
-                  </div>
+                      <Button variant="ghost" onClick={() => { setStatus("idle"); setFiles([]); setDownloadUrl(null); }} className="text-muted-foreground">
+                        Start Over
+                      </Button>
+                    </div>
+                  )
                 )}
               </div>
             )}
