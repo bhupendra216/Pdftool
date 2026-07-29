@@ -503,6 +503,34 @@ export const tools: ToolRecord[] = [
     ],
     blogSlug: "how-to-convert-image-to-text-using-ocr",
   },
+  {
+    slug: "qr-code-generator",
+    name: "QR Code Generator",
+    shortDescription: "Create printable QR codes for any link or URL in seconds.",
+    category: "Create",
+    icon: "QrCode",
+    popular: true,
+    status: "available",
+    seoTitle: "QR Code Generator Online Free | PDFKira",
+    seoDescription:
+      "Generate high-quality QR codes from any URL with live preview, instant download, and print-ready PNG or PDF output.",
+    steps: [
+      "Enter the URL you want to turn into a QR code.",
+      "Add an optional project name for the download label.",
+      "Preview, download, or share the generated QR code.",
+    ],
+    faqs: [
+      {
+        question: "What formats can I download in?",
+        answer: "You can download your QR code as a high-resolution PNG or a print-ready PDF.",
+      },
+      {
+        question: "Do I need to provide a project name?",
+        answer: "No. The project name is optional and is only used to create a cleaner download filename.",
+      },
+    ],
+    blogSlug: null,
+  },
 ];
 
 export const blogPosts: BlogPostRecord[] = [

@@ -14,6 +14,8 @@ type PdfToWordOptions = {
   ocr: boolean;
 };
 
+type PdfCompressionLevel = "balanced" | "maximum";
+
 function formatContentDisposition(filename: string) {
   const safe = filename.replace(/"/g, "");
   try {
@@ -52,6 +54,29 @@ function parsePdfToWordOptions(body: Record<string, unknown>): PdfToWordOptions 
     extractImages: parseBoolean(body.extractImages, true),
     ocr: parseBoolean(body.ocr, false),
   };
+}
+
+export function parsePdfCompressionLevel(body: Record<string, unknown>): PdfCompressionLevel {
+  const raw = String(body.compressionLevel || body.level || "balanced").toLowerCase();
+  return raw === "maximum" || raw === "max" ? "maximum" : "balanced";
+}
+
+export function getGhostscriptCompressionArgs(inputPath: string, outputPath: string, level: PdfCompressionLevel = "balanced") {
+  const settings = level === "maximum" ? "/screen" : "/ebook";
+
+  return [
+    "-q",
+    "-dNOPAUSE",
+    "-dBATCH",
+    "-sDEVICE=pdfwrite",
+    `-dPDFSETTINGS=${settings}`,
+    "-dCompatibilityLevel=1.4",
+    "-dEmbedAllFonts=true",
+    "-dSubsetFonts=true",
+    "-dOptimize=true",
+    `-sOutputFile=${outputPath}`,
+    inputPath,
+  ];
 }
 
 function getReadablePdfError(message: string) {
@@ -118,6 +143,31 @@ async function detectScannedPdf(buffer: Buffer) {
   } catch {
     return true;
   }
+}
+
+async function buildDocxFromText(text: string, filenameBase: string) {
+  const normalizedText = text.replace(/\r\n/g, "\n").replace(/\n{3,}/g, "\n\n").trim();
+  const blocks = normalizedText
+    .split(/\n{2,}/)
+    .map((block) => block.trim())
+    .filter(Boolean);
+
+  const paragraphs: Paragraph[] = blocks.length > 0
+    ? blocks.map((block) => new Paragraph({
+        children: [new TextRun(block.replace(/\n/g, " "))],
+        spacing: { after: 120 },
+        alignment: AlignmentType.LEFT,
+      }))
+    : [new Paragraph({ children: [new TextRun(" ")], spacing: { after: 120 } })];
+
+  const doc = new Document({
+    sections: [{ properties: {}, children: paragraphs }],
+  });
+
+  return {
+    buffer: Buffer.from(await Packer.toBuffer(doc)),
+    filename: `${filenameBase}.docx`,
+  };
 }
 
 async function buildDocxFromOcrPages(pageTexts: string[], filenameBase: string) {
@@ -342,6 +392,63 @@ async function convertFileWithLibreOffice(file: Express.Multer.File, expectedExt
   }
 }
 
+async function convertPdfToWordViaText(file: Express.Multer.File, outputFormat: "docx" | "doc") {
+  const tempDir = await mkdtemp(path.join(os.tmpdir(), "pdf-to-word-text-"));
+  const inputFile = path.join(tempDir, "input.pdf");
+  const textOutput = path.join(tempDir, "extracted.txt");
+  const baseName = path.basename(file.originalname || "document", path.extname(file.originalname || "")) || "document";
+
+  try {
+    await writeFile(inputFile, file.buffer);
+
+    const pdf = await PDFDocument.load(file.buffer, { ignoreEncryption: false });
+    const pageCount = pdf.getPageCount();
+
+    if (pageCount > 20) {
+      throw new Error("PDFs with more than 20 pages are not supported for Word conversion.");
+    }
+
+    await new Promise<void>((resolve, reject) => {
+      execFile(
+        "pdftotext",
+        ["-layout", "-f", "1", "-l", String(pageCount), inputFile, textOutput],
+        { timeout: 240_000, maxBuffer: 20 * 1024 * 1024 },
+        (error, stdout, stderr) => {
+          if (error) {
+            reject(new Error(`Text extraction failed: ${error.message}${stderr ? ` - ${stderr}` : ""}${stdout ? ` - ${stdout}` : ""}`));
+            return;
+          }
+          resolve();
+        },
+      );
+    });
+
+    const extractedText = await readFile(textOutput, "utf8");
+    if (!extractedText.trim()) {
+      throw new Error("No text could be extracted from the PDF.");
+    }
+
+    const normalizedText = extractedText
+      .replace(/\r\n/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
+
+    const { buffer: docxBuffer } = await buildDocxFromText(normalizedText, baseName);
+
+    if (outputFormat === "doc") {
+      const docxInput = path.join(tempDir, `${baseName}.docx`);
+      await writeFile(docxInput, docxBuffer);
+      await execSofficeConvert(docxInput, tempDir, "doc");
+      const outputPath = await findConvertedFile(tempDir, baseName, "doc");
+      return { buffer: await readFile(outputPath), filename: `${baseName}.doc` };
+    }
+
+    return { buffer: docxBuffer, filename: `${baseName}.docx` };
+  } finally {
+    await rm(tempDir, { recursive: true, force: true });
+  }
+}
+
 async function convertPdfToWord(file: Express.Multer.File, options: PdfToWordOptions) {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "pdf-to-word-"));
   const inputFile = path.join(tempDir, "input.pdf");
@@ -359,15 +466,17 @@ async function convertPdfToWord(file: Express.Multer.File, options: PdfToWordOpt
     }
 
     try {
-      await execSofficeConvert(inputFile, tempDir, options.outputFormat);
-      const convertedBaseName = path.basename(inputFile, inputExt);
-      const outputPath = await findConvertedFile(tempDir, convertedBaseName, options.outputFormat);
-      const buffer = await readFile(outputPath);
-      return { buffer, filename: `${baseName}.${options.outputFormat}` };
-    } catch (error) {
-      // LibreOffice may not produce a direct Word output for some PDFs.
-      // Fall back to OCR/text extraction instead of failing entirely.
-      return await convertPdfToWordViaOcr(file, options.outputFormat);
+      return await convertPdfToWordViaText(file, options.outputFormat);
+    } catch (textError) {
+      try {
+        await execSofficeConvert(inputFile, tempDir, options.outputFormat);
+        const convertedBaseName = path.basename(inputFile, inputExt);
+        const outputPath = await findConvertedFile(tempDir, convertedBaseName, options.outputFormat);
+        const buffer = await readFile(outputPath);
+        return { buffer, filename: `${baseName}.${options.outputFormat}` };
+      } catch (libreOfficeError) {
+        return await convertPdfToWordViaOcr(file, options.outputFormat);
+      }
     }
   } finally {
     await rm(tempDir, { recursive: true, force: true });
@@ -547,7 +656,11 @@ async function handlePdfToWordRequest(req: express.Request, res: express.Respons
   const options = parsePdfToWordOptions(req.body as Record<string, unknown>);
 
   try {
-    await validatePdfBuffer(file);
+    const { pageCount } = await validatePdfBuffer(file);
+    if (pageCount > 20) {
+      res.status(400).json({ error: "PDFs with more than 20 pages are not supported for Word conversion." });
+      return;
+    }
 
     const { buffer, filename } = await convertPdfToWord(file, options);
     const mimeType = options.outputFormat === "docx"
@@ -682,24 +795,25 @@ router.post("/compress-pdf", upload.single("files"), async (req, res) => {
   }
 
   try {
-    const { pageCount } = await validatePdfBuffer(file);
-    const pdf = await PDFDocument.load(file.buffer, { ignoreEncryption: false });
-    const pages = pdf.getPages();
-
-    if (pages.length > 0) {
-      for (const page of pages) {
-        const { width, height } = page.getSize();
-        page.setSize(width, height);
-      }
-    }
-
-    const compressedPdfBytes = await pdf.save({ useObjectStreams: true });
+    await validatePdfBuffer(file);
+    const compressionLevel = parsePdfCompressionLevel(req.body as Record<string, unknown>);
+    const tempDir = await mkdtemp(path.join(os.tmpdir(), "compress-pdf-"));
+    const inputFile = path.join(tempDir, "input.pdf");
+    const outputFile = path.join(tempDir, "compressed.pdf");
     const base = path.basename(file.originalname || "document", path.extname(file.originalname || ""));
     const outputName = `${base}-compressed.pdf`;
 
-    res.setHeader("content-type", "application/pdf");
-    res.setHeader("content-disposition", formatContentDisposition(outputName));
-    res.send(Buffer.from(compressedPdfBytes));
+    try {
+      await writeFile(inputFile, file.buffer);
+      await runGhostscript(getGhostscriptCompressionArgs(inputFile, outputFile, compressionLevel));
+      const buffer = await readFile(outputFile);
+
+      res.setHeader("content-type", "application/pdf");
+      res.setHeader("content-disposition", formatContentDisposition(outputName));
+      res.send(buffer);
+    } finally {
+      await rm(tempDir, { recursive: true, force: true });
+    }
   } catch (error: any) {
     const message = String(error?.message || error || "Compression failed");
     console.error("PDF compression failed", error);

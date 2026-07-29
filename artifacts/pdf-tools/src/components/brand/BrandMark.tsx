@@ -12,14 +12,14 @@ export function BrandMark({
   className,
   logoClassName,
   wordmarkClassName,
-  showWordmark = true,
+  showWordmark = false,
 }: BrandMarkProps) {
   return (
     <div className={cn("inline-flex items-center gap-2.5", className)}>
       <img
         src={logo}
         alt="PDFKira"
-        className={cn("block shrink-0 object-contain", logoClassName)}
+        className={cn("block shrink-0 overflow-hidden rounded-xl object-cover object-center scale-[1.08]", logoClassName)}
       />
       {showWordmark ? (
         <span className={cn("font-bold leading-none tracking-tight text-foreground", wordmarkClassName)}>

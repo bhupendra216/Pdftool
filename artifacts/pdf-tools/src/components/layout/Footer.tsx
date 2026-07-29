@@ -8,7 +8,7 @@ export function Footer() {
         <div className="grid grid-cols-1 md:grid-cols-4 gap-8 md:gap-12">
           <div className="md:col-span-1">
             <Link href="/" className="mb-4 inline-flex items-center transition-opacity hover:opacity-80">
-              <BrandMark logoClassName="h-7 w-7" wordmarkClassName="text-base" />
+              <BrandMark logoClassName="h-11 w-11" wordmarkClassName="text-base" />
             </Link>
             <p className="text-sm text-muted-foreground leading-relaxed">
               Premium, fast, and secure document tools for modern professionals.

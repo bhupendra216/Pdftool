@@ -26,7 +26,7 @@ export function Navbar() {
           href="/"
           className="flex items-center gap-3 transition-opacity hover:opacity-80"
         >
-          <BrandMark logoClassName="h-10 w-10" wordmarkClassName="text-lg" />
+          <BrandMark logoClassName="h-14 w-14" wordmarkClassName="text-lg" />
         </Link>
 
         {/* Desktop Navigation */}
@@ -63,7 +63,7 @@ export function Navbar() {
               onClick={() => setIsOpen(false)}
               className="mb-8 flex items-center gap-3"
             >
-              <BrandMark logoClassName="h-11 w-11" wordmarkClassName="text-xl" />
+              <BrandMark logoClassName="h-14 w-14" wordmarkClassName="text-xl" />
             </Link>
 
             <div className="flex flex-col gap-4">

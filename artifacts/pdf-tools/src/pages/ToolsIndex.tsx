@@ -39,7 +39,7 @@ export function ToolsIndex() {
     <div className="bg-background min-h-screen pb-24">
       <div className="bg-card border-b border-border pt-16 pb-12 mb-12">
         <div className="container mx-auto px-4 md:px-6 text-center max-w-3xl">
-          <BrandMark className="mb-6 justify-center" logoClassName="h-11 w-11" wordmarkClassName="text-xl" />
+          <BrandMark className="mb-6 justify-center" logoClassName="h-16 w-16" wordmarkClassName="text-xl" />
           <h1 className="text-4xl md:text-5xl font-bold mb-6">Every tool for your PDFs</h1>
           <p className="text-xl text-muted-foreground mb-10">
             A complete suite to help you manage your documents efficiently and securely.

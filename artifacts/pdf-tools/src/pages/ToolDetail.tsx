@@ -17,6 +17,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, ChevronRight, Settings2, Download, AlertCircle, MoveUp, MoveDown, RotateCcw, RotateCw, Trash2, GripVertical, Check, FileMinus, FilePlus, ShieldCheck, Zap, Sparkles, FileText, Layers3 } from "lucide-react";
 import { BrandMark } from "@/components/brand/BrandMark";
+import { QrCodeGeneratorTool } from "@/components/shared/QrCodeGeneratorTool";
 
 const TRUST_POINTS = [
   "Secure processing",
@@ -64,7 +65,7 @@ const getUploadConfig = (slug?: string): UploadConfig => {
         label: "PDF file",
         description: "or drop a PDF here.",
         supportedFormats: ["PDF"],
-        highlights: ["Extract editable content", "Retain readable structure", "Simple one-file workflow"],
+        highlights: ["Extract editable content", "Retain readable structure", "Supports up to 20 pages"],
       };
     case "ocr-image-to-text":
       return {
@@ -354,7 +355,7 @@ export function ToolDetail() {
   const uploadHint = tool?.slug === "image-converter"
     ? "Upload a single image file to convert."
     : tool?.slug === "pdf-to-word"
-    ? "Upload a PDF to convert it into a Word document."
+    ? "Upload a PDF with 20 pages or fewer to convert it into a Word document."
     : tool?.slug === "word-to-pdf"
     ? "Upload a Word document to convert it into a PDF."
     : tool?.slug === "jpg-to-pdf"
@@ -731,6 +732,24 @@ export function ToolDetail() {
     return await response.blob();
   };
 
+  const compressPdfOnServer = async (fileToCompress: File, compressionLevel: string): Promise<Blob> => {
+    const formData = new FormData();
+    formData.append("files", fileToCompress);
+    formData.append("compressionLevel", compressionLevel);
+
+    const response = await fetch(apiUrl("/api/compress-pdf"), {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => null);
+      throw new Error(text || `PDF compression failed with HTTP ${response.status}`);
+    }
+
+    return await response.blob();
+  };
+
   const upscaleImageOnServer = async (fileToUpscale: File, scale: number, width: number | null, height: number | null): Promise<Blob> => {
     const formData = new FormData();
     formData.append("files", fileToUpscale);
@@ -919,6 +938,41 @@ export function ToolDetail() {
 
   const isComingSoon = tool.status === "comingSoon";
 
+  if (tool.slug === "qr-code-generator") {
+    return (
+      <div className="flex min-h-screen flex-col bg-background">
+        <div className="border-b border-border bg-card/90 pt-8 pb-10">
+          <div className="container mx-auto max-w-6xl px-4 md:px-6">
+            <nav className="mb-8 flex items-center text-sm font-medium text-muted-foreground">
+              <Link href="/tools" className="transition-colors hover:text-primary">Tools</Link>
+              <ChevronRight className="mx-2 h-4 w-4 opacity-50" />
+              <span className="text-foreground">{tool.name}</span>
+            </nav>
+
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-4">
+                <div className="rounded-2xl bg-primary p-4 text-primary-foreground shadow-sm">
+                  <Icon name={tool.icon} className="h-8 w-8" />
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">{tool.name}</h1>
+                  <p className="mt-2 max-w-2xl text-lg text-muted-foreground">{tool.shortDescription}</p>
+                </div>
+              </div>
+              <Badge variant="secondary" className="w-fit rounded-full border border-border/60 bg-background/80 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                Live preview • Print ready
+              </Badge>
+            </div>
+          </div>
+        </div>
+
+        <div className="container mx-auto flex-1 px-4 py-8 md:px-6 md:py-12">
+          <QrCodeGeneratorTool />
+        </div>
+      </div>
+    );
+  }
+
   const handleFilesSelected = (newFiles: File[]) => {
     if (!allowsMultipleFiles) {
       const first = newFiles[0];
@@ -926,6 +980,26 @@ export function ToolDetail() {
       setPdfPages([]);
       setTotalPages(null);
       setPageRangeError(null);
+      if (tool?.slug === "pdf-to-word") {
+        (async () => {
+          try {
+            const bytes = await first.arrayBuffer();
+            const pdf = await PDFDocument.load(bytes);
+            const pageCount = pdf.getPageCount();
+            setTotalPages(pageCount);
+            setPageRangeError(pageCount > 20 ? "PDFs with more than 20 pages are not supported for Word conversion." : null);
+            if (pageCount > 20) {
+              setErrorMessage("PDFs with more than 20 pages are not supported for Word conversion.");
+            } else {
+              setErrorMessage(null);
+            }
+          } catch (error: any) {
+            setTotalPages(null);
+            setPageRangeError("Unable to read PDF pages for validation");
+            setErrorMessage("Unable to validate the PDF before conversion.");
+          }
+        })();
+      }
       if (tool?.slug === "image-converter" || tool?.slug === "image-upscale" || tool?.slug === "image-compress") {
         if (imagePreviewUrl) {
           URL.revokeObjectURL(imagePreviewUrl);
@@ -1018,7 +1092,16 @@ export function ToolDetail() {
       let blob: Blob;
       let outputName = "processed.pdf";
 
-      if (tool.slug === "merge-pdf") {
+      if (tool.slug === "pdf-to-word") {
+        const bytes = await files[0].arrayBuffer();
+        const pdf = await PDFDocument.load(bytes);
+        const pageCount = pdf.getPageCount();
+        if (pageCount > 20) {
+          throw new Error("PDFs with more than 20 pages are not supported for Word conversion.");
+        }
+        blob = await convertPdfToWordOnServer(files[0]);
+        outputName = files[0].name.replace(/\.[^/.]+$/, "") + ".docx";
+      } else if (tool.slug === "merge-pdf") {
         blob = await mergePdfOnServer(files);
         outputName = "merged.pdf";
       } else if (tool.slug === "split-pdf") {
@@ -1061,6 +1144,11 @@ export function ToolDetail() {
       } else if (tool.slug === "image-compress") {
         blob = await compressImageOnServer(files[0], compressQuality);
         outputName = files[0].name.replace(/\.[^/.]+$/, "") + "-compressed" + files[0].name.match(/\.[^.]+$/)?.[0];
+      } else if (tool.slug === "compress-pdf") {
+        const compressionPreset = compressionPresets.find((preset) => preset.quality === compressQuality);
+        const compressionLevel = compressionPreset?.id === "max" ? "maximum" : "balanced";
+        blob = await compressPdfOnServer(files[0], compressionLevel);
+        outputName = files[0].name.replace(/\.[^/.]+$/, "") + "-compressed.pdf";
       } else if (tool.slug === "image-upscale") {
         const width = upscaleWidth ? Number(upscaleWidth) : null;
         const height = upscaleHeight ? Number(upscaleHeight) : null;
