@@ -46,11 +46,11 @@ const getUploadConfig = (slug?: string): UploadConfig => {
     case "image-compress":
     case "image-upscale":
       return {
-        accept: "image/png,image/jpeg,image/webp,image/bmp,image/tiff,image/gif,.png,.jpg,.jpeg,.webp,.bmp,.tiff,.tif,.gif",
+        accept: "image/png,image/jpeg,image/webp,image/bmp,image/tiff,image/gif,image/heic,image/heif,.png,.jpg,.jpeg,.webp,.bmp,.tiff,.tif,.gif,.heic,.heif",
         maxSizeMB: 20,
         label: "image file",
         description: "or drop an image here.",
-        supportedFormats: ["PNG", "JPG", "JPEG", "WebP", "BMP", "TIFF", "GIF"],
+        supportedFormats: ["PNG", "JPG", "JPEG", "WebP", "BMP", "TIFF", "GIF", "HEIC", "HEIF"],
         highlights: ["Preserve quality", "Batch-friendly workflow", "Preview before download"],
       };
     case "word-to-pdf":
@@ -259,7 +259,7 @@ export function ToolDetail() {
   const supportedFormats = uploadConfig.supportedFormats;
   const highlights = uploadConfig.highlights;
   const trustedPoints = TRUST_POINTS;
-  const SUPPORTED_OUTPUT = ["png", "jpg", "jpeg", "webp", "bmp"];
+  const SUPPORTED_OUTPUT = ["png", "jpg", "jpeg", "webp", "bmp", "tiff", "gif"];
   const compressionPresets = [
     { id: "best", label: "Best Quality", quality: 92, estimateFactor: 0.88, description: "Keep more detail and color fidelity while still shaving off noticeable size." },
     { id: "balanced", label: "Balanced", quality: 78, estimateFactor: 0.65, description: "A practical middle ground for everyday sharing and storage." },
@@ -1147,12 +1147,48 @@ export function ToolDetail() {
         })();
       }
       if (tool?.slug === "image-converter" || tool?.slug === "image-upscale" || tool?.slug === "image-compress") {
+        const isHeic = (f: File) => {
+          const name = f.name.toLowerCase();
+          const type = (f.type || "").toLowerCase();
+          return name.endsWith('.heic') || name.endsWith('.heif') || type.includes('heic') || type.includes('heif');
+        };
+
+        const decodeHeic = async (f: File): Promise<File> => {
+          try {
+            const mod = await import('heic2any');
+            // heic2any may export as default or module
+            const heic2any = (mod && (mod.default || mod)) as any;
+            const converted: Blob = await heic2any({ blob: f, toType: 'image/png' });
+            const newName = f.name.replace(/\.(heic|heif)$/i, '.png');
+            return new File([converted], newName, { type: 'image/png', lastModified: f.lastModified });
+          } catch (err) {
+            throw err;
+          }
+        };
+
+        let fileForPreview = first;
+        if (isHeic(first)) {
+          try {
+            const decoded = await decodeHeic(first);
+            fileForPreview = decoded;
+            // Replace the chosen file with decoded PNG so server-side conversion receives a supported blob
+            setFiles([decoded]);
+          } catch (err: any) {
+            console.error('HEIC decode error', err);
+            setErrorMessage('Unable to decode HEIC/HEIF file in this browser. Try another browser or convert to PNG/JPEG first.');
+            setStatus('options');
+            return;
+          }
+        } else {
+          setFiles([first]);
+        }
+
         if (imagePreviewUrl) {
           URL.revokeObjectURL(imagePreviewUrl);
         }
-        const url = URL.createObjectURL(first);
+        const url = URL.createObjectURL(fileForPreview);
         setImagePreviewUrl(url);
-        const inferredFormat = (first.type.replace(/^image\//, "") || first.name.split(".").pop() || "unknown").toUpperCase();
+        const inferredFormat = (fileForPreview.type.replace(/^image\//, "") || fileForPreview.name.split(".").pop() || "unknown").toUpperCase();
         setImageFormat(inferredFormat);
         setImageWidth(null);
         setImageHeight(null);
