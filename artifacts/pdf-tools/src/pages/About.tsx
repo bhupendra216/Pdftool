@@ -16,7 +16,7 @@ export function About() {
           <BrandMark className="mb-6 justify-center" logoClassName="h-16 w-16" wordmarkClassName="text-xl" />
           <h1 className="text-4xl md:text-6xl font-bold mb-6 tracking-tight">Built for PDFKira.</h1>
           <p className="text-xl text-muted-foreground leading-relaxed">
-            We were tired of ad-ridden, slow, and privacy-invasive PDF tools. So we built PDFKira.
+            We built PDFKira to offer a clearer, more dependable way to work with PDFs.
           </p>
         </div>
       </div>
@@ -24,8 +24,7 @@ export function About() {
       <div className="container mx-auto px-4 md:px-6 max-w-3xl prose prose-lg dark:prose-invert">
         <h2>Our Mission</h2>
         <p>
-          Document management shouldn't be a chore, and it definitely shouldn't mean compromising your privacy or clicking through popups. 
-          PDFKira was created with a simple mission: provide the absolute best PDF utility experience on the web.
+          Document work should be straightforward, reliable, and respectful of your time. PDFKira was created to provide a focused set of PDF tools without the clutter or unnecessary friction.
         </p>
 
         <h2>Why We're Different</h2>

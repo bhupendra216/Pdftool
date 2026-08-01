@@ -314,14 +314,14 @@ export const tools: ToolRecord[] = [
   {
     slug: "rotate-pdf",
     name: "Rotate PDF",
-    shortDescription: "Fix sideways or upside-down pages permanently.",
+    shortDescription: "Correct page orientation quickly and keep your document presentation polished.",
     category: "Edit",
     icon: "RotateCw",
     popular: false,
     status: "available",
     seoTitle: "Rotate PDF Pages Online Free | PDF Tools",
     seoDescription:
-      "Rotate one or all pages of a PDF to fix orientation, then save a corrected copy.",
+      "Rotate one or all pages of a PDF and save a corrected copy with the right orientation.",
     steps: [
       "Upload the PDF you want to fix.",
       "Choose which pages to rotate and by how much.",

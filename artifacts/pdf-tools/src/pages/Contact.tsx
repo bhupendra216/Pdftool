@@ -60,7 +60,7 @@ export function Contact() {
             <p className="text-sm font-medium uppercase tracking-[0.18em] text-primary">Contact note</p>
             <h2 className="mt-2 text-2xl font-bold tracking-tight text-foreground">Reach the right team</h2>
             <p className="mt-4 text-base leading-7 text-muted-foreground">
-              Use the email address above for general questions and the support address for help with tools, uploads, or account-related issues.
+              Use the email address above for general questions, tool feedback, or support with uploads and document processing.
             </p>
             <div className="mt-8 rounded-2xl bg-secondary/40 p-5">
               <p className="text-sm font-medium text-foreground">Quick contact</p>

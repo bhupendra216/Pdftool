@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, Link } from "wouter";
 import { PDFDocument } from "pdf-lib";
+import { GlobalWorkerOptions, getDocument } from "pdfjs-dist";
 import { useGetTool, useGetBlogPost, useListTools, useListFaqs, useOcrImageToText } from "@workspace/api-client-react";
 import { useSEO } from "@/hooks/use-seo";
 import { formatBytes } from "@/lib/utils";
@@ -18,6 +19,9 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, ChevronRight, Settings2, Download, AlertCircle, MoveUp, MoveDown, RotateCcw, RotateCw, Trash2, GripVertical, Check, FileMinus, FilePlus, ShieldCheck, Zap, Sparkles, FileText, Layers3 } from "lucide-react";
 import { BrandMark } from "@/components/brand/BrandMark";
 import { QrCodeGeneratorTool } from "@/components/shared/QrCodeGeneratorTool";
+import { removePagesById } from "@/lib/page-state";
+
+GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
 
 const TRUST_POINTS = [
   "Secure processing",
@@ -112,6 +116,15 @@ const getUploadConfig = (slug?: string): UploadConfig => {
         supportedFormats: ["PDF"],
         highlights: ["Drag to reorder pages", "Rotate or delete pages", "Preview every page before saving"],
       };
+    case "rotate-pdf":
+      return {
+        accept: "application/pdf,.pdf",
+        maxSizeMB: 50,
+        label: "PDF file",
+        description: "or drop a PDF here.",
+        supportedFormats: ["PDF"],
+        highlights: ["Rotate the full document in one step", "Preview every page before download", "Professional one-click export"],
+      };
     case "delete-pages":
       return {
         accept: "application/pdf,.pdf",
@@ -201,7 +214,10 @@ export function ToolDetail() {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const [pdfPages, setPdfPages] = useState<Array<{ id: string; pageNumber: number; rotation: number; selected: boolean }>>([]);
+  const [pageThumbnails, setPageThumbnails] = useState<Array<string | null>>([]);
+  const thumbnailCacheRef = useRef<Map<string, Array<string | null>>>(new Map());
   const [thumbnailZoom, setThumbnailZoom] = useState<number>(100);
+  const [documentRotation, setDocumentRotation] = useState<number>(0);
   const [draggedPageIndex, setDraggedPageIndex] = useState<number | null>(null);
 
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
@@ -465,6 +481,50 @@ export function ToolDetail() {
     return indices;
   };
 
+  const normalizeRotation = (value: number) => (value % 360 + 360) % 360;
+  const getThumbnailCacheKey = (file: File) => `${file.name}:${file.size}:${file.lastModified}`;
+
+  const renderPdfThumbnails = async (file: File, pageCount: number) => {
+    const cacheKey = getThumbnailCacheKey(file);
+    const cached = thumbnailCacheRef.current.get(cacheKey);
+    if (cached) {
+      setPageThumbnails(cached);
+      return;
+    }
+
+    const placeholders: Array<string | null> = Array.from({ length: pageCount }, () => null);
+    setPageThumbnails(placeholders);
+
+    try {
+      const bytes = await file.arrayBuffer();
+      const pdf = await getDocument({ data: bytes }).promise;
+      const thumbnails: Array<string | null> = Array.from({ length: pageCount }, () => null);
+
+      for (let index = 0; index < pageCount; index += 1) {
+        const page = await pdf.getPage(index + 1);
+        const viewport = page.getViewport({ scale: 1.35 });
+        const canvas = document.createElement("canvas");
+        canvas.width = viewport.width;
+        canvas.height = viewport.height;
+        const context = canvas.getContext("2d");
+        if (!context) {
+          continue;
+        }
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        await page.render({ canvas, canvasContext: context, viewport }).promise;
+        thumbnails[index] = canvas.toDataURL("image/png");
+        setPageThumbnails([...thumbnails]);
+      }
+
+      thumbnailCacheRef.current.set(cacheKey, thumbnails);
+      setPageThumbnails(thumbnails);
+    } catch (error) {
+      console.error("Unable to render page thumbnails", error);
+      setPageThumbnails(placeholders);
+    }
+  };
+
   const initializePdfPages = async (file: File) => {
     try {
       const bytes = await file.arrayBuffer();
@@ -472,6 +532,7 @@ export function ToolDetail() {
       const pageCount = pdf.getPageCount();
 
       setTotalPages(pageCount);
+      setDocumentRotation(0);
       setPdfPages(
         Array.from({ length: pageCount }, (_, index) => ({
           id: `${file.name}-${index + 1}`,
@@ -480,6 +541,10 @@ export function ToolDetail() {
           selected: false,
         })),
       );
+      setPageThumbnails([]);
+      if (["rotate-pdf", "organize-pdf", "delete-pages", "extract-pages"].includes(tool?.slug ?? "")) {
+        void renderPdfThumbnails(file, pageCount);
+      }
     } catch (error: any) {
       setPageRangeError("Unable to read PDF pages for validation");
       setPdfPages([]);
@@ -789,6 +854,29 @@ export function ToolDetail() {
     return await response.blob();
   };
 
+  const rotatePdfOnServer = async (fileToRotate: File, rotationOrRotations: number | number[]): Promise<Blob> => {
+    const formData = new FormData();
+    formData.append("files", fileToRotate);
+
+    if (Array.isArray(rotationOrRotations)) {
+      formData.append("rotations", JSON.stringify(rotationOrRotations));
+    } else {
+      formData.append("rotation", String(rotationOrRotations));
+    }
+
+    const response = await fetch(apiUrl("/api/rotate-pdf"), {
+      method: "POST",
+      body: formData,
+    });
+
+    if (!response.ok) {
+      const text = await response.text().catch(() => null);
+      throw new Error(text || `Rotate PDF failed with HTTP ${response.status}`);
+    }
+
+    return await response.blob();
+  };
+
   const deletePagesOnServer = async (fileToDeleteFrom: File, pagesToDelete: number[]): Promise<Blob> => {
     const formData = new FormData();
     formData.append("files", fileToDeleteFrom);
@@ -841,9 +929,45 @@ export function ToolDetail() {
       const next = [...pages];
       const page = next[index];
       if (!page) return next;
-      page.rotation = (page.rotation + delta + 360) % 360;
+      page.rotation = normalizeRotation(page.rotation + delta);
       return next;
     });
+  };
+
+  const applyRotationToPages = (indices: number[], rotation: number) => {
+    setPdfPages((pages) => pages.map((page, index) => (indices.includes(index) ? { ...page, rotation } : page)));
+  };
+
+  const rotateAllPages = (delta: number) => {
+    const indices = pdfPages.map((_, index) => index);
+    setPdfPages((pages) => pages.map((page, index) => (indices.includes(index) ? { ...page, rotation: normalizeRotation(page.rotation + delta) } : page)));
+  };
+
+  const applyWholeDocumentRotation = (delta: number) => {
+    setDocumentRotation((current) => normalizeRotation(current + delta));
+  };
+
+  const rotateSelectedPages = (delta: number) => {
+    const selectedIndexes = pdfPages.map((page, index) => (page.selected ? index : -1)).filter((index) => index >= 0);
+    if (selectedIndexes.length === 0) {
+      return;
+    }
+
+    setPdfPages((pages) => pages.map((page, index) => (selectedIndexes.includes(index) ? { ...page, rotation: normalizeRotation(page.rotation + delta) } : page)));
+  };
+
+  const resetSelectedPages = () => {
+    const selectedIndexes = pdfPages.map((page, index) => (page.selected ? index : -1)).filter((index) => index >= 0);
+    if (selectedIndexes.length === 0) {
+      return;
+    }
+
+    setPdfPages((pages) => pages.map((page, index) => (selectedIndexes.includes(index) ? { ...page, rotation: 0 } : page)));
+  };
+
+  const resetAllPages = () => {
+    setPdfPages((pages) => pages.map((page) => ({ ...page, rotation: 0 })));
+    setDocumentRotation(0);
   };
 
   const togglePageSelection = (index: number) => {
@@ -1035,6 +1159,7 @@ export function ToolDetail() {
         })();
       } else if (
         tool?.slug === "organize-pdf" ||
+        tool?.slug === "rotate-pdf" ||
         tool?.slug === "delete-pages" ||
         tool?.slug === "extract-pages"
       ) {
@@ -1077,12 +1202,30 @@ export function ToolDetail() {
       setProgress((prev) => {
         const next = prev + Math.floor(Math.random() * 8) + 5;
         const capped = Math.min(95, next);
-        if (capped < 35) {
-          setProgressStage(tool.slug === "compress-pdf" ? "Analyzing document structure..." : "Preparing optimized output...");
-        } else if (capped < 75) {
-          setProgressStage(tool.slug === "compress-pdf" ? "Compressing pages and streams..." : "Applying quality-preserving compression...");
+        if (tool.slug === "rotate-pdf") {
+          if (capped < 35) {
+            setProgressStage("Uploading file...");
+          } else if (capped < 75) {
+            setProgressStage("Applying rotations...");
+          } else {
+            setProgressStage("Generating PDF...");
+          }
+        } else if (tool.slug === "compress-pdf") {
+          if (capped < 35) {
+            setProgressStage("Analyzing document structure...");
+          } else if (capped < 75) {
+            setProgressStage("Compressing pages and streams...");
+          } else {
+            setProgressStage("Finalizing download package...");
+          }
         } else {
-          setProgressStage(tool.slug === "compress-pdf" ? "Finalizing download package..." : "Finishing the optimized file...");
+          if (capped < 35) {
+            setProgressStage("Preparing optimized output...");
+          } else if (capped < 75) {
+            setProgressStage("Applying quality-preserving compression...");
+          } else {
+            setProgressStage("Finishing the optimized file...");
+          }
         }
         return capped;
       });
@@ -1167,6 +1310,9 @@ export function ToolDetail() {
         const startNumber = Number(pageNumberStart || 1);
         blob = await addPageNumbersOnServer(files[0], Number.isFinite(startNumber) ? startNumber : 1, pageNumberPosition);
         outputName = files[0].name.replace(/\.[^/.]+$/, "") + "-numbered.pdf";
+      } else if (tool.slug === "rotate-pdf") {
+        blob = await rotatePdfOnServer(files[0], documentRotation);
+        outputName = files[0].name.replace(/\.[^/.]+$/, "") + "-rotated.pdf";
       } else if (tool.slug === "organize-pdf") {
         const pageOrder = pdfPages.map((page) => page.pageNumber);
         const rotations = pdfPages.map((page) => page.rotation);
@@ -1204,7 +1350,7 @@ export function ToolDetail() {
       setProcessingTimeMs(Date.now() - startTime);
       setStatus("success");
       setProgress(100);
-      setProgressStage("Ready to download");
+      setProgressStage(tool.slug === "rotate-pdf" ? "Preparing download" : "Ready to download");
     } catch (error: any) {
       console.error(error);
       setErrorMessage(error?.message || "Failed to process the file. Please try again.");
@@ -1384,40 +1530,127 @@ export function ToolDetail() {
                     status="options" 
                   />
 
-                  {(tool.slug === "organize-pdf" || tool.slug === "delete-pages" || tool.slug === "extract-pages") && pdfPages.length > 0 && (
+                  {(tool.slug === "organize-pdf" || tool.slug === "rotate-pdf" || tool.slug === "delete-pages" || tool.slug === "extract-pages") && (
                     <div className="mt-6 space-y-3">
-                      <h3 className="text-lg font-semibold text-foreground">Page preview</h3>
-                      <OrganizeGrid
-                        pages={pdfPages}
-                        onUpdate={(next) => setPdfPages(next)}
-                        onRotate={(indexes, delta) => {
-                          setPdfPages((pages) => {
-                            const next = pages.slice();
-                            indexes.forEach((i) => {
-                              next[i] = { ...next[i], rotation: ((next[i].rotation + delta) % 360 + 360) % 360 };
-                            });
-                            return next;
-                          });
-                        }}
-                        onDelete={(indexes) => {
-                            if (tool.slug === "delete-pages") {
-                              setPdfPages((pages) =>
-                                pages.map((page, i) =>
-                                  indexes.includes(i) ? { ...page, selected: true } : page,
-                                ),
-                              );
-                              return;
-                            }
+                      {tool.slug === "rotate-pdf" ? (
+                        <div className="space-y-4">
+                          {files[0] ? (
+                            <>
+                              <div className="rounded-[28px] border border-border/70 bg-background/70 p-5 shadow-sm">
+                                <div className="flex flex-wrap items-start justify-between gap-4">
+                                  <div>
+                                    <h3 className="text-lg font-semibold text-foreground">Rotate PDF</h3>
+                                    <p className="mt-1 text-sm text-muted-foreground">Choose specific pages or rotate the entire document in one step.</p>
+                                  </div>
+                                  <div className="flex flex-wrap gap-2">
+                                    <Button variant="outline" size="sm" className="rounded-full" onClick={() => applyWholeDocumentRotation(-90)}>90° Left</Button>
+                                    <Button variant="outline" size="sm" className="rounded-full" onClick={() => applyWholeDocumentRotation(90)}>90° Right</Button>
+                                    <Button variant="outline" size="sm" className="rounded-full" onClick={() => applyWholeDocumentRotation(180)}>180°</Button>
+                                  </div>
+                                </div>
 
-                            setPdfPages((pages) => pages.filter((_, i) => !indexes.includes(i)));
-                        }}
-                        onExtract={(indexes) => {
-                          setPdfPages((pages) => pages.map((p, i) => ({ ...p, selected: indexes.includes(i) || p.selected })));
-                        }}
-                          onSaveChanges={handleProcess}
-                        zoom={thumbnailZoom}
-                        setZoom={setThumbnailZoom}
-                      />
+                                <div className="mt-5 grid gap-4 lg:grid-cols-[1.25fr_0.75fr]">
+                                  <div className="rounded-[24px] border border-border/60 bg-card/80 p-4 shadow-sm">
+                                    <div className="flex items-center justify-between gap-3">
+                                      <div>
+                                        <p className="text-sm font-semibold text-foreground">Upload details</p>
+                                        <p className="text-sm text-muted-foreground">Review the file before saving the rotated PDF.</p>
+                                      </div>
+                                      <Badge variant="secondary" className="rounded-full border border-border/60 bg-background/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                                        {files[0].name}
+                                      </Badge>
+                                    </div>
+                                    <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                                      <div className="rounded-2xl border border-border/60 bg-background/80 p-3">
+                                        <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">File name</p>
+                                        <p className="mt-1 font-semibold text-foreground">{files[0].name}</p>
+                                      </div>
+                                      <div className="rounded-2xl border border-border/60 bg-background/80 p-3">
+                                        <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Pages</p>
+                                        <p className="mt-1 font-semibold text-foreground">{totalPages ?? "—"}</p>
+                                      </div>
+                                      <div className="rounded-2xl border border-border/60 bg-background/80 p-3">
+                                        <p className="text-[11px] uppercase tracking-[0.2em] text-muted-foreground">Size</p>
+                                        <p className="mt-1 font-semibold text-foreground">{formatBytes(files[0].size)}</p>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <div className="rounded-[24px] border border-border/60 bg-card/80 p-4 shadow-sm">
+                                    <p className="text-sm font-semibold text-foreground">Quick actions</p>
+                                    <div className="mt-3 space-y-2">
+                                      <Button variant="outline" className="w-full justify-start rounded-2xl" onClick={() => applyWholeDocumentRotation(90)}>Rotate all pages 90° right</Button>
+                                      <Button variant="outline" className="w-full justify-start rounded-2xl" onClick={() => applyWholeDocumentRotation(-90)}>Rotate all pages 90° left</Button>
+                                      <Button variant="outline" className="w-full justify-start rounded-2xl" onClick={() => applyWholeDocumentRotation(180)}>Rotate all pages 180°</Button>
+                                      <Button variant="outline" className="w-full justify-start rounded-2xl" onClick={() => resetAllPages()}>Reset all pages</Button>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+
+                              <OrganizeGrid
+                                pages={pdfPages}
+                                onUpdate={(next) => setPdfPages(next)}
+                                onRotate={(indexes, delta) => {
+                                  setPdfPages((pages) => pages.map((page, index) => (indexes.includes(index) ? { ...page, rotation: normalizeRotation(page.rotation + delta) } : page)));
+                                }}
+                                  onDelete={() => undefined}
+                                onExtract={() => undefined}
+                                onSaveChanges={handleProcess}
+                                zoom={thumbnailZoom}
+                                setZoom={setThumbnailZoom}
+                                alwaysShowActions
+                                mode="rotate"
+                                  enableRotateControls={true}
+                                thumbnailUrls={pageThumbnails}
+                              />
+                            </>
+                          ) : (
+                            <div className="rounded-[28px] border border-dashed border-border/70 bg-background/70 p-10 text-center shadow-sm">
+                              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                                <FileText className="h-7 w-7" />
+                              </div>
+                              <h3 className="mt-4 text-xl font-semibold text-foreground">Upload a PDF to start rotating</h3>
+                              <p className="mt-2 text-sm text-muted-foreground">Use the full-document controls to rotate everything in one step.</p>
+                            </div>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="space-y-3">
+                          <div className="flex flex-wrap items-center justify-between gap-3">
+                            <h3 className="text-lg font-semibold text-foreground">Page preview</h3>
+                          </div>
+                          <OrganizeGrid
+                            pages={pdfPages}
+                            onUpdate={(next) => setPdfPages(next)}
+                            onRotate={(indexes, delta) => {
+                              setPdfPages((pages) => {
+                                const next = pages.slice();
+                                indexes.forEach((i) => {
+                                  next[i] = { ...next[i], rotation: ((next[i].rotation + delta) % 360 + 360) % 360 };
+                                });
+                                return next;
+                              });
+                            }}
+                            onDelete={(pageIds) => {
+                              setPdfPages((pages) => {
+                                // update thumbnails based on the same pages -> thumbnails alignment
+                                setPageThumbnails((prev) => removePagesById(pages, pageIds, prev).thumbnails);
+                                return removePagesById(pages, pageIds).pages;
+                              });
+                            }}
+                            onExtract={(indexes) => {
+                              setPdfPages((pages) => pages.map((p, i) => ({ ...p, selected: indexes.includes(i) || p.selected })));
+                            }}
+                            onSaveChanges={handleProcess}
+                            zoom={thumbnailZoom}
+                            setZoom={setThumbnailZoom}
+                            thumbnailUrls={pageThumbnails}
+                            enableRotateControls={tool.slug !== "delete-pages"}
+                            allowPerCardDelete={tool.slug !== "delete-pages"}
+                          />
+                        </div>
+                      )}
                     </div>
                   )}
 

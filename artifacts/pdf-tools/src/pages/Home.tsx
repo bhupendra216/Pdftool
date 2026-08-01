@@ -20,25 +20,7 @@ export function Home() {
   const { data: posts, isLoading: loadingPosts } = useListBlogPosts();
   const { data: faqs, isLoading: loadingFaqs } = useListFaqs();
 
-  console.log("TOOLS:", tools);
-console.log("POSTS:", posts);
-console.log("FAQS:", faqs);
-
-console.log("tools:", tools);
-console.log("tools isArray:", Array.isArray(tools));
-
-console.log("posts:", posts);
-console.log("posts isArray:", Array.isArray(posts));
-
-console.log("faqs:", faqs);
-console.log("faqs isArray:", Array.isArray(faqs));
-
- // const popularTools = tools?.filter(t => t.popular).slice(0, 6) || [];
-
- //temp solution
- console.log("tools =", tools);
-
-const popularTools = Array.isArray(tools)
+  const popularTools = Array.isArray(tools)
   ? tools.filter((t) => t.popular).slice(0, 6)
   : [];
  
@@ -62,8 +44,7 @@ const latestPosts = Array.isArray(posts)
             <span className="text-primary">None of the clutter.</span>
           </h1>
           <p className="text-xl md:text-2xl text-muted-foreground mb-12 max-w-2xl mx-auto leading-relaxed">
-            A premium suite of tools to merge, compress, split, and edit PDFs. 
-            Fast, secure, and designed for people who care about craft.
+            A reliable set of PDF tools for everyday document work. Merge files, split documents, compress large PDFs, and prepare files for sharing or printing without the usual clutter.
           </p>
           <div className="flex flex-col sm:flex-row justify-center gap-4">
             <Button size="lg" asChild className="rounded-full px-8 h-14 text-lg shadow-xl shadow-primary/20 transition-transform hover:-translate-y-1">
@@ -74,12 +55,9 @@ const latestPosts = Array.isArray(posts)
             </Button>
           </div>
           <div className="mt-8 rounded-[28px] border border-border/70 bg-card/80 p-6 shadow-sm backdrop-blur">
-            <p className="text-sm font-medium uppercase tracking-[0.2em] text-primary">New</p>
-            <h2 className="mt-2 text-2xl font-semibold text-foreground">Find the Best Remote AI Jobs</h2>
-            <p className="mt-3 text-muted-foreground">Discover curated opportunities from leading AI companies hiring worldwide.</p>
-            <Button variant="secondary" asChild className="mt-4 rounded-full">
-              <Link href="/ai-jobs">Browse AI Jobs</Link>
-            </Button>
+            <p className="text-sm font-medium uppercase tracking-[0.2em] text-primary">Focused workflow</p>
+            <h2 className="mt-2 text-2xl font-semibold text-foreground">A cleaner way to prepare documents</h2>
+            <p className="mt-3 text-muted-foreground">Use the same toolkit for quick edits, batch preparation, and polished exports in a single place.</p>
           </div>
         </div>
       </section>

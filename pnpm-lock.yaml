@@ -435,6 +435,9 @@ importers:
       pdf-lib:
         specifier: ^1.17.1
         version: 1.17.1
+      pdfjs-dist:
+        specifier: ^6.1.200
+        version: 6.1.200
       qrcode:
         specifier: ^1.5.4
         version: 1.5.4

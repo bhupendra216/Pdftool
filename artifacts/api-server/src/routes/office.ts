@@ -512,28 +512,53 @@ async function convertJpgsToPdf(files: Express.Multer.File[]) {
   return { buffer: Buffer.from(pdfBytes), filename: "images.pdf" };
 }
 
-async function convertPdfToJpg(file: Express.Multer.File) {
+async function runPdfTool(command: string, args: string[]) {
+  return new Promise<void>((resolve, reject) => {
+    execFile(
+      command,
+      args,
+      { timeout: 120_000, maxBuffer: 10 * 1024 * 1024 },
+      (error, stdout, stderr) => {
+        if (error) {
+          reject(new Error(`${command} failed: ${error.message}${stderr ? ` - ${stderr}` : ""}${stdout ? ` - ${stdout}` : ""}`));
+          return;
+        }
+        resolve();
+      },
+    );
+  });
+}
+
+async function convertPdfToJpgWithFallback(inputFile: string, outputPrefix: string) {
+  try {
+    await runPdfTool("pdftoppm", ["-jpeg", "-r", "150", inputFile, outputPrefix]);
+    return;
+  } catch (error: any) {
+    const message = String(error?.message || "");
+    if (!message.includes("ENOENT") && !message.includes("not found")) {
+      throw error;
+    }
+  }
+
+  await runPdfTool("gs", [
+    "-q",
+    "-dNOPAUSE",
+    "-dBATCH",
+    "-sDEVICE=jpeg",
+    "-r150",
+    `-sOutputFile=${outputPrefix}-%d.jpg`,
+    inputFile,
+  ]);
+}
+
+export async function convertPdfToJpg(file: Express.Multer.File) {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "pdf-to-jpg-"));
   const inputFile = path.join(tempDir, "input.pdf");
   const outputPrefix = path.join(tempDir, "page");
 
   try {
     await writeFile(inputFile, file.buffer);
-
-    await new Promise<void>((resolve, reject) => {
-      execFile(
-        "pdftoppm",
-        ["-jpeg", "-r", "150", inputFile, outputPrefix],
-        { timeout: 120_000, maxBuffer: 10 * 1024 * 1024 },
-        (error, stdout, stderr) => {
-          if (error) {
-            reject(new Error(`PDF to JPG conversion failed: ${error.message}${stderr ? ` - ${stderr}` : ""}${stdout ? ` - ${stdout}` : ""}`));
-            return;
-          }
-          resolve();
-        },
-      );
-    });
+    await convertPdfToJpgWithFallback(inputFile, outputPrefix);
 
     const files = await readdir(tempDir);
     const jpgFiles = files.filter((name) => name.toLowerCase().endsWith(".jpg"));

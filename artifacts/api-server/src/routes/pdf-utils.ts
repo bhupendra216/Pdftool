@@ -93,6 +93,34 @@ export function parsePageList(
   return allowDuplicates ? pageIndices : Array.from(new Set(pageIndices));
 }
 
+export function parseSingleRotationValue(raw: unknown): number {
+  if (raw == null) {
+    return 0;
+  }
+
+  let value: number;
+  if (typeof raw === "number") {
+    value = Math.trunc(raw);
+  } else if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (trimmed === "") {
+      return 0;
+    }
+    if (!/^-?\d+$/.test(trimmed)) {
+      throw new Error(`rotation must be one of 0, 90, 180, or 270`);
+    }
+    value = parseInt(trimmed, 10);
+  } else {
+    throw new Error("rotation must be one of 0, 90, 180, or 270");
+  }
+
+  if (!VALID_ROTATIONS.has(value)) {
+    throw new Error("rotation must be one of 0, 90, 180, or 270");
+  }
+
+  return value;
+}
+
 export function parseRotationValues(raw: unknown, expectedLength: number): number[] {
   if (raw == null) {
     return Array(expectedLength).fill(0);
