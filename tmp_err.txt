@@ -1,16 +1,0 @@
-Note: Unnecessary use of -X or --request, POST is already inferred.
-  % Total    % Received % Xferd  Average Speed   Time    Time     Time  Current
-                                 Dload  Upload   Total   Spent    Left  Speed
-  0     0    0     0    0     0      0      0 --:--:-- --:--:-- --:--:--     0*   Trying 127.0.0.1:3000...
-* TCP_NODELAY set
-* Connected to localhost (127.0.0.1) port 3000 (#0)
-> POST /api/convert-image HTTP/1.1
-> Host: localhost:3000
-> User-Agent: curl/7.68.0
-> Accept: */*
-> Content-Length: 370
-> Content-Type: multipart/form-data; boundary=------------------------eaa901a7a39337a4
-> 
-} [370 bytes data]
-* We are completely uploaded and fine
-100   370    0     0  100   370      0    307  0:00:01  0:00:01 --:--:--   307100   370    0     0  100   370      0    167  0:00:02  0:00:02 --:--:--   167100   370    0     0  100   370      0    115  0:00:03  0:00:03 --:--:--   115100   370    0     0  100   370      0     87  0:00:04  0:00:04 --:--:--    87

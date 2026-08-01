@@ -1119,7 +1119,7 @@ export function ToolDetail() {
     );
   }
 
-  const handleFilesSelected = (newFiles: File[]) => {
+  const handleFilesSelected = async (newFiles: File[]) => {
     if (!allowsMultipleFiles) {
       const first = newFiles[0];
       setFiles([first]);
@@ -1153,59 +1153,27 @@ export function ToolDetail() {
           return name.endsWith('.heic') || name.endsWith('.heif') || type.includes('heic') || type.includes('heif');
         };
 
-        const decodeHeic = async (f: File): Promise<File> => {
-          try {
-            const mod = await import('heic-to');
-            const impl = (mod && (mod.default || mod)) as any;
-
-            const toBlob = (data: any, mime = 'image/png') => {
-              if (!data) return null;
-              if (data instanceof Blob) return data;
-              if (data instanceof ArrayBuffer) return new Blob([data], { type: mime });
-              if (ArrayBuffer.isView && ArrayBuffer.isView(data)) return new Blob([data.buffer], { type: mime });
-              // fallback: try to construct from Uint8Array
-              if (data instanceof Uint8Array) return new Blob([data], { type: mime });
-              return null;
-            };
-
-            let result: any = null;
-
-            if (typeof impl === 'function') {
-              // Some packages export a default function that accepts a File/Blob or ArrayBuffer
-              result = await impl(f, { to: 'image/png' });
-            } else if (impl && typeof impl.convert === 'function') {
-              // Common API: convert({ buffer, to })
-              result = await impl.convert({ buffer: await f.arrayBuffer(), to: 'image/png' });
-            } else if (impl && typeof impl.decode === 'function') {
-              result = await impl.decode(await f.arrayBuffer());
-            } else if (impl && typeof impl.heic2any === 'function') {
-              // fallback to heic2any-style API if present
-              result = await impl.heic2any({ blob: f, toType: 'image/png' });
-            } else {
-              throw new Error('No compatible HEIC decoder found in heic-to package');
-            }
-
-            const blob = toBlob(result, 'image/png');
-            if (!blob) throw new Error('HEIC decoder did not return a usable image blob');
-            const newName = f.name.replace(/\.(heic|heif)$/i, '.png');
-            return new File([blob], newName, { type: 'image/png', lastModified: f.lastModified });
-          } catch (err) {
-            throw err;
-          }
-        };
-
         let fileForPreview = first;
         if (isHeic(first)) {
+          // Keep the original HEIC file in state and request a server-side PNG preview
+          setFiles([first]);
           try {
-            const decoded = await decodeHeic(first);
-            fileForPreview = decoded;
-            // Replace the chosen file with decoded PNG so server-side conversion receives a supported blob
-            setFiles([decoded]);
-          } catch (err: any) {
-            console.error('HEIC decode error', err);
-            setErrorMessage('Unable to decode HEIC/HEIF file in this browser. Try another browser or convert to PNG/JPEG first.');
-            setStatus('options');
-            return;
+            const form = new FormData();
+            form.append('files', first);
+            form.append('outputFormat', 'png');
+            const previewRes = await fetch(apiUrl('/api/convert-image'), { method: 'POST', body: form });
+            if (previewRes.ok) {
+              const blob = await previewRes.blob();
+              fileForPreview = new File([blob], first.name.replace(/\.(heic|heif)$/i, '.png'), { type: 'image/png', lastModified: first.lastModified });
+            } else {
+              console.error('HEIC preview conversion failed', await previewRes.text().catch(() => null));
+              setErrorMessage('Unable to generate preview for HEIC/HEIF file. You can still try converting the file.');
+              fileForPreview = first;
+            }
+          } catch (err) {
+            console.error('HEIC preview error', err);
+            setErrorMessage('Unable to generate preview for HEIC/HEIF file. You can still try converting the file.');
+            fileForPreview = first;
           }
         } else {
           setFiles([first]);
