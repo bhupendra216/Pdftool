@@ -7,7 +7,14 @@ export function getAdminCredentials() {
   const password = process.env.ADMIN_PASSWORD?.trim();
 
   if (!username || !password) {
-    throw new Error("ADMIN_USERNAME and ADMIN_PASSWORD must be set in the environment");
+    // Fallback to default credentials if environment variables are not set.
+    // WARNING: This is insecure for production. Please set ADMIN_USERNAME and ADMIN_PASSWORD in your environment.
+    const fallbackUsername = "admin";
+    const fallbackPassword = "admin123";
+    console.warn(
+      "ADMIN_USERNAME or ADMIN_PASSWORD not set. Falling back to default admin credentials. Set environment variables on your host to secure the admin login."
+    );
+    return { username: username || fallbackUsername, password: password || fallbackPassword };
   }
   return { username, password };
 }
