@@ -1155,12 +1155,40 @@ export function ToolDetail() {
 
         const decodeHeic = async (f: File): Promise<File> => {
           try {
-            const mod = await import('heic2any');
-            // heic2any may export as default or module
-            const heic2any = (mod && (mod.default || mod)) as any;
-            const converted: Blob = await heic2any({ blob: f, toType: 'image/png' });
+            const mod = await import('heic-to');
+            const impl = (mod && (mod.default || mod)) as any;
+
+            const toBlob = (data: any, mime = 'image/png') => {
+              if (!data) return null;
+              if (data instanceof Blob) return data;
+              if (data instanceof ArrayBuffer) return new Blob([data], { type: mime });
+              if (ArrayBuffer.isView && ArrayBuffer.isView(data)) return new Blob([data.buffer], { type: mime });
+              // fallback: try to construct from Uint8Array
+              if (data instanceof Uint8Array) return new Blob([data], { type: mime });
+              return null;
+            };
+
+            let result: any = null;
+
+            if (typeof impl === 'function') {
+              // Some packages export a default function that accepts a File/Blob or ArrayBuffer
+              result = await impl(f, { to: 'image/png' });
+            } else if (impl && typeof impl.convert === 'function') {
+              // Common API: convert({ buffer, to })
+              result = await impl.convert({ buffer: await f.arrayBuffer(), to: 'image/png' });
+            } else if (impl && typeof impl.decode === 'function') {
+              result = await impl.decode(await f.arrayBuffer());
+            } else if (impl && typeof impl.heic2any === 'function') {
+              // fallback to heic2any-style API if present
+              result = await impl.heic2any({ blob: f, toType: 'image/png' });
+            } else {
+              throw new Error('No compatible HEIC decoder found in heic-to package');
+            }
+
+            const blob = toBlob(result, 'image/png');
+            if (!blob) throw new Error('HEIC decoder did not return a usable image blob');
             const newName = f.name.replace(/\.(heic|heif)$/i, '.png');
-            return new File([converted], newName, { type: 'image/png', lastModified: f.lastModified });
+            return new File([blob], newName, { type: 'image/png', lastModified: f.lastModified });
           } catch (err) {
             throw err;
           }
