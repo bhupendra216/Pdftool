@@ -64,6 +64,7 @@ export function AdminDashboard() {
   const [search, setSearch] = useState("");
   const [loading, setLoading] = useState(true);
   const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [range, setRange] = useState<"day" | "week" | "month" | "year" | "all">("day");
 
   useEffect(() => {
     const root = document.documentElement;
@@ -73,7 +74,7 @@ export function AdminDashboard() {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const response = await fetch("/api/admin/dashboard", { credentials: "include" });
+      const response = await fetch(`/api/admin/dashboard?range=${range}`, { credentials: "include" });
       if (!response.ok) {
         if (response.status === 401) {
           setLocation("/admin/login");
@@ -85,6 +86,13 @@ export function AdminDashboard() {
       setOverview(payload.overview);
       setTools(payload.toolStats || []);
       setSeries(payload.analytics || []);
+      // optional additional breakdowns
+      setCountries((payload.countries || []).slice(0, 10));
+      setDevices((payload.devices || []).slice(0, 10));
+      setBrowsers((payload.browsers || []).slice(0, 10));
+      setReferrals((payload.referrals || []).slice(0, 10));
+      setPopularPages((payload.popularPages || []).slice(0, 10));
+      setMostUsedTools(payload.mostUsedTools || []);
       const logsResponse = await fetch("/api/admin/logs?limit=20", { credentials: "include" });
       if (logsResponse.ok) {
         const logsPayload = await logsResponse.json();
@@ -104,12 +112,43 @@ export function AdminDashboard() {
     void load();
   }, [setLocation]);
 
+  // reload when range changes
+  useEffect(() => {
+    void (async () => {
+      setLoading(true);
+      const response = await fetch(`/api/admin/dashboard?range=${range}`, { credentials: "include" });
+      if (!response.ok) {
+        setLoading(false);
+        return;
+      }
+      const payload = await response.json();
+      setOverview(payload.overview);
+      setTools(payload.toolStats || []);
+      setSeries(payload.analytics || []);
+      setCountries((payload.countries || []).slice(0, 10));
+      setDevices((payload.devices || []).slice(0, 10));
+      setBrowsers((payload.browsers || []).slice(0, 10));
+      setReferrals((payload.referrals || []).slice(0, 10));
+      setPopularPages((payload.popularPages || []).slice(0, 10));
+      setMostUsedTools(payload.mostUsedTools || []);
+      setLoading(false);
+    })();
+  }, [range]);
+
   const filteredLogs = useMemo(() => {
     const query = search.toLowerCase();
     return logs.filter((entry) => {
       return [entry.requestedTool, entry.ipAddress, entry.country, entry.statusCode.toString()].some((value) => value.toLowerCase().includes(query));
     });
   }, [logs, search]);
+
+  // additional small states for breakdowns
+  const [countries, setCountries] = useState<Array<{ name: string; count: number }>>([]);
+  const [devices, setDevices] = useState<Array<{ name: string; count: number }>>([]);
+  const [browsers, setBrowsers] = useState<Array<{ name: string; count: number }>>([]);
+  const [referrals, setReferrals] = useState<Array<{ name: string; count: number }>>([]);
+  const [popularPages, setPopularPages] = useState<Array<{ url: string; count: number }>>([]);
+  const [mostUsedTools, setMostUsedTools] = useState<Array<{ name: string; today?: number; week?: number; month?: number; all?: number }>>([]);
 
   const handleLogout = async () => {
     await fetch("/api/admin/logout", { method: "POST", credentials: "include" });
@@ -155,16 +194,14 @@ export function AdminDashboard() {
   }
 
   const stats = [
-    { title: "Total Visitors", value: overview?.totalVisitors ?? 0 },
     { title: "Visitors Today", value: overview?.visitorsToday ?? 0 },
+    { title: "Visitors This Week", value: overview?.visitorsLast7Days ?? 0 },
     { title: "Visitors This Month", value: overview?.visitorsLast30Days ?? 0 },
+    { title: "Total Files Processed", value: overview?.totalPdfRequests ?? 0 },
     { title: "Total Tool Uses", value: overview?.totalToolUses ?? 0 },
-    { title: "Total Successful Conversions", value: overview?.totalSuccessfulConversions ?? 0 },
-    { title: "Failed Conversions", value: overview?.failedConversions ?? 0 },
     { title: "Success Rate", value: `${overview?.successRate ?? 0}%` },
     { title: "Average Processing Time", value: `${Math.round((overview?.averageProcessingTime ?? 0) * 10) / 10} ms` },
     { title: "Total OCR Requests", value: overview?.totalOcrRequests ?? 0 },
-    { title: "Total PDF Requests", value: overview?.totalPdfRequests ?? 0 },
     { title: "Active Users (15m)", value: overview?.activeUsers ?? 0 },
     { title: "Server Uptime", value: overview?.serverUptime ?? "0m" },
     { title: "Memory Usage", value: `${overview?.memoryUsage.percent ?? 0}%` },
@@ -214,6 +251,65 @@ export function AdminDashboard() {
             </CardHeader>
             <CardContent>
               <BarChart data={tools.map((tool) => ({ label: tool.name, value: tool.count }))} />
+            </CardContent>
+          </Card>
+        </div>
+
+        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+          <Card className="border-border/70 shadow-sm">
+            <CardHeader>
+              <CardTitle>Most Used Tools</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="overflow-x-auto">
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-border text-left text-muted-foreground">
+                      <th className="px-2 py-3">Tool</th>
+                      <th className="px-2 py-3">Today</th>
+                      <th className="px-2 py-3">Week</th>
+                      <th className="px-2 py-3">Month</th>
+                      <th className="px-2 py-3">All-Time</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(mostUsedTools.length ? mostUsedTools : tools).map((t: any) => (
+                      <tr key={t.name} className="border-b border-border/60">
+                        <td className="px-2 py-3">{t.name}</td>
+                        <td className="px-2 py-3">{t.today ?? t.count ?? 0}</td>
+                        <td className="px-2 py-3">{t.week ?? 0}</td>
+                        <td className="px-2 py-3">{t.month ?? 0}</td>
+                        <td className="px-2 py-3">{t.all ?? t.count ?? 0}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="border-border/70 shadow-sm">
+            <CardHeader>
+              <CardTitle>Geography & Devices</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div>
+                  <h4 className="text-sm font-medium text-muted-foreground mb-2">Top Countries</h4>
+                  <div className="space-y-2">
+                    {countries.map((c) => (
+                      <div key={c.name} className="flex items-center justify-between"><span>{c.name}</span><strong>{c.count}</strong></div>
+                    ))}
+                  </div>
+                </div>
+                <div>
+                  <h4 className="text-sm font-medium text-muted-foreground mb-2">Devices & Browsers</h4>
+                  <div className="space-y-2">
+                    {devices.map((d) => <div key={d.name} className="flex items-center justify-between"><span>{d.name}</span><strong>{d.count}</strong></div>)}
+                    {browsers.map((b) => <div key={b.name} className="flex items-center justify-between"><span>{b.name}</span><strong>{b.count}</strong></div>)}
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </div>
