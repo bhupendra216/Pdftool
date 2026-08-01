@@ -1,7 +1,7 @@
 import { useEffect } from 'react';
 
 // Use public kira.jpeg as the canonical social image
-const logo = '/kira.jpeg';
+const logo = '/favicon.png';
 
 const siteName = "PDFKira";
 
