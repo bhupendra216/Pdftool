@@ -7,7 +7,7 @@ import remarkGfm from "remark-gfm";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, ArrowRight, Clock, Calendar, FileText } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clock, Calendar } from "lucide-react";
 import { BrandMark } from "@/components/brand/BrandMark";
 
 export function BlogDetail() {
@@ -93,8 +93,8 @@ export function BlogDetail() {
         {/* Related Tool CTA */}
         {relatedTool && (
           <div className="mt-16 p-8 md:p-10 bg-primary/5 border border-primary/20 rounded-3xl text-center">
-            <div className="w-16 h-16 bg-background rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm">
-              <FileText className="w-8 h-8 text-primary" />
+            <div className="w-16 h-16 bg-background rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm overflow-hidden">
+              <img src="/kira.jpeg" alt="PDFKira" className="w-10 h-10 object-cover rounded-full" />
             </div>
             <h3 className="text-2xl font-bold mb-4">Try it yourself</h3>
             <p className="text-muted-foreground mb-8 max-w-lg mx-auto">

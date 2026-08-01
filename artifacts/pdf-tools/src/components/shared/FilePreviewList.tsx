@@ -1,5 +1,5 @@
 import { Button } from "@/components/ui/button";
-import { X, FileText, CheckCircle2 } from "lucide-react";
+import { X, CheckCircle2 } from "lucide-react";
 import { formatBytes } from "@/lib/utils";
 
 interface FileListProps {
@@ -22,8 +22,8 @@ export function FilePreviewList({ files, onRemove, status }: FileListProps) {
             key={`${file.name}-${index}`} 
             className="group relative flex items-center gap-4 rounded-2xl border border-border/70 bg-card/90 p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
           >
-            <div className="shrink-0 rounded-xl bg-primary/10 p-3 text-primary transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
-              <FileText className="w-6 h-6" />
+            <div className="shrink-0 rounded-xl bg-primary/10 p-0 overflow-hidden transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
+              <img src="/kira.jpeg" alt="PDFKira" className="w-10 h-10 object-cover rounded-lg" />
             </div>
             
             <div className="flex-1 min-w-0">

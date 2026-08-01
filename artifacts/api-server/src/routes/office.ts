@@ -671,70 +671,116 @@ async function unlockPdf(file: Express.Multer.File, password: string) {
 }
 
 async function handlePdfToWordRequest(req: express.Request, res: express.Response) {
+  // Start an asynchronous job so we can report per-page progress
   const file = req.file as Express.Multer.File | undefined;
   if (!file) {
     res.status(400).json({ error: "No file uploaded" });
     return;
   }
 
-  const startedAt = Date.now();
   const options = parsePdfToWordOptions(req.body as Record<string, unknown>);
 
-  try {
-    const { pageCount } = await validatePdfBuffer(file);
-    if (pageCount > 20) {
-      res.status(400).json({ error: "PDFs with more than 20 pages are not supported for Word conversion." });
-      return;
-    }
+  // In-memory job store (module-global)
+  (global as any).__pdfToWordJobs = (global as any).__pdfToWordJobs || new Map();
+  const jobs: Map<string, any> = (global as any).__pdfToWordJobs;
 
-    const { buffer, filename } = await convertPdfToWord(file, options);
-    const mimeType = options.outputFormat === "docx"
-      ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-      : "application/msword";
+  const jobId = `job-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
+  jobs.set(jobId, { status: "queued", currentPage: 0, totalPages: 0, error: null, filename: null, buffer: null });
 
-    res.setHeader("content-type", mimeType);
-    res.setHeader("content-disposition", formatContentDisposition(filename));
-    res.setHeader("x-processing-time-ms", String(Date.now() - startedAt));
-    res.setHeader("x-output-size-bytes", String(buffer.length));
-    res.send(buffer);
-  } catch (error: any) {
-    console.error("PDF to Word conversion failed", error);
-    const message = String(error?.message || "Conversion failed");
+  (async () => {
+    const job = jobs.get(jobId);
+    job.status = "processing";
+    const startedAt = Date.now();
 
-    if (!options.ocr && (message.includes("Converted file not found") || message.includes("LibreOffice conversion failed"))) {
-      try {
-        const { buffer: ocrBuffer, filename: ocrFilename } = await convertPdfToWordViaOcr(file, options.outputFormat);
-        const mimeType = options.outputFormat === "docx"
-          ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-          : "application/msword";
+    try {
+      const { pageCount } = await validatePdfBuffer(file);
+      job.totalPages = pageCount;
 
-        res.setHeader("content-type", mimeType);
-        res.setHeader("content-disposition", formatContentDisposition(ocrFilename));
-        res.setHeader("x-processing-time-ms", String(Date.now() - startedAt));
-        res.setHeader("x-output-size-bytes", String(ocrBuffer.length));
-        res.send(ocrBuffer);
-        return;
-      } catch (ocrError: any) {
-        console.error("PDF to Word OCR fallback failed", ocrError);
-        const ocrMessage = String(ocrError?.message || message);
-        res.status(500).json({ error: getReadablePdfError(ocrMessage) });
-        return;
+      let scanned = false;
+      if (options.ocr) scanned = await detectScannedPdf(file.buffer);
+
+      const pageTexts: string[] = [];
+
+      if (scanned) {
+        const tempDir = await mkdtemp(path.join(os.tmpdir(), "pdf-to-word-ocr-job-"));
+        try {
+          const inputFile = path.join(tempDir, "input.pdf");
+          await writeFile(inputFile, file.buffer);
+          await new Promise<void>((resolve, reject) => {
+            execFile(
+              "pdftoppm",
+              ["-jpeg", "-r", "250", inputFile, path.join(tempDir, "page")],
+              { timeout: 180_000, maxBuffer: 50 * 1024 * 1024 },
+              (error, stdout, stderr) => {
+                if (error) return reject(error);
+                resolve();
+              },
+            );
+          });
+
+          const tesseract: any = await import("tesseract.js");
+          const createWorker: any = tesseract.createWorker;
+          const PSM: any = tesseract.PSM;
+          const worker: any = await createWorker({ logger: () => {} });
+          await worker.load();
+          await worker.loadLanguage("eng+nep");
+          await worker.initialize("eng+nep");
+          try { await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO }); } catch {}
+
+          const images = (await readdir(tempDir)).filter((n) => n.toLowerCase().endsWith('.jpg')).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+          for (let i = 0; i < images.length; i++) {
+            job.currentPage = i + 1;
+            const buf = await readFile(path.join(tempDir, images[i]));
+            const { data } = await worker.recognize(buf);
+            pageTexts.push(String(data?.text || "").trim());
+          }
+
+          await worker.terminate();
+        } finally {
+          try { await rm(tempDir, { recursive: true, force: true }); } catch {}
+        }
+      } else {
+        const tempDir = await mkdtemp(path.join(os.tmpdir(), "pdf-to-word-text-job-"));
+        try {
+          const inputFile = path.join(tempDir, "input.pdf");
+          await writeFile(inputFile, file.buffer);
+          for (let p = 1; p <= job.totalPages; p++) {
+            job.currentPage = p;
+            const outPath = path.join(tempDir, `page-${p}.txt`);
+            await new Promise<void>((resolve, reject) => {
+              execFile(
+                "pdftotext",
+                ["-layout", "-f", String(p), "-l", String(p), inputFile, outPath],
+                { timeout: 120_000, maxBuffer: 20 * 1024 * 1024 },
+                (error, stdout, stderr) => {
+                  if (error) return reject(error);
+                  resolve();
+                },
+              );
+            });
+            const txt = await readFile(outPath, "utf8");
+            pageTexts.push(txt || "");
+          }
+        } finally {
+          try { await rm(tempDir, { recursive: true, force: true }); } catch {}
+        }
       }
-    }
 
-    if (
-      message.includes("Could not find a Java Runtime Environment") ||
-      message.includes("javaldx") ||
-      message.includes("source file could not be loaded")
-    ) {
-      res.status(500).json({
-        error:
-          "PDF to Word requires a Java runtime for LibreOffice. Install Java and try again, or use an environment with LibreOffice Java support.",
-      });
-      return;
+      const { buffer: docxBuffer, filename } = await buildDocxFromOcrPages(pageTexts, path.basename(file.originalname || "document", path.extname(file.originalname || "")) || "document");
+
+      job.status = "done";
+      job.buffer = docxBuffer;
+      job.filename = filename;
+      job.finishedAt = Date.now();
+      job.totalTimeMs = Date.now() - startedAt;
+    } catch (err: any) {
+      job.status = "error";
+      job.error = String(err?.message || err);
+      console.error("PDF->Word job error", err);
     }
-    res.status(500).json({ error: getReadablePdfError(message) });
-  }
+  })();
+
+  res.json({ jobId });
 }
 
 router.post("/pdf-to-word", upload.single("files"), async (req, res) => {
@@ -743,6 +789,43 @@ router.post("/pdf-to-word", upload.single("files"), async (req, res) => {
 
 router.post("/convert-pdf-to-word", upload.single("files"), async (req, res) => {
   await handlePdfToWordRequest(req, res);
+});
+
+// Poll job status for a previously enqueued PDF->Word job
+router.get("/pdf-to-word/status/:jobId", async (req, res) => {
+  const jobId = String(req.params.jobId || "");
+  (global as any).__pdfToWordJobs = (global as any).__pdfToWordJobs || new Map();
+  const jobs: Map<string, any> = (global as any).__pdfToWordJobs;
+  const job = jobs.get(jobId);
+  if (!job) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+  res.json({ status: job.status, currentPage: job.currentPage || 0, totalPages: job.totalPages || 0, error: job.error || null });
+});
+
+// Download job result when ready
+router.get("/pdf-to-word/result/:jobId", async (req, res) => {
+  const jobId = String(req.params.jobId || "");
+  (global as any).__pdfToWordJobs = (global as any).__pdfToWordJobs || new Map();
+  const jobs: Map<string, any> = (global as any).__pdfToWordJobs;
+  const job = jobs.get(jobId);
+  if (!job) {
+    res.status(404).json({ error: "Job not found" });
+    return;
+  }
+  if (job.status !== "done") {
+    res.status(400).json({ error: "Job not complete" });
+    return;
+  }
+  const buffer: Buffer = job.buffer;
+  const filename: string = job.filename || "document.docx";
+  const mimeType = filename.toLowerCase().endsWith(".docx")
+    ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    : "application/msword";
+  res.setHeader("content-type", mimeType);
+  res.setHeader("content-disposition", formatContentDisposition(filename));
+  res.send(buffer);
 });
 
 router.post("/convert-word-to-pdf", upload.single("files"), async (req, res) => {

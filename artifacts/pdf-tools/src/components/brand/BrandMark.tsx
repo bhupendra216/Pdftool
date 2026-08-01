@@ -16,7 +16,7 @@ export function BrandMark({
   return (
     <div className={cn("inline-flex items-center gap-2.5", className)}>
       <img
-        src="/kiralogo.png"
+        src="/kira.jpeg"
         alt="PDFKira"
         className={cn("block shrink-0 overflow-hidden rounded-xl object-cover object-center scale-[1.08]", logoClassName)}
       />
