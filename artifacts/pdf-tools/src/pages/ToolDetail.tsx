@@ -20,6 +20,7 @@ import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, ChevronRight, Settings2, Download, AlertCircle, MoveUp, MoveDown, RotateCcw, RotateCw, Trash2, GripVertical, Check, FileMinus, FilePlus, ShieldCheck, Zap, Sparkles, Layers3 } from "lucide-react";
 import { BrandMark } from "@/components/brand/BrandMark";
 import { QrCodeGeneratorTool } from "@/components/shared/QrCodeGeneratorTool";
+import { SignPdfTool } from "@/components/shared/SignPdfTool";
 import { removePagesById } from "@/lib/page-state";
 
 GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
@@ -969,6 +970,41 @@ export function ToolDetail(props?: any) {
 
         <div className="container mx-auto flex-1 px-4 py-8 md:px-6 md:py-12">
           <QrCodeGeneratorTool />
+        </div>
+      </div>
+    );
+  }
+
+  if (tool.slug === "sign-pdf") {
+    return (
+      <div className="flex min-h-screen flex-col bg-background">
+        <div className="border-b border-border bg-card/90 pt-8 pb-10">
+          <div className="container mx-auto max-w-6xl px-4 md:px-6">
+            <nav className="mb-8 flex items-center text-sm font-medium text-muted-foreground">
+              <Link href="/tools" className="transition-colors hover:text-primary">Tools</Link>
+              <ChevronRight className="mx-2 h-4 w-4 opacity-50" />
+              <span className="text-foreground">{tool.name}</span>
+            </nav>
+
+            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+              <div className="flex items-center gap-4">
+                <div className="rounded-2xl bg-primary p-4 text-primary-foreground shadow-sm">
+                  <Icon name={tool.icon} className="h-8 w-8" />
+                </div>
+                <div>
+                  <h1 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">{tool.name}</h1>
+                  <p className="mt-2 max-w-2xl text-lg text-muted-foreground">{tool.shortDescription}</p>
+                </div>
+              </div>
+              <Badge variant="secondary" className="w-fit rounded-full border border-border/60 bg-background/80 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                Live preview • PDF ready
+              </Badge>
+            </div>
+          </div>
+        </div>
+
+        <div className="container mx-auto flex-1 px-4 py-8 md:px-6 md:py-12">
+          <SignPdfTool />
         </div>
       </div>
     );

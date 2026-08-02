@@ -1,17 +1,20 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { PageSizes, PDFDocument, StandardFonts, rgb } from "pdf-lib";
-import { AlertCircle, CheckCircle2, CircleDashed, Download, Eraser, FileSignature, ImagePlus, MousePointer2, Plus, RotateCw, Trash2, UploadCloud } from "lucide-react";
+import { PDFDocument, StandardFonts, rgb } from "pdf-lib";
+import { GlobalWorkerOptions, getDocument } from "pdfjs-dist";
+import { AlertCircle, CheckCircle2, CircleDashed, Download, FileSignature, ImagePlus, MousePointer2, Plus, Trash2, UploadCloud } from "lucide-react";
 
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
+GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
+
 type SignatureMode = "draw" | "type" | "image";
+type SignatureTarget = "current" | "all" | "pages";
 
 type SignatureItem = {
   id: number;
@@ -22,12 +25,64 @@ type SignatureItem = {
   width: number;
   height: number;
   rotation: number;
+  target: SignatureTarget;
+  targetPages: number[];
   text?: string;
   imageDataUrl?: string;
+  drawDataUrl?: string;
+  fontName?: string;
 };
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function parseTargetPages(value: string, pageCount: number) {
+  const normalizedValue = value.replace(/\s+/g, "");
+  if (!normalizedValue) return [];
+
+  const matches = new Set<number>();
+  const segments = normalizedValue.split(",").filter(Boolean);
+
+  for (const segment of segments) {
+    if (!segment) continue;
+
+    if (segment.includes("-")) {
+      const [startText, endText] = segment.split("-", 2);
+      const start = Number.parseInt(startText, 10);
+      const end = Number.parseInt(endText, 10);
+      if (!Number.isInteger(start) || !Number.isInteger(end)) continue;
+
+      const startPage = Math.min(start, end);
+      const endPage = Math.max(start, end);
+      for (let pageNumber = startPage; pageNumber <= endPage; pageNumber += 1) {
+        if (pageNumber >= 1 && pageNumber <= pageCount) {
+          matches.add(pageNumber);
+        }
+      }
+      continue;
+    }
+
+    const pageNumber = Number.parseInt(segment, 10);
+    if (Number.isInteger(pageNumber) && pageNumber >= 1 && pageNumber <= pageCount) {
+      matches.add(pageNumber);
+    }
+  }
+
+  return Array.from(matches).sort((left, right) => left - right);
+}
+
+function dataUrlToBytes(dataUrl: string) {
+  const [header, encoded] = dataUrl.split(",");
+  if (!encoded) return new Uint8Array();
+
+  const isBase64 = header.includes(";base64");
+  const source = isBase64 ? atob(encoded) : decodeURIComponent(encoded);
+  const bytes = new Uint8Array(source.length);
+  for (let index = 0; index < source.length; index += 1) {
+    bytes[index] = source.charCodeAt(index);
+  }
+  return bytes;
 }
 
 export function SignPdfTool() {
@@ -45,8 +100,18 @@ export function SignPdfTool() {
   const [drawPoints, setDrawPoints] = useState<{ x: number; y: number }[]>([]);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [pdfBytes, setPdfBytes] = useState<Uint8Array | null>(null);
+  // `savePdfBytes` holds a separate, non-transferred copy used for PDF-lib operations.
+  // pdfjs may transfer/detach buffers when using workers, so keep an independent copy
+  // for the save path to avoid "detached ArrayBuffer" errors.
+  const [savePdfBytes, setSavePdfBytes] = useState<Uint8Array | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const [previewBoxSize, setPreviewBoxSize] = useState({ width: 560, height: 760 });
+  const [renderedPageSize, setRenderedPageSize] = useState({ width: 560, height: 760 });
+  const [signatureTarget, setSignatureTarget] = useState<SignatureTarget>("current");
+  const [signatureTargetText, setSignatureTargetText] = useState("1");
+  const previewContainerRef = useRef<HTMLDivElement | null>(null);
+  const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const drawCanvasRefs = useRef<Record<number, HTMLCanvasElement | null>>({});
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
   const fonts = [
@@ -60,11 +125,106 @@ export function SignPdfTool() {
     [selectedSignatureId, signatures],
   );
 
+  useEffect(() => {
+    const container = previewContainerRef.current;
+    if (!container) return;
+
+    const updatePreviewBoxSize = () => {
+      const rect = container.getBoundingClientRect();
+      setPreviewBoxSize({ width: rect.width, height: rect.height });
+    };
+
+    updatePreviewBoxSize();
+    const observer = new ResizeObserver(updatePreviewBoxSize);
+    observer.observe(container);
+    window.addEventListener("resize", updatePreviewBoxSize);
+
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", updatePreviewBoxSize);
+    };
+  }, [previewUrl, currentPage]);
+
+  const setSignatureCanvasRef = (signatureId: number) => (element: HTMLCanvasElement | null) => {
+    drawCanvasRefs.current[signatureId] = element;
+  };
+
+  useEffect(() => {
+    const canvas = previewCanvasRef.current;
+    if (!canvas || !file || !pdfBytes) {
+      setRenderedPageSize({ width: 560, height: 760 });
+      return;
+    }
+
+    let isActive = true;
+
+    const renderCurrentPage = async () => {
+      const pdf = await getDocument({ data: pdfBytes }).promise;
+      const page = await pdf.getPage(currentPage);
+      const baseViewport = page.getViewport({ scale: 1 });
+      const availableWidth = Math.max(280, previewBoxSize.width - 24);
+      const availableHeight = Math.max(320, previewBoxSize.height - 24);
+      const scale = Math.min(availableWidth / baseViewport.width, availableHeight / baseViewport.height, 2.4);
+      const viewport = page.getViewport({ scale: Math.max(0.65, scale) });
+      const context = canvas.getContext("2d");
+      if (!context || !isActive) return;
+
+      canvas.width = viewport.width;
+      canvas.height = viewport.height;
+      canvas.style.width = "100%";
+      canvas.style.height = "auto";
+      canvas.style.maxWidth = "100%";
+
+      await page.render({ canvas, canvasContext: context, viewport }).promise;
+      if (!isActive) return;
+      setRenderedPageSize({ width: viewport.width, height: viewport.height });
+    };
+
+    renderCurrentPage().catch(() => {
+      if (isActive) {
+        setError("Unable to preview the selected PDF page.");
+      }
+    });
+
+    return () => {
+      isActive = false;
+    };
+  }, [currentPage, file, pdfBytes, previewBoxSize.height, previewBoxSize.width]);
+
+  useEffect(() => {
+    const canvas = activeSignature && activeSignature.type === "draw" ? drawCanvasRefs.current[activeSignature.id] : null;
+    if (!canvas || !activeSignature || activeSignature.type !== "draw") {
+      return;
+    }
+
+    const context = canvas.getContext("2d");
+    const boxWidth = Math.max(1, Math.round(activeSignature.width));
+    const boxHeight = Math.max(1, Math.round(activeSignature.height));
+    canvas.width = boxWidth;
+    canvas.height = boxHeight;
+    canvas.style.width = `${boxWidth}px`;
+    canvas.style.height = `${boxHeight}px`;
+
+    if (!context) return;
+    context.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (activeSignature.drawDataUrl) {
+      const image = new Image();
+      image.onload = () => {
+        context.drawImage(image, 0, 0, canvas.width, canvas.height);
+      };
+      image.src = activeSignature.drawDataUrl;
+    }
+  }, [activeSignature?.id, activeSignature?.drawDataUrl, activeSignature?.width, activeSignature?.height]);
+
   const resetState = () => {
     setError(null);
     setSignatures([]);
     setSelectedSignatureId(null);
-    setPreviewUrl(null);
+    setPreviewUrl((prev) => {
+      if (prev) URL.revokeObjectURL(prev);
+      return null;
+    });
     setPdfBytes(null);
     setDownloadUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
@@ -85,11 +245,15 @@ export function SignPdfTool() {
 
     try {
       const arrayBuffer = await selectedFile.arrayBuffer();
-      const pdfDoc = await PDFDocument.load(arrayBuffer);
+      // Create two independent copies: one for pdf-lib (save) and one for pdfjs preview.
+      const saveCopy = new Uint8Array(arrayBuffer.slice(0));
+      const previewCopy = new Uint8Array(arrayBuffer.slice(0));
+      const pdfDoc = await PDFDocument.load(saveCopy);
       const pageCountValue = pdfDoc.getPageCount();
       setPageCount(pageCountValue);
       setCurrentPage(1);
-      setPdfBytes(new Uint8Array(arrayBuffer));
+      setSavePdfBytes(saveCopy);
+      setPdfBytes(previewCopy);
       setPreviewUrl(URL.createObjectURL(selectedFile));
     } catch {
       setError("Unable to read the uploaded PDF. Please try another file.");
@@ -111,11 +275,13 @@ export function SignPdfTool() {
         id: Date.now(),
         type: "draw",
         pageNumber: currentPage,
-        x: 120,
-        y: 240,
-        width: 180,
-        height: 80,
+        x: Math.max(24, renderedPageSize.width / 4),
+        y: Math.max(24, renderedPageSize.height / 4),
+        width: Math.max(140, renderedPageSize.width / 4),
+        height: Math.max(80, renderedPageSize.height / 8),
         rotation: 0,
+        target: signatureTarget,
+        targetPages: signatureTarget === "pages" ? parseTargetPages(signatureTargetText, pageCount) : [],
       };
       setSignatures((prev) => [...prev, newItem]);
       setSelectedSignatureId(newItem.id);
@@ -127,12 +293,15 @@ export function SignPdfTool() {
         id: Date.now(),
         type: "type",
         pageNumber: currentPage,
-        x: 120,
-        y: 240,
-        width: 220,
-        height: 80,
+        x: Math.max(24, renderedPageSize.width / 4),
+        y: Math.max(24, renderedPageSize.height / 4),
+        width: Math.max(180, renderedPageSize.width / 3),
+        height: Math.max(80, renderedPageSize.height / 8),
         rotation: 0,
+        target: signatureTarget,
+        targetPages: signatureTarget === "pages" ? parseTargetPages(signatureTargetText, pageCount) : [],
         text: signatureText || "Signature",
+        fontName,
       };
       setSignatures((prev) => [...prev, newItem]);
       setSelectedSignatureId(newItem.id);
@@ -151,11 +320,13 @@ export function SignPdfTool() {
           id: Date.now(),
           type: "image",
           pageNumber: currentPage,
-          x: 120,
-          y: 240,
-          width: 220,
-          height: 80,
+          x: Math.max(24, renderedPageSize.width / 4),
+          y: Math.max(24, renderedPageSize.height / 4),
+          width: Math.max(180, renderedPageSize.width / 3),
+          height: Math.max(80, renderedPageSize.height / 8),
           rotation: 0,
+          target: signatureTarget,
+          targetPages: signatureTarget === "pages" ? parseTargetPages(signatureTargetText, pageCount) : [],
           imageDataUrl: reader.result as string,
         };
         setSignatures((prev) => [...prev, newItem]);
@@ -175,56 +346,58 @@ export function SignPdfTool() {
     setSelectedSignatureId((prev) => (prev === id ? null : prev));
   };
 
-  const handleCanvasPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+  const handlePreviewClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (!activeSignature || activeSignature.pageNumber !== currentPage) return;
-    setIsDrawing(true);
+
     const rect = event.currentTarget.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+    const x = clamp(((event.clientX - rect.left) / Math.max(rect.width, 1)) * renderedPageSize.width, 8, renderedPageSize.width - 8);
+    const y = clamp(((event.clientY - rect.top) / Math.max(rect.height, 1)) * renderedPageSize.height, 8, renderedPageSize.height - 8);
+
+    updateSignature(activeSignature.id, (item) => ({ ...item, x, y }));
+  };
+
+  const handleCanvasPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!activeSignature || activeSignature.pageNumber !== currentPage || activeSignature.type !== "draw") return;
+    setIsDrawing(true);
+    const canvas = event.currentTarget;
+    const rect = canvas.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / Math.max(rect.width, 1)) * canvas.width;
+    const y = ((event.clientY - rect.top) / Math.max(rect.height, 1)) * canvas.height;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.lineCap = "round";
+    context.lineJoin = "round";
+    context.strokeStyle = "rgba(17, 24, 39, 0.95)";
+    context.lineWidth = Math.max(1.5, (canvas.width / Math.max(rect.width, 1)) * 2.5);
+    context.beginPath();
+    context.moveTo(x, y);
     setDrawPoints([{ x, y }]);
   };
 
   const handleCanvasPointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (!isDrawing) return;
-    const rect = event.currentTarget.getBoundingClientRect();
-    const x = event.clientX - rect.left;
-    const y = event.clientY - rect.top;
+    const canvas = event.currentTarget;
+    const rect = canvas.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / Math.max(rect.width, 1)) * canvas.width;
+    const y = ((event.clientY - rect.top) / Math.max(rect.height, 1)) * canvas.height;
+    const context = canvas.getContext("2d");
+    if (!context) return;
+    context.lineTo(x, y);
+    context.stroke();
     setDrawPoints((prev) => [...prev, { x, y }]);
+    const dataUrl = canvas.toDataURL("image/png");
+    if (activeSignature) {
+      updateSignature(activeSignature.id, (item) => ({ ...item, drawDataUrl: dataUrl }));
+    }
   };
 
   const handleCanvasPointerUp = () => {
-    if (!isDrawing || drawPoints.length < 2) {
-      setIsDrawing(false);
-      setDrawPoints([]);
-      return;
-    }
-
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    const start = drawPoints[0];
-    const end = drawPoints[drawPoints.length - 1];
-    const width = Math.abs(end.x - start.x) + 20;
-    const height = Math.abs(end.y - start.y) + 20;
-
-    if (activeSignature) {
-      updateSignature(activeSignature.id, (item) => ({
-        ...item,
-        x: clamp(start.x - 60, 20, 520),
-        y: clamp(start.y - 40, 20, 620),
-        width: clamp(width, 80, 320),
-        height: clamp(height, 40, 220),
-      }));
-    }
-
     setIsDrawing(false);
     setDrawPoints([]);
   };
 
   const handleSave = async () => {
-    if (!file || !pdfBytes) {
+    if (!file || !savePdfBytes) {
       setError("Please upload a PDF first.");
       return;
     }
@@ -233,48 +406,84 @@ export function SignPdfTool() {
     setError(null);
 
     try {
-      const pdfDoc = await PDFDocument.load(pdfBytes);
+      console.debug("sign-pdf: save bytes", savePdfBytes ? { byteLength: savePdfBytes.byteLength, isUint8Array: savePdfBytes instanceof Uint8Array } : null);
+      const pdfDoc = await PDFDocument.load(savePdfBytes as Uint8Array);
       const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
       const italicFont = await pdfDoc.embedFont(StandardFonts.HelveticaOblique);
       const timesItalic = await pdfDoc.embedFont(StandardFonts.TimesRomanItalic);
       const courierItalic = await pdfDoc.embedFont(StandardFonts.CourierOblique);
+      const previewWidth = renderedPageSize.width || 560;
+      const previewHeight = renderedPageSize.height || 760;
 
       for (const signature of signatures) {
-        const page = pdfDoc.getPage(signature.pageNumber - 1);
-        const { width, height } = page.getSize();
-        const normalizedX = (signature.x / 560) * width;
-        const normalizedY = (signature.y / 760) * height;
-        const normalizedWidth = (signature.width / 560) * width;
-        const normalizedHeight = (signature.height / 760) * height;
+        const targetPages = signature.target === "all"
+          ? Array.from({ length: pageCount }, (_, index) => index + 1)
+          : signature.target === "pages"
+          ? signature.targetPages.filter((page) => page >= 1 && page <= pageCount)
+          : [signature.pageNumber];
 
-        const actualY = height - normalizedY - normalizedHeight;
+        for (const targetPage of targetPages) {
+          const page = pdfDoc.getPage(targetPage - 1);
+          const { width, height } = page.getSize();
+          const normalizedX = (signature.x / previewWidth) * width;
+          const normalizedY = (signature.y / previewHeight) * height;
+          const normalizedWidth = (signature.width / previewWidth) * width;
+          const normalizedHeight = (signature.height / previewHeight) * height;
+          const actualY = height - normalizedY - normalizedHeight;
 
-        if (signature.type === "type") {
-          const fontToUse = signature.text?.includes("J") ? timesItalic : italicFont;
-          page.drawText(signature.text || "Signature", {
-            x: normalizedX,
-            y: actualY,
-            size: 24,
-            font: fontToUse,
-            color: rgb(0.08, 0.1, 0.15),
-          });
-        } else if (signature.type === "image" && signature.imageDataUrl) {
-          const imageBytes = await fetch(signature.imageDataUrl).then((response) => response.arrayBuffer());
-          const image = await pdfDoc.embedPng(imageBytes);
-          page.drawImage(image, {
-            x: normalizedX,
-            y: actualY,
-            width: normalizedWidth,
-            height: normalizedHeight,
-          });
-        } else {
-          page.drawText("Sign", {
-            x: normalizedX,
-            y: actualY,
-            size: 18,
-            font,
-            color: rgb(0.08, 0.1, 0.15),
-          });
+          if (signature.type === "type") {
+            const fontToUse = signature.fontName === "TimesRomanItalic"
+              ? timesItalic
+              : signature.fontName === "CourierOblique"
+              ? courierItalic
+              : italicFont;
+
+            page.drawText(signature.text || "Signature", {
+              x: normalizedX,
+              y: actualY,
+              size: 24,
+              font: fontToUse,
+              color: rgb(0.08, 0.1, 0.15),
+            });
+          } else if (signature.type === "image" && signature.imageDataUrl) {
+            const imageBytes = dataUrlToBytes(signature.imageDataUrl);
+            const imageMime = signature.imageDataUrl.split(",")[0] ?? "";
+            const isJpeg = imageMime.includes("image/jpeg") || imageMime.includes("image/jpg");
+            const image = isJpeg ? await pdfDoc.embedJpg(imageBytes) : await pdfDoc.embedPng(imageBytes);
+            const imageWidth = image.width;
+            const imageHeight = image.height;
+            const aspectRatio = imageWidth / imageHeight;
+            let drawWidth = normalizedWidth;
+            let drawHeight = normalizedHeight;
+            if (drawWidth / drawHeight > aspectRatio) {
+              drawWidth = drawHeight * aspectRatio;
+            } else {
+              drawHeight = drawWidth / aspectRatio;
+            }
+            page.drawImage(image, {
+              x: normalizedX + (normalizedWidth - drawWidth) / 2,
+              y: actualY + (normalizedHeight - drawHeight) / 2,
+              width: drawWidth,
+              height: drawHeight,
+            });
+          } else if (signature.type === "draw" && signature.drawDataUrl) {
+            const drawImageBytes = dataUrlToBytes(signature.drawDataUrl);
+            const drawImage = await pdfDoc.embedPng(drawImageBytes);
+            page.drawImage(drawImage, {
+              x: normalizedX,
+              y: actualY,
+              width: normalizedWidth,
+              height: normalizedHeight,
+            });
+          } else {
+            page.drawText("Sign", {
+              x: normalizedX,
+              y: actualY,
+              size: 18,
+              font,
+              color: rgb(0.08, 0.1, 0.15),
+            });
+          }
         }
       }
 
@@ -283,8 +492,10 @@ export function SignPdfTool() {
       const url = URL.createObjectURL(blob);
       setDownloadUrl(url);
       setError(null);
-    } catch {
-      setError("Unable to save the signed PDF. Please try again.");
+    } catch (err) {
+      console.error("Sign PDF save failed:", err);
+      const message = err instanceof Error ? err.message : String(err);
+      setError(`Unable to save the signed PDF: ${message}`);
     } finally {
       setIsLoading(false);
     }
@@ -374,6 +585,20 @@ export function SignPdfTool() {
                     Add signature
                   </Button>
                 </div>
+                <div className="mt-3 space-y-2">
+                  <Label htmlFor="signature-target">Apply signature to</Label>
+                  <select id="signature-target" className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm" value={signatureTarget} onChange={(event) => setSignatureTarget(event.target.value as SignatureTarget)}>
+                    <option value="current">Current page</option>
+                    <option value="all">All pages</option>
+                    <option value="pages">Specific pages</option>
+                  </select>
+                  {signatureTarget === "pages" ? (
+                    <>
+                      <Label htmlFor="signature-target-pages">Page numbers</Label>
+                      <input id="signature-target-pages" className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm" value={signatureTargetText} onChange={(event) => setSignatureTargetText(event.target.value)} placeholder="1,3,5" />
+                    </>
+                  ) : null}
+                </div>
               </div>
 
               {error ? (
@@ -392,15 +617,26 @@ export function SignPdfTool() {
                 </div>
                 <div className="overflow-hidden rounded-2xl border border-border/70 bg-muted/30 p-2">
                   {previewUrl ? (
-                    <div className="relative overflow-hidden rounded-2xl border border-border/70 bg-white p-3">
-                      <img src={previewUrl} alt="PDF preview" className="max-h-[620px] w-full rounded-xl object-contain" />
+                    <div ref={previewContainerRef} className="relative flex items-center justify-center overflow-hidden rounded-2xl border border-border/70 bg-white p-3" onClick={handlePreviewClick}>
+                      <canvas ref={previewCanvasRef} className="max-h-[620px] w-full rounded-xl object-contain" />
                       {signatures.filter((item) => item.pageNumber === currentPage).map((signature) => (
                         <div
                           key={signature.id}
                           className={cn("absolute flex items-center justify-center rounded-lg border-2 border-dashed border-primary/60 bg-primary/10 p-2 shadow-sm", selectedSignatureId === signature.id ? "ring-2 ring-primary" : "")}
-                          style={{ left: `${(signature.x / 560) * 100}%`, top: `${(signature.y / 760) * 100}%`, width: `${(signature.width / 560) * 100}%`, height: `${(signature.height / 760) * 100}%` }}
+                          style={{ left: `${(signature.x / Math.max(renderedPageSize.width, 1)) * 100}%`, top: `${(signature.y / Math.max(renderedPageSize.height, 1)) * 100}%`, width: `${(signature.width / Math.max(renderedPageSize.width, 1)) * 100}%`, height: `${(signature.height / Math.max(renderedPageSize.height, 1)) * 100}%` }}
+                          onClick={(event) => event.stopPropagation()}
                         >
-                          <div className="flex items-center justify-center text-center text-xs font-medium text-primary">
+                          {signature.type === "draw" ? (
+                            <canvas
+                              ref={setSignatureCanvasRef(signature.id)}
+                              className="absolute inset-0 h-full w-full rounded-lg"
+                              onPointerDown={handleCanvasPointerDown}
+                              onPointerMove={handleCanvasPointerMove}
+                              onPointerUp={handleCanvasPointerUp}
+                              onPointerLeave={handleCanvasPointerUp}
+                            />
+                          ) : null}
+                          <div className="pointer-events-none flex items-center justify-center text-center text-xs font-medium text-primary">
                             {signature.type === "type" ? (signature.text || "Signature") : signature.type === "image" ? "Image" : "Draw"}
                           </div>
                         </div>
@@ -424,7 +660,9 @@ export function SignPdfTool() {
                           <p className="text-sm font-medium text-foreground">
                             {signature.type === "type" ? "Typed" : signature.type === "image" ? "Image" : "Drawn"} signature · Page {signature.pageNumber}
                           </p>
-                          <p className="text-xs text-muted-foreground">{signature.text || "Placement ready"}</p>
+                          <p className="text-xs text-muted-foreground">
+                            {signature.target === "all" ? "All pages" : signature.target === "pages" ? `Pages ${signature.targetPages.join(", ")}` : `Current page only`}
+                          </p>
                         </div>
                         <div className="flex items-center gap-2">
                           <Button variant="ghost" size="icon" onClick={() => setSelectedSignatureId(signature.id)}>

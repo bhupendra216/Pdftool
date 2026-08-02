@@ -531,6 +531,34 @@ export const tools: ToolRecord[] = [
     ],
     blogSlug: null,
   },
+  {
+    slug: "sign-pdf",
+    name: "Sign PDF",
+    shortDescription: "Place handwritten, typed, or image signatures on any page of a PDF.",
+    category: "Edit",
+    icon: "FileSignature",
+    popular: true,
+    status: "available",
+    seoTitle: "Sign PDF Online Free | PDFKira",
+    seoDescription:
+      "Add signatures to PDFs by drawing, typing, or uploading an image and place them precisely on any page.",
+    steps: [
+      "Upload the PDF you want to sign.",
+      "Choose draw, type, or image mode and place your signature on the page.",
+      "Download the signed PDF with your signature positioned exactly where you placed it.",
+    ],
+    faqs: [
+      {
+        question: "Can I sign any page in the document?",
+        answer: "Yes. You can place signatures on any page and move them around before downloading the finished PDF.",
+      },
+      {
+        question: "Which signature methods are supported?",
+        answer: "You can draw a signature with your pointer, type a signature and pick a handwriting style, or upload a PNG or JPEG signature image.",
+      },
+    ],
+    blogSlug: null,
+  },
 ];
 
 export const blogPosts: BlogPostRecord[] = [
