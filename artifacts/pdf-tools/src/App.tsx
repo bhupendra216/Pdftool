@@ -9,6 +9,12 @@ import { ScrollToTop } from '@/components/shared/ScrollToTop';
 import { Home } from '@/pages/Home';
 import { ToolsIndex } from '@/pages/ToolsIndex';
 import { ToolDetail } from '@/pages/ToolDetail';
+import MergePdfPage from '@/pages/merge-pdf';
+import SplitPdfPage from '@/pages/split-pdf';
+import CompressPdfPage from '@/pages/compress-pdf';
+import ConvertPdfPage from '@/pages/convert-pdf';
+import PdfOcrPage from '@/pages/pdf-ocr';
+import OrganizePdfPage from '@/pages/organize-pdf';
 import { BlogIndex } from '@/pages/BlogIndex';
 import { BlogDetail } from '@/pages/BlogDetail';
 import { About } from '@/pages/About';
@@ -36,6 +42,12 @@ function Router() {
         <Route path="/" component={Home} />
         <Route path="/tools" component={ToolsIndex} />
         <Route path="/tools/:slug" component={ToolDetail} />
+        <Route path="/merge-pdf" component={MergePdfPage} />
+        <Route path="/split-pdf" component={SplitPdfPage} />
+        <Route path="/compress-pdf" component={CompressPdfPage} />
+        <Route path="/convert-pdf" component={ConvertPdfPage} />
+        <Route path="/pdf-ocr" component={PdfOcrPage} />
+        <Route path="/organize-pdf" component={OrganizePdfPage} />
         <Route path="/blog" component={BlogIndex} />
         <Route path="/blog/:slug" component={BlogDetail} />
         <Route path="/about" component={About} />

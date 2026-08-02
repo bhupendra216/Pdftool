@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { SITE_URL } from '@/lib/site-config';
 
 // Use public kira.jpeg as the canonical social image
 const logo = '/favicon.png';
@@ -52,4 +53,46 @@ export function useSEO({
       updateMeta('meta[name="twitter:description"]', description);
     }
   }, [title, description]);
+}
+
+export function useSEOAdvanced({
+  title,
+  description,
+  canonical,
+  jsonLd,
+}: {
+  title: string;
+  description?: string;
+  canonical?: string;
+  jsonLd?: Record<string, unknown> | string;
+}) {
+  useSEO({ title, description });
+
+  useEffect(() => {
+    // Prefer explicit canonical, otherwise build from SITE_URL + current path
+    const resolvedCanonical = canonical || (typeof window !== 'undefined' ? `${SITE_URL}${window.location.pathname}` : SITE_URL);
+
+    let link = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+    if (!link) {
+      link = document.createElement('link');
+      link.setAttribute('rel', 'canonical');
+      document.head.appendChild(link);
+    }
+    link.setAttribute('href', resolvedCanonical);
+
+    updateMeta('meta[property="og:url"]', resolvedCanonical);
+    updateMeta('meta[name="twitter:url"]', resolvedCanonical);
+
+    if (jsonLd) {
+      const id = 'structured-data-jsonld';
+      let script = document.getElementById(id) as HTMLScriptElement | null;
+      if (!script) {
+        script = document.createElement('script');
+        script.setAttribute('type', 'application/ld+json');
+        script.setAttribute('id', id);
+        document.head.appendChild(script);
+      }
+      script.textContent = typeof jsonLd === 'string' ? jsonLd : JSON.stringify(jsonLd);
+    }
+  }, [canonical, jsonLd, title, description]);
 }

@@ -10,6 +10,60 @@ const DB_PATH = process.env.ADMIN_DB_PATH || DEFAULT_DB_PATH;
 
 let dbInstance: DatabaseSync | null = null;
 
+type DbCountRow = { count: number | string | null };
+type DbAvgRow = { avg: number | string | null };
+type AdminSessionRow = {
+  token: string;
+  username: string;
+  created_at: string;
+  createdAt: string;
+  expires_at: string;
+  expiresAt: string;
+  ip_address: string | null;
+  ipAddress: string | null;
+  user_agent: string | null;
+  userAgent: string | null;
+};
+type LoginAttemptRow = {
+  attempts: number | string;
+  firstAttemptAt: string;
+  lastAttemptAt: string;
+};
+type AnalyticsEventRow = {
+  ts: string;
+  ipAddress: string | null;
+  country: string | null;
+  tool: string | null;
+  statusCode: number | null;
+  processingTime: number | null;
+  fileSize: number | null;
+  success: number | null;
+};
+type AnalyticsErrorRow = {
+  ts: string;
+  path: string;
+  tool: string | null;
+  statusCode: number | null;
+  ipAddress: string | null;
+};
+type AnalyticsAggregateRow = {
+  tool?: string;
+  path?: string;
+  day?: string;
+  count: number | string | null;
+  avg?: number | string | null;
+  visitors?: number | string | null;
+  conversions?: number | string | null;
+  ocr?: number | string | null;
+  pdf?: number | string | null;
+  country?: string;
+  user_agent?: string;
+};
+
+function toNumber(value: number | string | null | undefined): number {
+  return Number(value ?? 0);
+}
+
 export type AnalyticsEventInput = {
   type: "page_view" | "api_request" | "tool_use";
   path: string;
@@ -95,13 +149,20 @@ export function createAdminSession(username: string, ipAddress: string, userAgen
 export function getAdminSession(token: string): AdminSession | null {
   const row = getDb()
     .prepare(`SELECT token, username, created_at as createdAt, expires_at as expiresAt, ip_address as ipAddress, user_agent as userAgent FROM admin_sessions WHERE token = ?`)
-    .get(token) as any;
+    .get(token) as AdminSessionRow | undefined;
   if (!row) return null;
   if (new Date(row.expiresAt).getTime() <= Date.now()) {
     deleteAdminSession(token);
     return null;
   }
-  return row as AdminSession;
+  return {
+    token: row.token,
+    username: row.username,
+    createdAt: row.createdAt,
+    expiresAt: row.expiresAt,
+    ipAddress: row.ipAddress ?? "",
+    userAgent: row.userAgent ?? "",
+  };
 }
 
 export function deleteAdminSession(token: string) {
@@ -110,7 +171,7 @@ export function deleteAdminSession(token: string) {
 
 export function registerLoginAttempt(ipAddress: string) {
   const now = new Date().toISOString();
-  const existing = getDb().prepare(`SELECT attempts, first_attempt_at as firstAttemptAt, last_attempt_at as lastAttemptAt FROM admin_login_attempts WHERE ip_address = ?`).get(ipAddress) as any;
+  const existing = getDb().prepare(`SELECT attempts, first_attempt_at as firstAttemptAt, last_attempt_at as lastAttemptAt FROM admin_login_attempts WHERE ip_address = ?`).get(ipAddress) as LoginAttemptRow | undefined;
   if (!existing) {
     getDb().prepare(`INSERT INTO admin_login_attempts(ip_address, attempts, first_attempt_at, last_attempt_at) VALUES (?, 1, ?, ?)`)
       .run(ipAddress, now, now);
@@ -126,7 +187,7 @@ export function resetLoginAttempts(ipAddress: string) {
 }
 
 export function isLoginBlocked(ipAddress: string) {
-  const row = getDb().prepare(`SELECT attempts, last_attempt_at as lastAttemptAt FROM admin_login_attempts WHERE ip_address = ?`).get(ipAddress) as any;
+  const row = getDb().prepare(`SELECT attempts, last_attempt_at as lastAttemptAt FROM admin_login_attempts WHERE ip_address = ?`).get(ipAddress) as LoginAttemptRow | undefined;
   if (!row) return false;
   const lastAttemptAt = new Date(row.lastAttemptAt).getTime();
   const windowMs = 15 * 60 * 1000;
@@ -169,40 +230,42 @@ export function getOverviewStats() {
   const last30DaysStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const last15Minutes = new Date(now.getTime() - 15 * 60 * 1000).toISOString();
 
-  const totalVisitors = getDb().prepare(`SELECT COUNT(DISTINCT ip_address) as count FROM analytics_events WHERE ip_address IS NOT NULL`).get() as any;
-  const visitorsToday = getDb().prepare(`SELECT COUNT(DISTINCT ip_address) as count FROM analytics_events WHERE ts >= ? AND ip_address IS NOT NULL`).get(todayStart) as any;
-  const visitorsYesterday = getDb().prepare(`SELECT COUNT(DISTINCT ip_address) as count FROM analytics_events WHERE ts >= ? AND ts < ? AND ip_address IS NOT NULL`).get(yesterdayStart, todayStart) as any;
-  const visitorsLast7Days = getDb().prepare(`SELECT COUNT(DISTINCT ip_address) as count FROM analytics_events WHERE ts >= ? AND ip_address IS NOT NULL`).get(last7DaysStart) as any;
-  const visitorsLast30Days = getDb().prepare(`SELECT COUNT(DISTINCT ip_address) as count FROM analytics_events WHERE ts >= ? AND ip_address IS NOT NULL`).get(last30DaysStart) as any;
-  const visitorsAllTime = totalVisitors.count;
+  const totalVisitors = getDb().prepare(`SELECT COUNT(DISTINCT ip_address) as count FROM analytics_events WHERE ip_address IS NOT NULL`).get() as DbCountRow;
+  const visitorsToday = getDb().prepare(`SELECT COUNT(DISTINCT ip_address) as count FROM analytics_events WHERE ts >= ? AND ip_address IS NOT NULL`).get(todayStart) as DbCountRow;
+  const visitorsYesterday = getDb().prepare(`SELECT COUNT(DISTINCT ip_address) as count FROM analytics_events WHERE ts >= ? AND ts < ? AND ip_address IS NOT NULL`).get(yesterdayStart, todayStart) as DbCountRow;
+  const visitorsLast7Days = getDb().prepare(`SELECT COUNT(DISTINCT ip_address) as count FROM analytics_events WHERE ts >= ? AND ip_address IS NOT NULL`).get(last7DaysStart) as DbCountRow;
+  const visitorsLast30Days = getDb().prepare(`SELECT COUNT(DISTINCT ip_address) as count FROM analytics_events WHERE ts >= ? AND ip_address IS NOT NULL`).get(last30DaysStart) as DbCountRow;
+  const visitorsAllTime = toNumber(totalVisitors.count);
 
-  const toolUses = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE type = 'tool_use'`).get() as any;
-  const successfulConversions = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE type = 'tool_use' AND success = 1`).get() as any;
-  const failedConversions = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE type = 'tool_use' AND success = 0`).get() as any;
-  const avgProcessingTime = getDb().prepare(`SELECT AVG(response_time_ms) as avg FROM analytics_events WHERE response_time_ms IS NOT NULL`).get() as any;
-  const totalOcrRequests = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE tool = 'OCR Image to Text'`).get() as any;
-  const totalPdfRequests = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE tool IN ('Merge PDF','Split PDF','Compress PDF','Protect PDF','Unlock PDF','Organize PDF','Delete Pages','Extract Pages','PDF to Word','Word to PDF','JPG to PDF','PDF to JPG')`).get() as any;
-  const activeUsers = getDb().prepare(`SELECT COUNT(DISTINCT ip_address) as count FROM analytics_events WHERE ts >= ? AND ip_address IS NOT NULL`).get(last15Minutes) as any;
+  const toolUses = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE type = 'tool_use'`).get() as DbCountRow;
+  const successfulConversions = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE type = 'tool_use' AND success = 1`).get() as DbCountRow;
+  const failedConversions = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE type = 'tool_use' AND success = 0`).get() as DbCountRow;
+  const avgProcessingTime = getDb().prepare(`SELECT AVG(response_time_ms) as avg FROM analytics_events WHERE response_time_ms IS NOT NULL`).get() as DbAvgRow;
+  const totalOcrRequests = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE tool = 'OCR Image to Text'`).get() as DbCountRow;
+  const totalPdfRequests = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE tool IN ('Merge PDF','Split PDF','Compress PDF','Protect PDF','Unlock PDF','Organize PDF','Delete Pages','Extract Pages','PDF to Word','Word to PDF','JPG to PDF','PDF to JPG')`).get() as DbCountRow;
+  const activeUsers = getDb().prepare(`SELECT COUNT(DISTINCT ip_address) as count FROM analytics_events WHERE ts >= ? AND ip_address IS NOT NULL`).get(last15Minutes) as DbCountRow;
 
-  const successRate = toolUses.count > 0 ? Math.round((Number(successfulConversions.count) / Number(toolUses.count)) * 1000) / 10 : 0;
+  const toolUsesCount = toNumber(toolUses.count);
+  const successfulConversionsCount = toNumber(successfulConversions.count);
+  const successRate = toolUsesCount > 0 ? Math.round((successfulConversionsCount / toolUsesCount) * 1000) / 10 : 0;
 
   const system = getSystemStats();
 
   return {
-    totalVisitors: Number(visitorsAllTime || 0),
-    visitorsToday: Number(visitorsToday.count || 0),
-    visitorsYesterday: Number(visitorsYesterday.count || 0),
-    visitorsLast7Days: Number(visitorsLast7Days.count || 0),
-    visitorsLast30Days: Number(visitorsLast30Days.count || 0),
-    visitorsAllTime: Number(visitorsAllTime || 0),
-    totalToolUses: Number(toolUses.count || 0),
-    totalSuccessfulConversions: Number(successfulConversions.count || 0),
-    failedConversions: Number(failedConversions.count || 0),
+    totalVisitors: visitorsAllTime,
+    visitorsToday: toNumber(visitorsToday.count),
+    visitorsYesterday: toNumber(visitorsYesterday.count),
+    visitorsLast7Days: toNumber(visitorsLast7Days.count),
+    visitorsLast30Days: toNumber(visitorsLast30Days.count),
+    visitorsAllTime,
+    totalToolUses: toolUsesCount,
+    totalSuccessfulConversions: successfulConversionsCount,
+    failedConversions: toNumber(failedConversions.count),
     successRate,
-    averageProcessingTime: Number(avgProcessingTime.avg || 0),
-    totalOcrRequests: Number(totalOcrRequests.count || 0),
-    totalPdfRequests: Number(totalPdfRequests.count || 0),
-    activeUsers: Number(activeUsers.count || 0),
+    averageProcessingTime: toNumber(avgProcessingTime.avg),
+    totalOcrRequests: toNumber(totalOcrRequests.count),
+    totalPdfRequests: toNumber(totalPdfRequests.count),
+    activeUsers: toNumber(activeUsers.count),
     serverUptime: system.serverUptime,
     memoryUsage: system.memoryUsage,
     cpuUsage: system.cpuUsage,
@@ -214,36 +277,36 @@ export function getOverviewStats() {
 export function getToolStats() {
   const rows = getDb()
     .prepare(`SELECT tool, COUNT(*) as count FROM analytics_events WHERE type = 'tool_use' AND tool IS NOT NULL GROUP BY tool ORDER BY count DESC`)
-    .all() as any[];
-  const total = rows.reduce((sum, row) => sum + Number(row.count), 0);
+    .all() as AnalyticsAggregateRow[];
+  const total = rows.reduce((sum, row) => sum + toNumber(row.count), 0);
   return rows.map((row) => ({
     name: row.tool,
-    count: Number(row.count),
-    percentage: total > 0 ? Math.round((Number(row.count) / total) * 1000) / 10 : 0,
+    count: toNumber(row.count),
+    percentage: total > 0 ? Math.round((toNumber(row.count) / total) * 1000) / 10 : 0,
   }));
 }
 
 export function getAnalyticsSeries() {
   const rows = getDb()
     .prepare(`SELECT substr(ts, 1, 10) as day, COUNT(DISTINCT ip_address) as visitors, SUM(CASE WHEN type='tool_use' AND success=1 THEN 1 ELSE 0 END) as conversions, SUM(CASE WHEN tool='OCR Image to Text' THEN 1 ELSE 0 END) as ocr, SUM(CASE WHEN tool IN ('Merge PDF','Split PDF','Compress PDF','Protect PDF','Unlock PDF','Organize PDF','Delete Pages','Extract Pages','PDF to Word','Word to PDF','JPG to PDF','PDF to JPG') THEN 1 ELSE 0 END) as pdf FROM analytics_events GROUP BY substr(ts, 1, 10) ORDER BY day DESC LIMIT 30`)
-    .all() as any[];
+    .all() as AnalyticsAggregateRow[];
   return rows.reverse().map((row) => ({
     day: row.day,
-    visitors: Number(row.visitors || 0),
-    conversions: Number(row.conversions || 0),
-    ocr: Number(row.ocr || 0),
-    pdf: Number(row.pdf || 0),
+    visitors: toNumber(row.visitors),
+    conversions: toNumber(row.conversions),
+    ocr: toNumber(row.ocr),
+    pdf: toNumber(row.pdf),
   }));
 }
 
 export function getVisitorBreakdowns() {
-  const countries = getDb().prepare(`SELECT country, COUNT(*) as count FROM analytics_events WHERE country IS NOT NULL AND country != '' GROUP BY country ORDER BY count DESC LIMIT 10`).all() as any[];
-  const browsers = getDb().prepare(`SELECT user_agent, COUNT(*) as count FROM analytics_events WHERE user_agent IS NOT NULL GROUP BY user_agent ORDER BY count DESC LIMIT 10`).all() as any[];
+  const countries = getDb().prepare(`SELECT country, COUNT(*) as count FROM analytics_events WHERE country IS NOT NULL AND country != '' GROUP BY country ORDER BY count DESC LIMIT 10`).all() as AnalyticsAggregateRow[];
+  const browsers = getDb().prepare(`SELECT user_agent, COUNT(*) as count FROM analytics_events WHERE user_agent IS NOT NULL GROUP BY user_agent ORDER BY count DESC LIMIT 10`).all() as AnalyticsAggregateRow[];
   return {
-    countries: countries.map((row) => ({ name: row.country, count: Number(row.count) })),
-    browsers: browsers.map((row) => ({ name: detectBrowser(row.user_agent), count: Number(row.count) })),
-    os: browsers.map((row) => ({ name: detectOs(row.user_agent), count: Number(row.count) })),
-    devices: browsers.map((row) => ({ name: detectDevice(row.user_agent), count: Number(row.count) })),
+    countries: countries.map((row) => ({ name: row.country, count: toNumber(row.count) })),
+    browsers: browsers.map((row) => ({ name: detectBrowser(row.user_agent), count: toNumber(row.count) })),
+    os: browsers.map((row) => ({ name: detectOs(row.user_agent), count: toNumber(row.count) })),
+    devices: browsers.map((row) => ({ name: detectDevice(row.user_agent), count: toNumber(row.count) })),
   };
 }
 
@@ -266,31 +329,31 @@ export function getLogs(limit = 100, offset = 0, filters: { status?: string; too
   const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
   const rows = getDb()
     .prepare(`SELECT ts, ip_address as ipAddress, country, tool, status_code as statusCode, response_time_ms as processingTime, file_size as fileSize, success FROM analytics_events ${whereClause} ORDER BY ts DESC LIMIT ? OFFSET ?`)
-    .all(...params, limit, offset) as any[];
+    .all(...params, limit, offset) as AnalyticsEventRow[];
   return rows.map((row) => ({
     time: row.ts,
     ipAddress: row.ipAddress,
     country: row.country || "Unknown",
     requestedTool: row.tool || "N/A",
     statusCode: row.statusCode,
-    processingTime: Number(row.processingTime || 0),
-    fileSize: Number(row.fileSize || 0),
+    processingTime: toNumber(row.processingTime),
+    fileSize: toNumber(row.fileSize),
     success: Boolean(row.success),
   }));
 }
 
 export function getErrors() {
-  const totalErrors = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE success = 0`).get() as any;
-  const recentErrors = getDb().prepare(`SELECT ts, path, tool, status_code as statusCode, ip_address as ipAddress FROM analytics_events WHERE success = 0 ORDER BY ts DESC LIMIT 10`).all() as any[];
-  const mostCommon = getDb().prepare(`SELECT path, COUNT(*) as count FROM analytics_events WHERE success = 0 GROUP BY path ORDER BY count DESC LIMIT 10`).all() as any[];
-  const ocrFailures = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE tool = 'OCR Image to Text' AND success = 0`).get() as any;
-  const conversionFailures = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE type = 'tool_use' AND success = 0`).get() as any;
-  const http500s = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE status_code >= 500`).get() as any;
-  const http404s = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE status_code = 404`).get() as any;
+  const totalErrors = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE success = 0`).get() as DbCountRow;
+  const recentErrors = getDb().prepare(`SELECT ts, path, tool, status_code as statusCode, ip_address as ipAddress FROM analytics_events WHERE success = 0 ORDER BY ts DESC LIMIT 10`).all() as AnalyticsErrorRow[];
+  const mostCommon = getDb().prepare(`SELECT path, COUNT(*) as count FROM analytics_events WHERE success = 0 GROUP BY path ORDER BY count DESC LIMIT 10`).all() as AnalyticsAggregateRow[];
+  const ocrFailures = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE tool = 'OCR Image to Text' AND success = 0`).get() as DbCountRow;
+  const conversionFailures = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE type = 'tool_use' AND success = 0`).get() as DbCountRow;
+  const http500s = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE status_code >= 500`).get() as DbCountRow;
+  const http404s = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE status_code = 404`).get() as DbCountRow;
   return {
     totalErrors: Number(totalErrors.count || 0),
     recentErrors,
-    mostCommonErrors: mostCommon.map((row) => ({ path: row.path, count: Number(row.count) })),
+    mostCommonErrors: mostCommon.map((row) => ({ path: row.path, count: toNumber(row.count) })),
     ocrFailures: Number(ocrFailures.count || 0),
     conversionFailures: Number(conversionFailures.count || 0),
     http500s: Number(http500s.count || 0),
@@ -299,12 +362,12 @@ export function getErrors() {
 }
 
 export function getPerformance() {
-  const avgResponse = getDb().prepare(`SELECT AVG(response_time_ms) as avg FROM analytics_events WHERE response_time_ms IS NOT NULL`).get() as any;
-  const slowest = getDb().prepare(`SELECT path, AVG(response_time_ms) as avg FROM analytics_events WHERE response_time_ms IS NOT NULL GROUP BY path ORDER BY avg DESC LIMIT 10`).all() as any[];
+  const avgResponse = getDb().prepare(`SELECT AVG(response_time_ms) as avg FROM analytics_events WHERE response_time_ms IS NOT NULL`).get() as DbAvgRow;
+  const slowest = getDb().prepare(`SELECT path, AVG(response_time_ms) as avg FROM analytics_events WHERE response_time_ms IS NOT NULL GROUP BY path ORDER BY avg DESC LIMIT 10`).all() as AnalyticsAggregateRow[];
   const system = getSystemStats();
   return {
-    averageApiResponseTime: Number(avgResponse.avg || 0),
-    slowestApis: slowest.map((row) => ({ path: row.path, avgMs: Number(row.avg || 0) })),
+    averageApiResponseTime: toNumber(avgResponse.avg),
+    slowestApis: slowest.map((row) => ({ path: row.path, avgMs: toNumber(row.avg) })),
     memoryUsage: system.memoryUsage,
     cpuUsage: system.cpuUsage,
     diskUsage: system.diskUsage,
@@ -314,13 +377,13 @@ export function getPerformance() {
 }
 
 export function getSearchAnalytics() {
-  const searches = getDb().prepare(`SELECT tool, COUNT(*) as count FROM analytics_events WHERE type = 'tool_use' AND tool IS NOT NULL GROUP BY tool ORDER BY count DESC LIMIT 10`).all() as any[];
-  const pages = getDb().prepare(`SELECT path, COUNT(*) as count FROM analytics_events WHERE type = 'page_view' GROUP BY path ORDER BY count DESC LIMIT 10`).all() as any[];
-  const downloads = getDb().prepare(`SELECT path, COUNT(*) as count FROM analytics_events WHERE path LIKE '%download%' GROUP BY path ORDER BY count DESC LIMIT 10`).all() as any[];
+  const searches = getDb().prepare(`SELECT tool, COUNT(*) as count FROM analytics_events WHERE type = 'tool_use' AND tool IS NOT NULL GROUP BY tool ORDER BY count DESC LIMIT 10`).all() as AnalyticsAggregateRow[];
+  const pages = getDb().prepare(`SELECT path, COUNT(*) as count FROM analytics_events WHERE type = 'page_view' GROUP BY path ORDER BY count DESC LIMIT 10`).all() as AnalyticsAggregateRow[];
+  const downloads = getDb().prepare(`SELECT path, COUNT(*) as count FROM analytics_events WHERE path LIKE '%download%' GROUP BY path ORDER BY count DESC LIMIT 10`).all() as AnalyticsAggregateRow[];
   return {
-    mostSearchedTools: searches.map((row) => ({ name: row.tool, count: Number(row.count) })),
-    mostVisitedPages: pages.map((row) => ({ path: row.path, count: Number(row.count) })),
-    mostDownloadedOutputs: downloads.map((row) => ({ path: row.path, count: Number(row.count) })),
+    mostSearchedTools: searches.map((row) => ({ name: row.tool, count: toNumber(row.count) })),
+    mostVisitedPages: pages.map((row) => ({ path: row.path, count: toNumber(row.count) })),
+    mostDownloadedOutputs: downloads.map((row) => ({ path: row.path, count: toNumber(row.count) })),
     averageSessionDuration: 0,
     bounceRate: 0,
   };

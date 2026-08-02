@@ -76,6 +76,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "jszip": "^3.10.0",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.1.200",
     "qrcode": "^1.5.4",

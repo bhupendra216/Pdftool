@@ -13,6 +13,12 @@ export function Navbar() {
 
   const links = [
     { href: "/tools", label: "All Tools" },
+    { href: "/merge-pdf", label: "Merge" },
+    { href: "/split-pdf", label: "Split" },
+    { href: "/compress-pdf", label: "Compress" },
+    { href: "/convert-pdf", label: "Convert" },
+    { href: "/organize-pdf", label: "Organize" },
+    { href: "/pdf-ocr", label: "OCR" },
     { href: "/blog", label: "Blog" },
     { href: "/ai-jobs", label: "AI Jobs" },
   ];

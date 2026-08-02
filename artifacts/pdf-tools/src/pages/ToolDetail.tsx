@@ -6,6 +6,7 @@ import { useGetTool, useGetBlogPost, useListTools, useListFaqs, useOcrImageToTex
 import { useSEO } from "@/hooks/use-seo";
 import { formatBytes } from "@/lib/utils";
 import { UploadArea } from "@/components/shared/UploadArea";
+import JSZip from "jszip";
 import { FilePreviewList } from "@/components/shared/FilePreviewList";
 import { FaqSection } from "@/components/shared/FaqSection";
 import { ToolCard } from "@/components/shared/ToolCard";
@@ -39,9 +40,29 @@ type UploadConfig = {
   highlights: string[];
 };
 
+const stripExtension = (filename: string) => filename.replace(/\.[^/.]+$/, "");
+
+type BatchItemStatus = "pending" | "converting" | "done" | "failed";
+
+type ImageBatchItem = {
+  file: File;
+  status: BatchItemStatus;
+  error: string | null;
+  blob?: Blob;
+  outputName?: string;
+};
+
 const getUploadConfig = (slug?: string): UploadConfig => {
   switch (slug) {
     case "image-converter":
+      return {
+        accept: "image/png,image/jpeg,image/webp,image/bmp,image/tiff,image/gif,image/heic,image/heif,.png,.jpg,.jpeg,.webp,.bmp,.tiff,.tif,.gif,.heic,.heif",
+        maxSizeMB: 20,
+        label: "image files",
+        description: "or drop up to 30 images here.",
+        supportedFormats: ["PNG", "JPG", "JPEG", "WebP", "BMP", "TIFF", "GIF", "HEIC", "HEIF"],
+        highlights: ["Preserve quality", "Batch convert up to 30 images", "Preview before download"],
+      };
     case "image-resize":
     case "image-compress":
     case "image-upscale":
@@ -191,8 +212,10 @@ const getUploadConfig = (slug?: string): UploadConfig => {
   }
 };
 
-export function ToolDetail() {
-  const { slug } = useParams<{ slug: string }>();
+export function ToolDetail(props?: any) {
+  const params = useParams<{ slug: string }>();
+  const forcedSlug = props?.forcedSlug;
+  const slug = forcedSlug ?? params.slug ?? props?.params?.slug;
   const { data: tool, isLoading, isError } = useGetTool(slug);
   const { data: catalogTools } = useListTools();
   const { data: siteFaqs } = useListFaqs();
@@ -202,6 +225,13 @@ export function ToolDetail() {
 
   const [files, setFiles] = useState<File[]>([]);
   const [status, setStatus] = useState<"idle" | "options" | "processing" | "success">("idle");
+  useEffect(() => {
+    try {
+      window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    } catch (e) {
+      // ignore (server-side rendering or environments without window)
+    }
+  }, [status]);
   const [progress, setProgress] = useState(0);
   const [progressStage, setProgressStage] = useState("Preparing...");
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
@@ -224,6 +254,7 @@ export function ToolDetail() {
   const [imageWidth, setImageWidth] = useState<number | null>(null);
   const [imageHeight, setImageHeight] = useState<number | null>(null);
   const [imageFormat, setImageFormat] = useState<string | null>(null);
+  const [imageBatchItems, setImageBatchItems] = useState<ImageBatchItem[]>([]);
   const [outputFormat, setOutputFormat] = useState<string>("png");
   const [resizeWidth, setResizeWidth] = useState<string>("");
   const [resizeHeight, setResizeHeight] = useState<string>("");
@@ -323,80 +354,54 @@ export function ToolDetail() {
     return Math.max(1024, Math.round(size * factor));
   };
 
-  const allowsMultipleFiles = tool?.slug === "merge-pdf" || tool?.slug === "jpg-to-pdf";
+  const allowsMultipleFiles = tool?.slug === "merge-pdf" || tool?.slug === "jpg-to-pdf" || tool?.slug === "image-converter";
   const requiredFileCount = tool?.slug === "merge-pdf" ? 2 : 1;
 
-  const actionLabel = tool?.slug === "merge-pdf"
-    ? "Merge PDF"
-    : tool?.slug === "split-pdf"
-    ? "Split PDF"
-    : tool?.slug === "compress-pdf"
-    ? "Compress PDF"
-    : tool?.slug === "rotate-pdf"
-    ? "Rotate PDF"
-    : tool?.slug === "unlock-pdf"
-    ? "Unlock PDF"
-    : tool?.slug === "protect-pdf"
-    ? "Protect PDF"
-    : tool?.slug === "watermark-pdf"
-    ? "Watermark PDF"
-    : tool?.slug === "add-page-numbers"
-    ? "Add Page Numbers"
-    : tool?.slug === "image-converter"
-    ? "Convert Image"
-    : tool?.slug === "pdf-to-word"
-    ? "Convert to Word"
-    : tool?.slug === "word-to-pdf"
-    ? "Convert to PDF"
-    : tool?.slug === "jpg-to-pdf"
-    ? "Convert to PDF"
-    : tool?.slug === "pdf-to-jpg"
-    ? "Convert to JPG"
-    : tool?.slug === "image-resize"
-    ? "Resize Image"
-    : tool?.slug === "image-compress"
-    ? "Compress Image"
-    : tool?.slug === "image-upscale"
-    ? "Upscale Image"
-    : tool?.slug === "organize-pdf"
-    ? "Save Organized PDF"
-    : tool?.slug === "delete-pages"
-    ? "Delete Pages"
-    : tool?.slug === "extract-pages"
-    ? "Extract Pages"
-    : "Process PDF";
+  const actionLabelBySlug: Record<string, string> = {
+    "merge-pdf": "Merge PDF",
+    "split-pdf": "Split PDF",
+    "compress-pdf": "Compress PDF",
+    "rotate-pdf": "Rotate PDF",
+    "unlock-pdf": "Unlock PDF",
+    "protect-pdf": "Protect PDF",
+    "watermark-pdf": "Watermark PDF",
+    "add-page-numbers": "Add Page Numbers",
+    "image-converter": "Convert Image",
+    "pdf-to-word": "Convert to Word",
+    "word-to-pdf": "Convert to PDF",
+    "jpg-to-pdf": "Convert to PDF",
+    "pdf-to-jpg": "Convert to JPG",
+    "image-resize": "Resize Image",
+    "image-compress": "Compress Image",
+    "image-upscale": "Upscale Image",
+    "organize-pdf": "Save Organized PDF",
+    "delete-pages": "Delete Pages",
+    "extract-pages": "Extract Pages",
+  };
+
+  const actionLabel = actionLabelBySlug[tool?.slug ?? ""] ?? "Process PDF";
 
   const buttonLabel = status === "options" ? actionLabel : "Process";
   const selectedPageCount = pdfPages.filter((page) => page.selected).length;
-  const uploadHint = tool?.slug === "image-converter"
-    ? "Upload a single image file to convert."
-    : tool?.slug === "pdf-to-word"
-    ? "Upload a PDF with 20 pages or fewer to convert it into a Word document."
-    : tool?.slug === "word-to-pdf"
-    ? "Upload a Word document to convert it into a PDF."
-    : tool?.slug === "jpg-to-pdf"
-    ? "Upload one or more image files to convert them into a PDF."
-    : tool?.slug === "pdf-to-jpg"
-    ? "Upload a PDF to convert its pages into JPG images."
-    : tool?.slug === "image-resize"
-    ? "Upload an image to resize its dimensions while preserving quality."
-    : tool?.slug === "image-compress"
-    ? "Upload an image to reduce file size while keeping it sharp."
-    : tool?.slug === "image-upscale"
-    ? "Upload an image to increase resolution for larger displays."
-    : tool?.slug === "organize-pdf"
-    ? "Upload a PDF to reorder, rotate, and remove pages before saving."
-    : tool?.slug === "delete-pages"
-    ? "Upload a PDF and select pages you want to remove."
-    : tool?.slug === "extract-pages"
-    ? "Upload a PDF and choose pages to extract into a new file."
-    : tool?.slug === "unlock-pdf"
-    ? "Upload a password-protected PDF and enter its current password."
-    : tool?.slug === "protect-pdf"
-    ? "Upload a PDF and enter a password to secure it."
-    : allowsMultipleFiles
+  const uploadHintBySlug: Record<string, string> = {
+    "image-converter": "Upload up to 30 image files at once to convert them in a batch.",
+    "pdf-to-word": "Upload a PDF with 20 pages or fewer to convert it into a Word document.",
+    "word-to-pdf": "Upload a Word document to convert it into a PDF.",
+    "jpg-to-pdf": "Upload one or more image files to convert them into a PDF.",
+    "pdf-to-jpg": "Upload a PDF to convert its pages into JPG images.",
+    "image-resize": "Upload an image to resize its dimensions while preserving quality.",
+    "image-compress": "Upload an image to reduce file size while keeping it sharp.",
+    "image-upscale": "Upload an image to increase resolution for larger displays.",
+    "organize-pdf": "Upload a PDF to reorder, rotate, and remove pages before saving.",
+    "delete-pages": "Upload a PDF and select pages you want to remove.",
+    "extract-pages": "Upload a PDF and choose pages to extract into a new file.",
+    "unlock-pdf": "Upload a password-protected PDF and enter its current password.",
+    "protect-pdf": "Upload a PDF and enter a password to secure it.",
+  };
+
+  const uploadHint = uploadHintBySlug[tool?.slug ?? ""] ?? (allowsMultipleFiles
     ? `Upload ${requiredFileCount}+ PDF files to ${actionLabel.toLowerCase()}.`
-    : `Upload a single PDF file to ${actionLabel.toLowerCase()}.`;
+    : `Upload a single PDF file to ${actionLabel.toLowerCase()}.`);
 
   const ocrMutation = useOcrImageToText();
 
@@ -420,6 +425,7 @@ export function ToolDetail() {
     setPdfToWordExtractImages(true);
     setPdfToWordOcr(false);
     setPdfToWordOutputFormat("docx");
+    setImageBatchItems([]);
   }, [slug]);
 
   useEffect(() => {
@@ -563,22 +569,21 @@ export function ToolDetail() {
       ? pdfPages.length > 0
       : true);
 
+  async function postFormDataForBlob(url: string, formData: FormData, errorPrefix: string): Promise<Blob> {
+    const response = await fetch(url, { method: "POST", body: formData });
+    if (!response.ok) {
+      const text = await response.text().catch(() => null);
+      throw new Error(text || `${errorPrefix} failed with HTTP ${response.status}`);
+    }
+    return await response.blob();
+  }
+
   const splitPdfOnServer = async (fileToSplit: File, range: string): Promise<Blob> => {
     const formData = new FormData();
     formData.append("files", fileToSplit);
     formData.append("pageRange", range);
 
-    const response = await fetch(apiUrl("/api/split-pdf"), {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => null);
-      throw new Error(text || `Split failed with HTTP ${response.status}`);
-    }
-
-    return await response.blob();
+    return postFormDataForBlob(apiUrl("/api/split-pdf"), formData, "Split");
   };
 
   const convertPdfToWordOnServer = async (fileToConvert: File): Promise<Blob> => {
@@ -636,34 +641,14 @@ export function ToolDetail() {
     formData.append("files", fileToConvert);
 
   
-    const response = await fetch(apiUrl("/api/convert-word-to-pdf"), {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => null);
-      throw new Error(text || `Word to PDF conversion failed with HTTP ${response.status}`);
-    }
-
-    return await response.blob();
+    return postFormDataForBlob(apiUrl("/api/convert-word-to-pdf"), formData, "Word to PDF conversion");
   };
 
   const convertJpgToPdfOnServer = async (filesToConvert: File[]): Promise<Blob> => {
     const formData = new FormData();
     filesToConvert.forEach((file) => formData.append("files", file));
 
-    const response = await fetch(apiUrl("/api/convert-jpg-to-pdf"), {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => null);
-      throw new Error(text || `JPG to PDF conversion failed with HTTP ${response.status}`);
-    }
-
-    return await response.blob();
+    return postFormDataForBlob(apiUrl("/api/convert-jpg-to-pdf"), formData, "JPG to PDF conversion");
   };
 
   const convertPdfToJpgOnServer = async (fileToConvert: File): Promise<{ blob: Blob; filename: string }> => {
@@ -683,7 +668,7 @@ export function ToolDetail() {
     const blob = await response.blob();
     const contentDisposition = response.headers.get("content-disposition") || "";
     const filenameMatch = contentDisposition.match(/filename\s*=\s*"?([^";]+)"?/i);
-    const filename = filenameMatch ? filenameMatch[1] : fileToConvert.name.replace(/\.[^/.]+$/, "") + ".jpg";
+    const filename = filenameMatch ? filenameMatch[1] : stripExtension(fileToConvert.name) + ".jpg";
     return { blob, filename };
   };
 
@@ -692,17 +677,7 @@ export function ToolDetail() {
     formData.append("files", fileToConvert);
     formData.append("password", password);
 
-    const response = await fetch(apiUrl("/api/protect-pdf"), {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => null);
-      throw new Error(text || `Protect PDF failed with HTTP ${response.status}`);
-    }
-
-    return await response.blob();
+    return postFormDataForBlob(apiUrl("/api/protect-pdf"), formData, "Protect PDF");
   };
 
   const unlockPdfOnServer = async (fileToConvert: File, password: string): Promise<Blob> => {
@@ -710,17 +685,7 @@ export function ToolDetail() {
     formData.append("files", fileToConvert);
     formData.append("password", password);
 
-    const response = await fetch(apiUrl("/api/unlock-pdf"), {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => null);
-      throw new Error(text || `Unlock PDF failed with HTTP ${response.status}`);
-    }
-
-    return await response.blob();
+    return postFormDataForBlob(apiUrl("/api/unlock-pdf"), formData, "Unlock PDF");
   };
 
   const watermarkPdfOnServer = async (fileToWatermark: File, text: string, position: string, logoFile: File | null): Promise<Blob> => {
@@ -732,17 +697,7 @@ export function ToolDetail() {
       formData.append("logo", logoFile);
     }
 
-    const response = await fetch(apiUrl("/api/watermark-pdf"), {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => null);
-      throw new Error(text || `Watermark PDF failed with HTTP ${response.status}`);
-    }
-
-    return await response.blob();
+    return postFormDataForBlob(apiUrl("/api/watermark-pdf"), formData, "Watermark PDF");
   };
 
   const addPageNumbersOnServer = async (fileToNumber: File, startNumber: number, position: string): Promise<Blob> => {
@@ -751,17 +706,7 @@ export function ToolDetail() {
     formData.append("startNumber", String(startNumber));
     formData.append("position", position);
 
-    const response = await fetch(apiUrl("/api/add-page-numbers"), {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => null);
-      throw new Error(text || `Add Page Numbers failed with HTTP ${response.status}`);
-    }
-
-    return await response.blob();
+    return postFormDataForBlob(apiUrl("/api/add-page-numbers"), formData, "Add Page Numbers");
   };
 
   const convertImageOnServer = async (fileToConvert: File, outFormat: string): Promise<Blob> => {
@@ -769,17 +714,7 @@ export function ToolDetail() {
     formData.append("files", fileToConvert);
     formData.append("outputFormat", outFormat);
 
-    const response = await fetch(apiUrl("/api/convert-image"), {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => null);
-      throw new Error(text || `Image conversion failed with HTTP ${response.status}`);
-    }
-
-    return await response.blob();
+    return postFormDataForBlob(apiUrl("/api/convert-image"), formData, "Image conversion");
   };
 
   const resizeImageOnServer = async (fileToResize: File, width: number | null, height: number | null): Promise<Blob> => {
@@ -788,17 +723,7 @@ export function ToolDetail() {
     if (width != null) formData.append("width", String(width));
     if (height != null) formData.append("height", String(height));
 
-    const response = await fetch(apiUrl("/api/image-resize"), {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => null);
-      throw new Error(text || `Image resize failed with HTTP ${response.status}`);
-    }
-
-    return await response.blob();
+    return postFormDataForBlob(apiUrl("/api/image-resize"), formData, "Image resize");
   };
 
   const compressImageOnServer = async (fileToCompress: File, quality: number): Promise<Blob> => {
@@ -806,17 +731,7 @@ export function ToolDetail() {
     formData.append("files", fileToCompress);
     formData.append("quality", String(quality));
 
-    const response = await fetch(apiUrl("/api/image-compress"), {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => null);
-      throw new Error(text || `Image compression failed with HTTP ${response.status}`);
-    }
-
-    return await response.blob();
+    return postFormDataForBlob(apiUrl("/api/image-compress"), formData, "Image compression");
   };
 
   const compressPdfOnServer = async (fileToCompress: File, compressionLevel: string): Promise<Blob> => {
@@ -824,17 +739,7 @@ export function ToolDetail() {
     formData.append("files", fileToCompress);
     formData.append("compressionLevel", compressionLevel);
 
-    const response = await fetch(apiUrl("/api/compress-pdf"), {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => null);
-      throw new Error(text || `PDF compression failed with HTTP ${response.status}`);
-    }
-
-    return await response.blob();
+    return postFormDataForBlob(apiUrl("/api/compress-pdf"), formData, "PDF compression");
   };
 
   const upscaleImageOnServer = async (fileToUpscale: File, scale: number, width: number | null, height: number | null): Promise<Blob> => {
@@ -844,17 +749,7 @@ export function ToolDetail() {
     if (width != null) formData.append("width", String(width));
     if (height != null) formData.append("height", String(height));
 
-    const response = await fetch(apiUrl("/api/image-upscale"), {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => null);
-      throw new Error(text || `Image upscale failed with HTTP ${response.status}`);
-    }
-
-    return await response.blob();
+    return postFormDataForBlob(apiUrl("/api/image-upscale"), formData, "Image upscale");
   };
 
   const organizePdfOnServer = async (fileToOrganize: File, pageOrder: number[], rotations: number[]): Promise<Blob> => {
@@ -863,17 +758,7 @@ export function ToolDetail() {
     formData.append("pageOrder", JSON.stringify(pageOrder));
     formData.append("rotations", JSON.stringify(rotations));
 
-    const response = await fetch(apiUrl("/api/organize-pdf"), {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => null);
-      throw new Error(text || `Organize PDF failed with HTTP ${response.status}`);
-    }
-
-    return await response.blob();
+    return postFormDataForBlob(apiUrl("/api/organize-pdf"), formData, "Organize PDF");
   };
 
   const rotatePdfOnServer = async (fileToRotate: File, rotationOrRotations: number | number[]): Promise<Blob> => {
@@ -886,17 +771,7 @@ export function ToolDetail() {
       formData.append("rotation", String(rotationOrRotations));
     }
 
-    const response = await fetch(apiUrl("/api/rotate-pdf"), {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => null);
-      throw new Error(text || `Rotate PDF failed with HTTP ${response.status}`);
-    }
-
-    return await response.blob();
+    return postFormDataForBlob(apiUrl("/api/rotate-pdf"), formData, "Rotate PDF");
   };
 
   const deletePagesOnServer = async (fileToDeleteFrom: File, pagesToDelete: number[]): Promise<Blob> => {
@@ -904,17 +779,7 @@ export function ToolDetail() {
     formData.append("files", fileToDeleteFrom);
     formData.append("pages", pagesToDelete.join(","));
 
-    const response = await fetch(apiUrl("/api/delete-pages"), {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => null);
-      throw new Error(text || `Delete Pages failed with HTTP ${response.status}`);
-    }
-
-    return await response.blob();
+    return postFormDataForBlob(apiUrl("/api/delete-pages"), formData, "Delete Pages");
   };
 
   const extractPagesOnServer = async (fileToExtractFrom: File, pages: number[]): Promise<Blob> => {
@@ -922,17 +787,7 @@ export function ToolDetail() {
     formData.append("files", fileToExtractFrom);
     formData.append("pages", pages.join(","));
 
-    const response = await fetch(apiUrl("/api/extract-pages"), {
-      method: "POST",
-      body: formData,
-    });
-
-    if (!response.ok) {
-      const text = await response.text().catch(() => null);
-      throw new Error(text || `Extract Pages failed with HTTP ${response.status}`);
-    }
-
-    return await response.blob();
+    return postFormDataForBlob(apiUrl("/api/extract-pages"), formData, "Extract Pages");
   };
 
   const movePage = (index: number, direction: "up" | "down") => {
@@ -1004,7 +859,7 @@ export function ToolDetail() {
 
   const prepareLocalDownload = async (): Promise<void> => {
     const rawFile = files[0];
-    const baseName = rawFile.name.replace(/\.[^/.]+$/, "");
+    const baseName = stripExtension(rawFile.name);
     let outputName = `${baseName}-${tool?.slug}.pdf`;
 
     switch (tool?.slug) {
@@ -1119,7 +974,98 @@ export function ToolDetail() {
     );
   }
 
+  const resetImagePreviewState = () => {
+    if (imagePreviewUrl) {
+      URL.revokeObjectURL(imagePreviewUrl);
+    }
+    setImagePreviewUrl(null);
+    setImageWidth(null);
+    setImageHeight(null);
+    setImageFormat(null);
+  };
+
+  const prepareSingleImagePreview = async (file: File) => {
+    const isHeic = (f: File) => {
+      const name = f.name.toLowerCase();
+      const type = (f.type || "").toLowerCase();
+      return name.endsWith(".heic") || name.endsWith(".heif") || type.includes("heic") || type.includes("heif");
+    };
+
+    let fileForPreview = file;
+    if (isHeic(file)) {
+      try {
+        const form = new FormData();
+        form.append("files", file);
+        form.append("outputFormat", "png");
+        const previewRes = await fetch(apiUrl("/api/convert-image"), { method: "POST", body: form });
+        if (previewRes.ok) {
+          const blob = await previewRes.blob();
+          fileForPreview = new File([blob], file.name.replace(/\.(heic|heif)$/i, ".png"), { type: "image/png", lastModified: file.lastModified });
+        } else {
+          console.error("HEIC preview conversion failed", await previewRes.text().catch(() => null));
+          setErrorMessage("Unable to generate preview for HEIC/HEIF file. You can still try converting the file.");
+          fileForPreview = file;
+        }
+      } catch (err) {
+        console.error("HEIC preview error", err);
+        setErrorMessage("Unable to generate preview for HEIC/HEIF file. You can still try converting the file.");
+        fileForPreview = file;
+      }
+    }
+
+    resetImagePreviewState();
+    const url = URL.createObjectURL(fileForPreview);
+    setImagePreviewUrl(url);
+    const inferredFormat = (fileForPreview.type.replace(/^image\//, "") || fileForPreview.name.split(".").pop() || "unknown").toUpperCase();
+    setImageFormat(inferredFormat);
+    setImageWidth(null);
+    setImageHeight(null);
+    setUpscaleFactor(4);
+    const img = new Image();
+    img.onload = () => {
+      setImageWidth(img.naturalWidth);
+      setImageHeight(img.naturalHeight);
+    };
+    img.onerror = () => {
+      setImageWidth(null);
+      setImageHeight(null);
+    };
+    img.src = url;
+  };
+
+  const syncImageBatchItems = (nextFiles: File[]) => {
+    setImageBatchItems(
+      nextFiles.map((file) => ({
+        file,
+        status: "pending" as BatchItemStatus,
+        error: null,
+      })),
+    );
+  };
+
   const handleFilesSelected = async (newFiles: File[]) => {
+    if (tool?.slug === "image-converter") {
+      const combinedFiles = [...files, ...newFiles];
+      const limitedFiles = combinedFiles.slice(0, 30);
+      if (combinedFiles.length > 30) {
+        setErrorMessage("You can upload up to 30 images at once. The extra files were ignored.");
+      } else {
+        setErrorMessage(null);
+      }
+      setFiles(limitedFiles);
+      setPdfPages([]);
+      setTotalPages(null);
+      setPageRangeError(null);
+      if (limitedFiles.length === 1) {
+        await prepareSingleImagePreview(limitedFiles[0]);
+      } else {
+        resetImagePreviewState();
+        syncImageBatchItems(limitedFiles);
+      }
+      setStatus("options");
+      return;
+    }
+
     if (!allowsMultipleFiles) {
       const first = newFiles[0];
       setFiles([first]);
@@ -1147,58 +1093,7 @@ export function ToolDetail() {
         })();
       }
       if (tool?.slug === "image-converter" || tool?.slug === "image-upscale" || tool?.slug === "image-compress") {
-        const isHeic = (f: File) => {
-          const name = f.name.toLowerCase();
-          const type = (f.type || "").toLowerCase();
-          return name.endsWith('.heic') || name.endsWith('.heif') || type.includes('heic') || type.includes('heif');
-        };
-
-        let fileForPreview = first;
-        if (isHeic(first)) {
-          // Keep the original HEIC file in state and request a server-side PNG preview
-          setFiles([first]);
-          try {
-            const form = new FormData();
-            form.append('files', first);
-            form.append('outputFormat', 'png');
-            const previewRes = await fetch(apiUrl('/api/convert-image'), { method: 'POST', body: form });
-            if (previewRes.ok) {
-              const blob = await previewRes.blob();
-              fileForPreview = new File([blob], first.name.replace(/\.(heic|heif)$/i, '.png'), { type: 'image/png', lastModified: first.lastModified });
-            } else {
-              console.error('HEIC preview conversion failed', await previewRes.text().catch(() => null));
-              setErrorMessage('Unable to generate preview for HEIC/HEIF file. You can still try converting the file.');
-              fileForPreview = first;
-            }
-          } catch (err) {
-            console.error('HEIC preview error', err);
-            setErrorMessage('Unable to generate preview for HEIC/HEIF file. You can still try converting the file.');
-            fileForPreview = first;
-          }
-        } else {
-          setFiles([first]);
-        }
-
-        if (imagePreviewUrl) {
-          URL.revokeObjectURL(imagePreviewUrl);
-        }
-        const url = URL.createObjectURL(fileForPreview);
-        setImagePreviewUrl(url);
-        const inferredFormat = (fileForPreview.type.replace(/^image\//, "") || fileForPreview.name.split(".").pop() || "unknown").toUpperCase();
-        setImageFormat(inferredFormat);
-        setImageWidth(null);
-        setImageHeight(null);
-        setUpscaleFactor(4);
-        const img = new Image();
-        img.onload = () => {
-          setImageWidth(img.naturalWidth);
-          setImageHeight(img.naturalHeight);
-        };
-        img.onerror = () => {
-          setImageWidth(null);
-          setImageHeight(null);
-        };
-        img.src = url;
+        await prepareSingleImagePreview(first);
       } else if (tool?.slug === "split-pdf" || tool?.slug === "compress-pdf") {
         (async () => {
           try {
@@ -1232,14 +1127,29 @@ export function ToolDetail() {
       if (updated.length === 0) {
         setStatus("idle");
         setPdfPages([]);
-        setImagePreviewUrl(null);
-        setImageWidth(null);
-        setImageHeight(null);
-        setImageFormat(null);
+        resetImagePreviewState();
         setDownloadUrl(null);
+        setImageBatchItems([]);
+      } else if (tool?.slug === "image-converter") {
+        if (updated.length === 1) {
+          void prepareSingleImagePreview(updated[0]);
+        } else {
+          resetImagePreviewState();
+          syncImageBatchItems(updated);
+        }
+        setStatus("options");
       }
       return updated;
     });
+  };
+
+  const triggerFileDownload = (blob: Blob, fileName: string) => {
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = fileName;
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   const handleProcess = async () => {
@@ -1297,7 +1207,78 @@ export function ToolDetail() {
           throw new Error("PDFs with more than 20 pages are not supported for Word conversion.");
         }
         blob = await convertPdfToWordOnServer(files[0]);
-        outputName = files[0].name.replace(/\.[^/.]+$/, "") + ".docx";
+        outputName = stripExtension(files[0].name) + ".docx";
+      } else if (tool.slug === "image-converter" && files.length > 1) {
+        const concurrencyLimit = Math.min(4, files.length);
+        let nextIndex = 0;
+        const successfulResults: Array<{ blob: Blob; outputName: string }> = [];
+        const failedItems: Array<{ fileName: string; message: string }> = [];
+        const totalFiles = files.length;
+        syncImageBatchItems(files);
+
+        await Promise.all(
+          Array.from({ length: concurrencyLimit }, async () => {
+            while (nextIndex < totalFiles) {
+              const currentIndex = nextIndex++;
+              const currentFile = files[currentIndex];
+              if (!currentFile) continue;
+              setImageBatchItems((prev) => prev.map((item, index) => (index === currentIndex ? { ...item, status: "converting", error: null } : item)));
+              setProgressStage(`Converting ${currentFile.name}`);
+
+              try {
+                const convertedBlob = await convertImageOnServer(currentFile, outputFormat);
+                const baseName = stripExtension(currentFile.name);
+                const ext = outputFormat === "jpeg" ? "jpg" : outputFormat;
+                const resolvedName = `${baseName}.${ext}`;
+                successfulResults.push({ blob: convertedBlob, outputName: resolvedName });
+                setImageBatchItems((prev) => prev.map((item, index) => (index === currentIndex ? { ...item, status: "done", error: null, blob: convertedBlob, outputName: resolvedName } : item)));
+              } catch (error: any) {
+                const message = error?.message || "Image conversion failed.";
+                failedItems.push({ fileName: currentFile.name, message });
+                setImageBatchItems((prev) => prev.map((item, index) => (index === currentIndex ? { ...item, status: "failed", error: message } : item)));
+              }
+
+              const completedCount = successfulResults.length + failedItems.length;
+              const nextProgress = Math.min(95, Math.round((completedCount / totalFiles) * 100));
+              setProgress(nextProgress);
+              setProgressStage(`Processed ${completedCount}/${totalFiles} files`);
+            }
+          }),
+        );
+
+        if (successfulResults.length > 1) {
+          const zip = new JSZip();
+          successfulResults.forEach((result) => zip.file(result.outputName, result.blob));
+          const zipBlob = await zip.generateAsync({ type: "blob" });
+          setDownloadUrl(URL.createObjectURL(zipBlob));
+          setDownloadFileName(`converted-images-${Date.now()}.zip`);
+          setDownloadSizeBytes(zipBlob.size);
+          setProgress(100);
+          setProgressStage("Ready to download");
+        } else if (successfulResults.length === 1) {
+          const firstResult = successfulResults[0];
+          if (firstResult) {
+            setDownloadUrl(URL.createObjectURL(firstResult.blob));
+            setDownloadFileName(firstResult.outputName);
+            setDownloadSizeBytes(firstResult.blob.size);
+            setProgress(100);
+            setProgressStage("Ready to download");
+          }
+        }
+
+        if (successfulResults.length > 0) {
+          setStatus("success");
+        } else {
+          setErrorMessage("All images failed to convert. Review the batch list for details.");
+          setStatus("options");
+        }
+
+        if (failedItems.length > 0 && successfulResults.length > 0) {
+          setErrorMessage("Some images failed to convert. The rest are ready to download.");
+        }
+
+        clearInterval(interval);
+        return;
       } else if (tool.slug === "merge-pdf") {
         blob = await mergePdfOnServer(files);
         outputName = "merged.pdf";
@@ -1314,18 +1295,18 @@ export function ToolDetail() {
         }
 
         blob = await splitPdfOnServer(files[0], pageRange);
-        outputName = files[0].name.replace(/\.[^/.]+$/, "") + `-split.pdf`;
+        outputName = stripExtension(files[0].name) + `-split.pdf`;
       } else if (tool.slug === "image-converter") {
         blob = await convertImageOnServer(files[0], outputFormat);
-        const baseName = files[0].name.replace(/\.[^/.]+$/, "");
+        const baseName = stripExtension(files[0].name);
         const ext = outputFormat === "jpeg" ? "jpg" : outputFormat;
         outputName = `${baseName}.${ext}`;
       } else if (tool.slug === "pdf-to-word") {
         blob = await convertPdfToWordOnServer(files[0]);
-        outputName = files[0].name.replace(/\.[^/.]+$/, "") + ".docx";
+        outputName = stripExtension(files[0].name) + ".docx";
       } else if (tool.slug === "word-to-pdf") {
         blob = await convertWordToPdfOnServer(files[0]);
-        outputName = files[0].name.replace(/\.[^/.]+$/, "") + ".pdf";
+        outputName = stripExtension(files[0].name) + ".pdf";
       } else if (tool.slug === "jpg-to-pdf") {
         blob = await convertJpgToPdfOnServer(files);
         outputName = "images.pdf";
@@ -1337,49 +1318,49 @@ export function ToolDetail() {
         const width = resizeWidth ? Number(resizeWidth) : null;
         const height = resizeHeight ? Number(resizeHeight) : null;
         blob = await resizeImageOnServer(files[0], width, height);
-        outputName = files[0].name.replace(/\.[^/.]+$/, "") + "-resized" + files[0].name.match(/\.[^.]+$/)?.[0];
+        outputName = stripExtension(files[0].name) + "-resized" + files[0].name.match(/\.[^.]+$/)?.[0];
       } else if (tool.slug === "image-compress") {
         blob = await compressImageOnServer(files[0], compressQuality);
-        outputName = files[0].name.replace(/\.[^/.]+$/, "") + "-compressed" + files[0].name.match(/\.[^.]+$/)?.[0];
+        outputName = stripExtension(files[0].name) + "-compressed" + files[0].name.match(/\.[^.]+$/)?.[0];
       } else if (tool.slug === "compress-pdf") {
         const compressionPreset = compressionPresets.find((preset) => preset.quality === compressQuality);
         const compressionLevel = compressionPreset?.id === "max" ? "maximum" : "balanced";
         blob = await compressPdfOnServer(files[0], compressionLevel);
-        outputName = files[0].name.replace(/\.[^/.]+$/, "") + "-compressed.pdf";
+        outputName = stripExtension(files[0].name) + "-compressed.pdf";
       } else if (tool.slug === "image-upscale") {
         const width = upscaleWidth ? Number(upscaleWidth) : null;
         const height = upscaleHeight ? Number(upscaleHeight) : null;
         blob = await upscaleImageOnServer(files[0], upscaleFactor, width, height);
-        outputName = files[0].name.replace(/\.[^/.]+$/, "") + "-upscaled" + files[0].name.match(/\.[^.]+$/)?.[0];
+        outputName = stripExtension(files[0].name) + "-upscaled" + files[0].name.match(/\.[^.]+$/)?.[0];
       } else if (tool.slug === "protect-pdf") {
         blob = await protectPdfOnServer(files[0], password);
-        outputName = files[0].name.replace(/\.[^/.]+$/, "") + "-protected.pdf";
+        outputName = stripExtension(files[0].name) + "-protected.pdf";
       } else if (tool.slug === "unlock-pdf") {
         blob = await unlockPdfOnServer(files[0], password);
-        outputName = files[0].name.replace(/\.[^/.]+$/, "") + "-unlocked.pdf";
+        outputName = stripExtension(files[0].name) + "-unlocked.pdf";
       } else if (tool.slug === "watermark-pdf") {
         blob = await watermarkPdfOnServer(files[0], watermarkText, watermarkPosition, watermarkLogo);
-        outputName = files[0].name.replace(/\.[^/.]+$/, "") + "-watermarked.pdf";
+        outputName = stripExtension(files[0].name) + "-watermarked.pdf";
       } else if (tool.slug === "add-page-numbers") {
         const startNumber = Number(pageNumberStart || 1);
         blob = await addPageNumbersOnServer(files[0], Number.isFinite(startNumber) ? startNumber : 1, pageNumberPosition);
-        outputName = files[0].name.replace(/\.[^/.]+$/, "") + "-numbered.pdf";
+        outputName = stripExtension(files[0].name) + "-numbered.pdf";
       } else if (tool.slug === "rotate-pdf") {
         blob = await rotatePdfOnServer(files[0], documentRotation);
-        outputName = files[0].name.replace(/\.[^/.]+$/, "") + "-rotated.pdf";
+        outputName = stripExtension(files[0].name) + "-rotated.pdf";
       } else if (tool.slug === "organize-pdf") {
         const pageOrder = pdfPages.map((page) => page.pageNumber);
         const rotations = pdfPages.map((page) => page.rotation);
         blob = await organizePdfOnServer(files[0], pageOrder, rotations);
-        outputName = files[0].name.replace(/\.[^/.]+$/, "") + "-organized.pdf";
+        outputName = stripExtension(files[0].name) + "-organized.pdf";
       } else if (tool.slug === "delete-pages") {
         const pagesToDelete = pdfPages.filter((page) => page.selected).map((page) => page.pageNumber);
         blob = await deletePagesOnServer(files[0], pagesToDelete);
-        outputName = files[0].name.replace(/\.[^/.]+$/, "") + "-deleted-pages.pdf";
+        outputName = stripExtension(files[0].name) + "-deleted-pages.pdf";
       } else if (tool.slug === "extract-pages") {
         const pages = pdfPages.filter((page) => page.selected).map((page) => page.pageNumber);
         blob = await extractPagesOnServer(files[0], pages);
-        outputName = files[0].name.replace(/\.[^/.]+$/, "") + "-extracted-pages.pdf";
+        outputName = stripExtension(files[0].name) + "-extracted-pages.pdf";
       } else if (tool.slug === "ocr-image-to-text") {
         const form = new FormData();
         form.append("files", files[0]);
@@ -1389,10 +1370,10 @@ export function ToolDetail() {
         // create a small blob so users can download if needed
         const blobRes = new Blob([text], { type: "text/plain" });
         blob = blobRes;
-        outputName = files[0].name.replace(/\.[^/.]+$/, "") + "-ocr.txt";
+        outputName = stripExtension(files[0].name) + "-ocr.txt";
       } else {
         const rawFile = files[0];
-        outputName = rawFile.name.replace(/\.[^/.]+$/, "") + `-${tool.slug}.pdf`;
+        outputName = stripExtension(rawFile.name) + `-${tool.slug}.pdf`;
         blob = new Blob([await rawFile.arrayBuffer()], {
           type: rawFile.type || "application/pdf",
         });
@@ -1578,11 +1559,65 @@ export function ToolDetail() {
                   {uploadHint}
                 </p>
                 <div className="flex-1">
-                  <FilePreviewList 
-                    files={files} 
-                    onRemove={handleRemoveFile} 
-                    status="options" 
-                  />
+                  {tool.slug === "image-converter" && files.length > 1 ? (
+                    <div className="w-full space-y-3 mt-8">
+                      <div className="flex items-center justify-between gap-3">
+                        <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">
+                          Batch queue ({files.length})
+                        </h4>
+                        <Badge variant="secondary" className="rounded-full border border-border/60 bg-background/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                          Up to 30 files
+                        </Badge>
+                      </div>
+                      <div className="space-y-2">
+                        {imageBatchItems.map((item, index) => {
+                          const extension = item.file.name.split(".").pop()?.toUpperCase() || "FILE";
+                          const statusTone = item.status === "done"
+                            ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                            : item.status === "failed"
+                            ? "border-destructive/20 bg-destructive/10 text-destructive"
+                            : item.status === "converting"
+                            ? "border-primary/20 bg-primary/10 text-primary"
+                            : "border-border/70 bg-background/80 text-muted-foreground";
+
+                          return (
+                            <div key={`${item.file.name}-${index}`} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/70 bg-card/90 p-3 shadow-sm">
+                              <div className="min-w-0 flex-1">
+                                <div className="flex items-center gap-2">
+                                  <p className="truncate text-sm font-medium text-foreground" title={item.file.name}>{item.file.name}</p>
+                                  <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.2em]">
+                                    {extension}
+                                  </Badge>
+                                </div>
+                                <p className="mt-1 text-xs text-muted-foreground">{formatBytes(item.file.size)}</p>
+                                {item.error ? <p className="mt-1 text-xs text-destructive">{item.error}</p> : null}
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline" className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${statusTone}`}>
+                                  {item.status}
+                                </Badge>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 rounded-full border border-border/70 bg-background/95 hover:bg-destructive hover:text-destructive-foreground hover:border-destructive"
+                                  onClick={() => handleRemoveFile(index)}
+                                  aria-label={`Remove ${item.file.name}`}
+                                >
+                                  <Trash2 className="h-4 w-4" />
+                                </Button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ) : (
+                    <FilePreviewList 
+                      files={files} 
+                      onRemove={handleRemoveFile} 
+                      status="options" 
+                    />
+                  )}
 
                   {(tool.slug === "organize-pdf" || tool.slug === "rotate-pdf" || tool.slug === "delete-pages" || tool.slug === "extract-pages") && (
                     <div className="mt-6 space-y-3">
@@ -1708,7 +1743,7 @@ export function ToolDetail() {
                     </div>
                   )}
 
-                  {(tool.slug === "image-converter" || tool.slug === "image-upscale" || tool.slug === "image-compress" || tool.slug === "compress-pdf") && files[0] && (
+                  {(tool.slug === "image-upscale" || tool.slug === "image-compress" || tool.slug === "compress-pdf" || (tool.slug === "image-converter" && files.length === 1)) && files[0] && (
                     <div className="mt-6 rounded-3xl border border-border/70 bg-background/80 p-5 shadow-sm">
                       <div className="flex flex-wrap items-start justify-between gap-4">
                         <div>
@@ -2281,42 +2316,88 @@ export function ToolDetail() {
               </div>
             )}
 
-            {status === "success" && (
-              <div className="py-12 animate-in zoom-in-95 duration-500 max-w-xl mx-auto">
-                {tool.slug === "ocr-image-to-text" ? (
-                  <div className="space-y-4">
-                    <h3 className="text-2xl font-bold mb-2">Extracted Text</h3>
-                    <p className="text-sm text-muted-foreground">Editable OCR output. Review and edit as needed.</p>
-                    <textarea
-                      value={ocrText}
-                      onChange={(e) => setOcrText(e.target.value)}
-                      className="w-full h-72 p-4 border border-border rounded-lg bg-background text-sm"
-                    />
-                    <div className="flex gap-3">
-                      <Button onClick={async () => { await navigator.clipboard.writeText(ocrText || ""); }} className="flex-1">Copy Text</Button>
-                      <Button onClick={() => {
-                        const blob = new Blob([ocrText || ""], { type: 'text/plain' });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = downloadFileName;
-                        a.click();
-                        URL.revokeObjectURL(url);
-                      }}>Download TXT</Button>
-                      <Button onClick={() => {
-                        const blob = new Blob([ocrText || ""], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
-                        const url = URL.createObjectURL(blob);
-                        const a = document.createElement('a');
-                        a.href = url;
-                        a.download = downloadFileName.replace(/\.txt$/, '.docx');
-                        a.click();
-                        URL.revokeObjectURL(url);
-                      }}>Download DOCX</Button>
-                      <Button variant="outline" onClick={() => { setOcrText(""); setFiles([]); setStatus('idle'); setDownloadUrl(null); }}>Clear</Button>
+            {status === "success" && (() => {
+              if (tool.slug === "ocr-image-to-text") {
+                return (
+                  <div className="py-12 animate-in zoom-in-95 duration-500 max-w-xl mx-auto">
+                    <div className="space-y-4">
+                      <h3 className="text-2xl font-bold mb-2">Extracted Text</h3>
+                      <p className="text-sm text-muted-foreground">Editable OCR output. Review and edit as needed.</p>
+                      <textarea
+                        value={ocrText}
+                        onChange={(e) => setOcrText(e.target.value)}
+                        className="w-full h-72 p-4 border border-border rounded-lg bg-background text-sm"
+                      />
+                      <div className="flex gap-3">
+                        <Button onClick={async () => { await navigator.clipboard.writeText(ocrText || ""); }} className="flex-1">Copy Text</Button>
+                        <Button onClick={() => {
+                          const blob = new Blob([ocrText || ""], { type: 'text/plain' });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = downloadFileName;
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        }}>Download TXT</Button>
+                        <Button onClick={() => {
+                          const blob = new Blob([ocrText || ""], { type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' });
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = downloadFileName.replace(/\.txt$/, '.docx');
+                          a.click();
+                          URL.revokeObjectURL(url);
+                        }}>Download DOCX</Button>
+                        <Button variant="outline" onClick={() => { setOcrText(""); setFiles([]); setStatus('idle'); setDownloadUrl(null); }}>Clear</Button>
+                      </div>
                     </div>
                   </div>
-                ) : (
-                  (tool.slug === "image-compress" || tool.slug === "compress-pdf") ? (
+                );
+              }
+
+              if (tool.slug === "image-converter" && files.length > 1) {
+                return (
+                  <div className="py-12 animate-in zoom-in-95 duration-500 max-w-xl mx-auto">
+                    <div className="rounded-3xl border border-border/70 bg-background/90 p-8 shadow-sm">
+                      <div className="flex items-center justify-center mb-6">
+                        <div className="rounded-2xl bg-primary/10 p-4 text-primary">
+                          <Download className="w-8 h-8" />
+                        </div>
+                      </div>
+                      <h3 className="text-2xl font-bold mb-3 text-center">Batch conversion complete</h3>
+                      <p className="text-center text-muted-foreground mb-8">Your images were converted and are ready to download.</p>
+                      <div className="mb-8 rounded-2xl border border-border/70 bg-card/80 p-4">
+                        <div className="flex items-center justify-between gap-3">
+                          <span className="text-sm font-medium text-foreground">Download everything</span>
+                          <Button size="sm" className="rounded-full" asChild disabled={!downloadUrl}>
+                            <a href={downloadUrl ?? "#"} download={downloadFileName}>Download All (.zip)</a>
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="space-y-3">
+                        {imageBatchItems.filter((item) => item.status === "done" && item.blob && item.outputName).map((item, index) => (
+                          <div key={`${item.file.name}-${index}`} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/70 bg-card/80 p-3">
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-medium text-foreground" title={item.file.name}>{item.file.name}</p>
+                              <p className="text-xs text-muted-foreground">{item.outputName}</p>
+                            </div>
+                            <Button variant="outline" size="sm" className="rounded-full" onClick={() => item.blob && item.outputName && triggerFileDownload(item.blob, item.outputName)}>
+                              Download
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                      <Button variant="ghost" onClick={() => { setStatus("idle"); setFiles([]); setDownloadUrl(null); setImageBatchItems([]); }} className="mt-6 text-muted-foreground">
+                        Start Over
+                      </Button>
+                    </div>
+                  </div>
+                );
+              }
+
+              if (tool.slug === "image-compress" || tool.slug === "compress-pdf") {
+                return (
+                  <div className="py-12 animate-in zoom-in-95 duration-500 max-w-xl mx-auto">
                     <div className="rounded-3xl border border-border/70 bg-background/90 p-8 shadow-sm">
                       <div className="flex items-center justify-center mb-6">
                         <div className="rounded-2xl bg-primary/10 p-4 text-primary">
@@ -2363,33 +2444,37 @@ export function ToolDetail() {
                         Start Over
                       </Button>
                     </div>
-                  ) : (
-                    <div className="py-12 text-center">
-                      <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-8 shadow-inner">
-                        <Download className="w-12 h-12" />
-                      </div>
-                      <h3 className="text-3xl font-bold mb-4 text-foreground">Task Complete!</h3>
-                      <p className="text-lg text-muted-foreground mb-10">Your files have been processed successfully and are ready to download.</p>
+                  </div>
+                );
+              }
 
-                      <Button
-                        size="lg"
-                        className="w-full rounded-2xl h-16 text-lg mb-6 shadow-xl shadow-primary/20 hover:-translate-y-1 transition-transform"
-                        asChild
-                        disabled={!downloadUrl}
-                      >
-                        <a href={downloadUrl ?? "#"} download={downloadFileName}>
-                          Download Processed File
-                        </a>
-                      </Button>
-
-                      <Button variant="ghost" onClick={() => { setStatus("idle"); setFiles([]); setDownloadUrl(null); }} className="text-muted-foreground">
-                        Start Over
-                      </Button>
+              return (
+                <div className="py-12 animate-in zoom-in-95 duration-500 max-w-xl mx-auto">
+                  <div className="py-12 text-center">
+                    <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-8 shadow-inner">
+                      <Download className="w-12 h-12" />
                     </div>
-                  )
-                )}
-              </div>
-            )}
+                    <h3 className="text-3xl font-bold mb-4 text-foreground">Task Complete!</h3>
+                    <p className="text-lg text-muted-foreground mb-10">Your files have been processed successfully and are ready to download.</p>
+
+                    <Button
+                      size="lg"
+                      className="w-full rounded-2xl h-16 text-lg mb-6 shadow-xl shadow-primary/20 hover:-translate-y-1 transition-transform"
+                      asChild
+                      disabled={!downloadUrl}
+                    >
+                      <a href={downloadUrl ?? "#"} download={downloadFileName}>
+                        Download Processed File
+                      </a>
+                    </Button>
+
+                    <Button variant="ghost" onClick={() => { setStatus("idle"); setFiles([]); setDownloadUrl(null); }} className="text-muted-foreground">
+                      Start Over
+                    </Button>
+                  </div>
+                </div>
+              );
+            })()}
           </div>
         )}
       </div>
