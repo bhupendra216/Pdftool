@@ -98,6 +98,10 @@ export function SignPdfTool() {
   const [selectedSignatureId, setSelectedSignatureId] = useState<number | null>(null);
   const [isDrawing, setIsDrawing] = useState(false);
   const [drawPoints, setDrawPoints] = useState<{ x: number; y: number }[]>([]);
+  const sideDrawCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const sideDrawDataUrlRef = useRef<string | null>(null);
+  const isSideDrawingRef = useRef(false);
+  const sideDrawPointsRef = useRef<{ x: number; y: number }[]>([]);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [pdfBytes, setPdfBytes] = useState<Uint8Array | null>(null);
   // `savePdfBytes` holds a separate, non-transferred copy used for PDF-lib operations.
@@ -111,6 +115,7 @@ export function SignPdfTool() {
   const [signatureTargetText, setSignatureTargetText] = useState("1");
   const previewContainerRef = useRef<HTMLDivElement | null>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
+  const canvasWrapperRef = useRef<HTMLDivElement | null>(null);
   const drawCanvasRefs = useRef<Record<number, HTMLCanvasElement | null>>({});
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -149,6 +154,10 @@ export function SignPdfTool() {
     drawCanvasRefs.current[signatureId] = element;
   };
 
+  // Drag / resize interaction refs
+  const draggingRef = useRef<{ id: number; startX: number; startY: number; origX: number; origY: number } | null>(null);
+  const resizingRef = useRef<{ id: number; startX: number; startY: number; origW: number; origH: number } | null>(null);
+
   useEffect(() => {
     const canvas = previewCanvasRef.current;
     if (!canvas || !file || !pdfBytes) {
@@ -159,7 +168,8 @@ export function SignPdfTool() {
     let isActive = true;
 
     const renderCurrentPage = async () => {
-      const pdf = await getDocument({ data: pdfBytes }).promise;
+      setError(null);
+      const pdf = await getDocument({ data: pdfBytes as Uint8Array }).promise;
       const page = await pdf.getPage(currentPage);
       const baseViewport = page.getViewport({ scale: 1 });
       const availableWidth = Math.max(280, previewBoxSize.width - 24);
@@ -171,13 +181,26 @@ export function SignPdfTool() {
 
       canvas.width = viewport.width;
       canvas.height = viewport.height;
+      // Make the canvas fill an inner wrapper exactly so overlays can be
+      // positioned relative to the canvas' displayed box rather than the
+      // outer preview container (which may include centering gaps).
       canvas.style.width = "100%";
-      canvas.style.height = "auto";
+      canvas.style.height = "100%";
       canvas.style.maxWidth = "100%";
 
       await page.render({ canvas, canvasContext: context, viewport }).promise;
       if (!isActive) return;
       setRenderedPageSize({ width: viewport.width, height: viewport.height });
+
+      // Ensure the wrapper that holds the canvas and overlay layer matches
+      // the canvas' displayed pixel dimensions so absolutely-positioned
+      // overlays align correctly.
+      const wrapper = canvasWrapperRef.current;
+      if (wrapper) {
+        // Use the canvas intrinsic pixel size as the wrapper pixel size.
+        wrapper.style.width = `${canvas.width}px`;
+        wrapper.style.height = `${canvas.height}px`;
+      }
     };
 
     renderCurrentPage().catch(() => {
@@ -349,7 +372,12 @@ export function SignPdfTool() {
   const handlePreviewClick = (event: React.MouseEvent<HTMLDivElement>) => {
     if (!activeSignature || activeSignature.pageNumber !== currentPage) return;
 
-    const rect = event.currentTarget.getBoundingClientRect();
+    // Use the actual canvas bounding rect so clicks are measured against the
+    // displayed PDF page rather than the outer container (which may be
+    // larger due to flex centering).
+    const canvasEl = previewCanvasRef.current;
+    if (!canvasEl) return;
+    const rect = canvasEl.getBoundingClientRect();
     const x = clamp(((event.clientX - rect.left) / Math.max(rect.width, 1)) * renderedPageSize.width, 8, renderedPageSize.width - 8);
     const y = clamp(((event.clientY - rect.top) / Math.max(rect.height, 1)) * renderedPageSize.height, 8, renderedPageSize.height - 8);
 
@@ -374,6 +402,45 @@ export function SignPdfTool() {
     setDrawPoints([{ x, y }]);
   };
 
+  // Side-panel draw handlers
+  const handleSidePointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    const canvas = event.currentTarget;
+    const rect = canvas.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / Math.max(rect.width, 1)) * canvas.width;
+    const y = ((event.clientY - rect.top) / Math.max(rect.height, 1)) * canvas.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    isSideDrawingRef.current = true;
+    sideDrawPointsRef.current = [{ x, y }];
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = 'rgba(17,24,39,0.95)';
+    ctx.lineWidth = Math.max(2, canvas.width / 60);
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+  };
+
+  const handleSidePointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!isSideDrawingRef.current) return;
+    const canvas = event.currentTarget;
+    const rect = canvas.getBoundingClientRect();
+    const x = ((event.clientX - rect.left) / Math.max(rect.width, 1)) * canvas.width;
+    const y = ((event.clientY - rect.top) / Math.max(rect.height, 1)) * canvas.height;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.lineTo(x, y);
+    ctx.stroke();
+    sideDrawPointsRef.current.push({ x, y });
+  };
+
+  const handleSidePointerUp = (event: React.PointerEvent<HTMLCanvasElement>) => {
+    if (!sideDrawCanvasRef.current) return;
+    const canvas = sideDrawCanvasRef.current;
+    const dataUrl = canvas.toDataURL('image/png');
+    sideDrawDataUrlRef.current = dataUrl;
+    isSideDrawingRef.current = false;
+  };
+
   const handleCanvasPointerMove = (event: React.PointerEvent<HTMLCanvasElement>) => {
     if (!isDrawing) return;
     const canvas = event.currentTarget;
@@ -394,6 +461,115 @@ export function SignPdfTool() {
   const handleCanvasPointerUp = () => {
     setIsDrawing(false);
     setDrawPoints([]);
+  };
+
+  const clearSideDrawing = () => {
+    const c = sideDrawCanvasRef.current;
+    if (!c) return;
+    const ctx = c.getContext('2d');
+    if (!ctx) return;
+    ctx.clearRect(0,0,c.width,c.height);
+    sideDrawDataUrlRef.current = null;
+    sideDrawPointsRef.current = [];
+  };
+
+  const useSideDrawingAsSignature = () => {
+    if (!sideDrawDataUrlRef.current) return;
+    const newItem: SignatureItem = {
+      id: Date.now(),
+      type: 'draw',
+      pageNumber: currentPage,
+      x: Math.max(24, renderedPageSize.width / 4),
+      y: Math.max(24, renderedPageSize.height / 4),
+      width: Math.max(140, renderedPageSize.width / 4),
+      height: Math.max(80, renderedPageSize.height / 8),
+      rotation: 0,
+      target: signatureTarget,
+      targetPages: signatureTarget === 'pages' ? parseTargetPages(signatureTargetText, pageCount) : [],
+      drawDataUrl: sideDrawDataUrlRef.current,
+    };
+    setSignatures(prev => [...prev, newItem]);
+    setSelectedSignatureId(newItem.id);
+  };
+
+  // Setup side draw canvas pixel size
+  useEffect(() => {
+    const c = sideDrawCanvasRef.current;
+    if (!c) return;
+    const resize = () => {
+      const rect = c.getBoundingClientRect();
+      const ratio = window.devicePixelRatio || 1;
+      c.width = Math.max(100, Math.round(rect.width * ratio));
+      c.height = Math.max(40, Math.round(rect.height * ratio));
+      const ctx = c.getContext('2d');
+      if (ctx) ctx.scale(ratio, ratio);
+    };
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(c);
+    return () => ro.disconnect();
+  }, [mode]);
+
+  // Dragging / resizing handlers
+  const startDrag = (ev: React.PointerEvent, signature: SignatureItem) => {
+    ev.stopPropagation();
+    const canvasRect = canvasWrapperRef.current?.getBoundingClientRect();
+    if (!canvasRect) return;
+    // compute pointer offset inside the signature box so the box doesn't jump
+    const wrapperLeft = canvasRect.left;
+    const wrapperTop = canvasRect.top;
+    const boxLeftPx = wrapperLeft + (signature.x / renderedPageSize.width) * canvasRect.width;
+    const boxTopPx = wrapperTop + (signature.y / renderedPageSize.height) * canvasRect.height;
+    const pointerOffsetX = ev.clientX - boxLeftPx;
+    const pointerOffsetY = ev.clientY - boxTopPx;
+    draggingRef.current = { id: signature.id, startX: ev.clientX, startY: ev.clientY, origX: signature.x, origY: signature.y } as any;
+    // store pointer offsets separately on the ref object
+    (draggingRef.current as any).offsetX = pointerOffsetX;
+    (draggingRef.current as any).offsetY = pointerOffsetY;
+    const onMove = (e: PointerEvent) => {
+      const d = draggingRef.current;
+      if (!d) return;
+      // compute new top-left so pointer keeps same offset inside box
+      const pointerX = e.clientX - (d as any).offsetX;
+      const pointerY = e.clientY - (d as any).offsetY;
+      const newX = clamp(((pointerX - canvasRect.left) / canvasRect.width) * renderedPageSize.width, 8, renderedPageSize.width - 8);
+      const newY = clamp(((pointerY - canvasRect.top) / canvasRect.height) * renderedPageSize.height, 8, renderedPageSize.height - 8);
+      updateSignature(d.id, (item) => ({ ...item, x: newX, y: newY }));
+    };
+    const onUp = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); draggingRef.current = null; };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
+  };
+
+  const startResize = (ev: React.PointerEvent, signature: SignatureItem) => {
+    ev.stopPropagation();
+    const canvasRect = canvasWrapperRef.current?.getBoundingClientRect();
+    if (!canvasRect) return;
+    // compute initial box right/bottom positions and pointer offset so resize doesn't jump
+    const wrapperLeft2 = canvasRect.left;
+    const wrapperTop2 = canvasRect.top;
+    const boxLeftPx2 = wrapperLeft2 + (signature.x / renderedPageSize.width) * canvasRect.width;
+    const boxTopPx2 = wrapperTop2 + (signature.y / renderedPageSize.height) * canvasRect.height;
+    const boxRightPx = boxLeftPx2 + (signature.width / renderedPageSize.width) * canvasRect.width;
+    const boxBottomPx = boxTopPx2 + (signature.height / renderedPageSize.height) * canvasRect.height;
+    const pointerOffsetRight = boxRightPx - ev.clientX;
+    const pointerOffsetBottom = boxBottomPx - ev.clientY;
+    resizingRef.current = { id: signature.id, startX: ev.clientX, startY: ev.clientY, origW: signature.width, origH: signature.height } as any;
+    (resizingRef.current as any).offsetRight = pointerOffsetRight;
+    (resizingRef.current as any).offsetBottom = pointerOffsetBottom;
+    const onMove = (e: PointerEvent) => {
+      const r = resizingRef.current;
+      if (!r) return;
+      // compute new width/height so pointer remains at the same distance from bottom-right
+      const pointerX = e.clientX + (r as any).offsetRight;
+      const pointerY = e.clientY + (r as any).offsetBottom;
+      const newW = clamp(((pointerX - canvasRect.left) / canvasRect.width) * renderedPageSize.width - signature.x, 8, renderedPageSize.width);
+      const newH = clamp(((pointerY - canvasRect.top) / canvasRect.height) * renderedPageSize.height - signature.y, 8, renderedPageSize.height);
+      updateSignature(r.id, (item) => ({ ...item, width: newW, height: newH }));
+    };
+    const onUp = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); resizingRef.current = null; };
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', onUp);
   };
 
   const handleSave = async () => {
@@ -490,7 +666,28 @@ export function SignPdfTool() {
       const bytes = await pdfDoc.save();
       const blob = new Blob([bytes.buffer as ArrayBuffer], { type: "application/pdf" });
       const url = URL.createObjectURL(blob);
+      // expose for debugging/tests
+      try {
+        // @ts-ignore - debug hook
+        (window as any).__lastDownloadUrl = url;
+      } catch (e) {
+        // ignore
+      }
       setDownloadUrl(url);
+
+      // trigger an immediate download for convenience
+      try {
+        const fileName = (file && file.name) ? file.name.replace(/\.pdf$/i, "") + "-signed.pdf" : "signed.pdf";
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = fileName;
+        // append to DOM to make click work in some browsers
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      } catch (e) {
+        // if auto-download fails, user can still use Preview output
+      }
       setError(null);
     } catch (err) {
       console.error("Sign PDF save failed:", err);
@@ -568,6 +765,20 @@ export function SignPdfTool() {
                 </div>
               ) : null}
 
+              {mode === 'draw' ? (
+                <div className="space-y-3 rounded-3xl border border-border/70 bg-background/70 p-4">
+                  <Label>Draw signature</Label>
+                  <div className="flex flex-col gap-2">
+                    <canvas ref={sideDrawCanvasRef} className="w-full h-40 rounded-xl border" onPointerDown={handleSidePointerDown as any} onPointerMove={handleSidePointerMove as any} onPointerUp={handleSidePointerUp as any} onPointerLeave={handleSidePointerUp as any} />
+                    <div className="flex gap-2">
+                      <Button size="sm" onClick={() => { clearSideDrawing(); }}>Clear</Button>
+                      <Button size="sm" onClick={() => { useSideDrawingAsSignature(); }}>Use drawing as signature</Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Draw here; click "Use drawing as signature" to create a signature you can position on the page.</p>
+                  </div>
+                </div>
+              ) : null}
+
               <div className="rounded-3xl border border-border/70 bg-background/70 p-4">
                 <div className="mb-3 flex items-center justify-between">
                   <p className="text-sm font-semibold text-foreground">Placement controls</p>
@@ -618,29 +829,44 @@ export function SignPdfTool() {
                 <div className="overflow-hidden rounded-2xl border border-border/70 bg-muted/30 p-2">
                   {previewUrl ? (
                     <div ref={previewContainerRef} className="relative flex items-center justify-center overflow-hidden rounded-2xl border border-border/70 bg-white p-3" onClick={handlePreviewClick}>
-                      <canvas ref={previewCanvasRef} className="max-h-[620px] w-full rounded-xl object-contain" />
-                      {signatures.filter((item) => item.pageNumber === currentPage).map((signature) => (
-                        <div
-                          key={signature.id}
-                          className={cn("absolute flex items-center justify-center rounded-lg border-2 border-dashed border-primary/60 bg-primary/10 p-2 shadow-sm", selectedSignatureId === signature.id ? "ring-2 ring-primary" : "")}
-                          style={{ left: `${(signature.x / Math.max(renderedPageSize.width, 1)) * 100}%`, top: `${(signature.y / Math.max(renderedPageSize.height, 1)) * 100}%`, width: `${(signature.width / Math.max(renderedPageSize.width, 1)) * 100}%`, height: `${(signature.height / Math.max(renderedPageSize.height, 1)) * 100}%` }}
-                          onClick={(event) => event.stopPropagation()}
-                        >
-                          {signature.type === "draw" ? (
-                            <canvas
-                              ref={setSignatureCanvasRef(signature.id)}
-                              className="absolute inset-0 h-full w-full rounded-lg"
-                              onPointerDown={handleCanvasPointerDown}
-                              onPointerMove={handleCanvasPointerMove}
-                              onPointerUp={handleCanvasPointerUp}
-                              onPointerLeave={handleCanvasPointerUp}
+                      <div ref={canvasWrapperRef} className="relative" style={{ display: 'inline-block' }}>
+                        <canvas ref={previewCanvasRef} className="max-h-[620px] w-full rounded-xl object-contain" />
+                        {signatures.filter((item) => item.pageNumber === currentPage).map((signature) => (
+                          <div
+                              key={signature.id}
+                              className={cn("absolute flex items-center justify-center rounded-lg border-2 border-dashed border-primary/60 bg-primary/10 p-2 shadow-sm", selectedSignatureId === signature.id ? "ring-2 ring-primary" : "")}
+                              style={{ left: `${(signature.x / Math.max(renderedPageSize.width, 1)) * 100}%`, top: `${(signature.y / Math.max(renderedPageSize.height, 1)) * 100}%`, width: `${(signature.width / Math.max(renderedPageSize.width, 1)) * 100}%`, height: `${(signature.height / Math.max(renderedPageSize.height, 1)) * 100}%` }}
+                              onClick={(event) => { event.stopPropagation(); setSelectedSignatureId(signature.id); }}
+                            >
+                            {/* Drag handle */}
+                            <div
+                              onPointerDown={(e) => startDrag(e, signature)}
+                              className="absolute left-1 top-1 h-4 w-4 rounded bg-white/90 border border-border/60 shadow-sm"
+                              style={{ zIndex: 30, cursor: 'grab' }}
                             />
-                          ) : null}
-                          <div className="pointer-events-none flex items-center justify-center text-center text-xs font-medium text-primary">
-                            {signature.type === "type" ? (signature.text || "Signature") : signature.type === "image" ? "Image" : "Draw"}
+                            {signature.type === "draw" ? (
+                              <canvas
+                                ref={setSignatureCanvasRef(signature.id)}
+                                className="absolute inset-0 h-full w-full rounded-lg"
+                                style={{ pointerEvents: 'auto', cursor: signature.type === 'draw' ? 'crosshair' : 'auto' }}
+                                onPointerDown={handleCanvasPointerDown}
+                                onPointerMove={handleCanvasPointerMove}
+                                onPointerUp={handleCanvasPointerUp}
+                                onPointerLeave={handleCanvasPointerUp}
+                              />
+                            ) : null}
+                            {/* Resize handle */}
+                            <div
+                              onPointerDown={(e) => startResize(e, signature)}
+                              className="absolute right-1 bottom-1 h-4 w-4 rounded bg-white/90 border border-border/60 shadow-sm"
+                              style={{ zIndex: 30, cursor: 'nwse-resize' }}
+                            />
+                            <div className="pointer-events-none flex items-center justify-center text-center text-xs font-medium text-primary">
+                              {signature.type === "type" ? (signature.text || "Signature") : signature.type === "image" ? "Image" : "Draw"}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   ) : (
                     <div className="flex min-h-[320px] items-center justify-center rounded-2xl border border-dashed border-border/70 bg-background/60 text-center text-sm text-muted-foreground">
