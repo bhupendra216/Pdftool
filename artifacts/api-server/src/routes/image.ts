@@ -2,6 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import sharp, { type Sharp } from "sharp";
 import heicConvert from "heic-convert";
+import potrace from "potrace";
 import path from "path";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } }); // 20MB limit
@@ -16,6 +17,7 @@ const INPUT_MIMES = new Set([
   "image/tiff",
   "image/tif",
   "image/gif",
+  "image/svg+xml",
   // don't include heic here; detect by extension or explicit mimetype
 ]);
 
@@ -31,54 +33,79 @@ const decodeHeicToPng = async (buffer: Buffer) => {
   return Buffer.from(out);
 };
 
-const OUTPUT_FORMATS = new Set(["png", "jpg", "jpeg", "webp"]);
+const isSvgFile = (file: Express.Multer.File) => {
+  const name = (file.originalname || "").toLowerCase();
+  const mt = (file.mimetype || "").toLowerCase();
+  return name.endsWith(".svg") || name.endsWith(".svgz") || mt === "image/svg+xml" || mt === "image/svg";
+};
+
+const OUTPUT_FORMATS = new Set(["png", "jpg", "jpeg", "webp", "bmp", "tiff", "gif", "svg"]);
 
 function extForFormat(format: string) {
   if (format === "jpg" || format === "jpeg") return "jpg";
   if (format === "png") return "png";
   if (format === "webp") return "webp";
+  if (format === "bmp") return "bmp";
+  if (format === "tiff" || format === "tif") return "tiff";
+  if (format === "gif") return "gif";
+  if (format === "svg") return "svg";
   return format;
 }
+
+const traceSvg = (buffer: Buffer) => {
+  return new Promise<string>((resolve, reject) => {
+    potrace.trace(buffer, { threshold: 128 }, (err, svg) => {
+      if (err) {
+        reject(err);
+        return;
+      }
+      resolve(svg);
+    });
+  });
+};
 
 router.post("/convert-image", upload.array("files"), async (req, res) => {
   const files = req.files as Express.Multer.File[] | undefined;
   const outFormatRaw = (req.body && req.body.outputFormat) || "png";
   const outFormat = String(outFormatRaw).toLowerCase();
+  const svgModeRaw = req.body && req.body.svgMode;
+  const svgMode = typeof svgModeRaw === "string" ? svgModeRaw.toLowerCase() : "embed";
 
   if (!files || files.length === 0) {
     res.status(400).json({ error: "No file uploaded" });
     return;
   }
 
-  if (!OUTPUT_FORMATS.has(outFormat)) {
+  const normalizedOutFormat = outFormat === "tif" ? "tiff" : outFormat;
+
+  if (!OUTPUT_FORMATS.has(normalizedOutFormat)) {
     res.status(400).json({ error: "Unsupported output format" });
     return;
   }
 
   let file = files[0];
-  let wasHeic = false;
 
   if (isHeicFile(file)) {
-    wasHeic = true;
     try {
       const pngBuffer = await decodeHeicToPng(file.buffer);
       // replace file buffer and mimetype/name for downstream processing
       file = { ...file, buffer: pngBuffer, mimetype: "image/png", originalname: file.originalname.replace(/\.(heic|heif)$/i, ".png") } as Express.Multer.File;
     } catch (err) {
-      console.error('HEIC decode failed', err);
-      res.status(500).json({ error: 'Unable to decode HEIC image' });
+      console.error("HEIC decode failed", err);
+      res.status(500).json({ error: "Unable to decode HEIC image" });
       return;
     }
   }
 
+  if (!INPUT_MIMES.has((file.mimetype || "").toLowerCase()) && !isSvgFile(file)) {
+    res.status(400).json({ error: "Unsupported image type" });
+    return;
+  }
+
   try {
     const image = sharp(file.buffer, { failOnError: true, limitInputPixels: false });
-    let resolvedFormat = outFormat;
+    let resolvedFormat = normalizedOutFormat;
     let transformed: Sharp = image;
-
-    if (resolvedFormat === "bmp") {
-      resolvedFormat = "png";
-    }
 
     if (resolvedFormat === "png") {
       transformed = image.png({ quality: 100 });
@@ -86,16 +113,53 @@ router.post("/convert-image", upload.array("files"), async (req, res) => {
       transformed = image.webp({ quality: 90 });
     } else if (resolvedFormat === "jpg" || resolvedFormat === "jpeg") {
       transformed = image.jpeg({ quality: 90 });
+    } else if (resolvedFormat === "bmp") {
+      transformed = image.bmp();
+    } else if (resolvedFormat === "tiff") {
+      transformed = image.tiff();
+    } else if (resolvedFormat === "gif") {
+      transformed = image.gif();
     }
 
-    const outBuffer = await transformed.toBuffer();
+    const metadata = await image.metadata();
+    let outBuffer: Buffer;
+    let contentType = "image/png";
+    let outExt = extForFormat(resolvedFormat);
+
+    if (resolvedFormat === "svg") {
+      const rasterBuffer = await image.png({ quality: 100 }).toBuffer();
+      const width = Math.max(1, metadata.width || 1);
+      const height = Math.max(1, metadata.height || 1);
+      const encoded = rasterBuffer.toString("base64");
+
+      if (svgMode === "trace") {
+        const traced = await traceSvg(rasterBuffer);
+        outBuffer = Buffer.from(traced);
+      } else {
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><image width="${width}" height="${height}" href="data:image/png;base64,${encoded}"/></svg>`;
+        outBuffer = Buffer.from(svg);
+      }
+
+      contentType = "image/svg+xml";
+      outExt = "svg";
+    } else {
+      outBuffer = await transformed.toBuffer();
+      if (resolvedFormat === "jpg" || resolvedFormat === "jpeg") {
+        contentType = "image/jpeg";
+      } else if (resolvedFormat === "bmp") {
+        contentType = "image/bmp";
+      } else if (resolvedFormat === "tiff") {
+        contentType = "image/tiff";
+      } else if (resolvedFormat === "gif") {
+        contentType = "image/gif";
+      } else {
+        contentType = `image/${resolvedFormat}`;
+      }
+    }
 
     const base = path.basename(file.originalname, path.extname(file.originalname));
-    const outExt = extForFormat(resolvedFormat);
     const outName = `${base}.${outExt}`;
-    const contentType = resolvedFormat === "jpg" || resolvedFormat === "jpeg" ? "image/jpeg" : `image/${resolvedFormat}`;
 
-    // If input was HEIC, we decoded to PNG internally; ensure response content-type and filename reflect the output format
     res.setHeader("content-type", contentType);
     res.setHeader("content-disposition", `attachment; filename=${outName}`);
     res.send(outBuffer);

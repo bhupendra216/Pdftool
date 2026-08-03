@@ -57,22 +57,22 @@ const getUploadConfig = (slug?: string): UploadConfig => {
   switch (slug) {
     case "image-converter":
       return {
-        accept: "image/png,image/jpeg,image/webp,image/bmp,image/tiff,image/gif,image/heic,image/heif,.png,.jpg,.jpeg,.webp,.bmp,.tiff,.tif,.gif,.heic,.heif",
+        accept: "image/png,image/jpeg,image/webp,image/bmp,image/tiff,image/gif,image/svg+xml,image/heic,image/heif,.png,.jpg,.jpeg,.webp,.bmp,.tiff,.tif,.gif,.svg,.heic,.heif",
         maxSizeMB: 20,
         label: "image files",
         description: "or drop up to 30 images here.",
-        supportedFormats: ["PNG", "JPG", "JPEG", "WebP", "BMP", "TIFF", "GIF", "HEIC", "HEIF"],
+        supportedFormats: ["PNG", "JPG", "JPEG", "WebP", "BMP", "TIFF", "GIF", "SVG", "HEIC", "HEIF"],
         highlights: ["Preserve quality", "Batch convert up to 30 images", "Preview before download"],
       };
     case "image-resize":
     case "image-compress":
     case "image-upscale":
       return {
-        accept: "image/png,image/jpeg,image/webp,image/bmp,image/tiff,image/gif,image/heic,image/heif,.png,.jpg,.jpeg,.webp,.bmp,.tiff,.tif,.gif,.heic,.heif",
+        accept: "image/png,image/jpeg,image/webp,image/bmp,image/tiff,image/gif,image/svg+xml,image/heic,image/heif,.png,.jpg,.jpeg,.webp,.bmp,.tiff,.tif,.gif,.svg,.heic,.heif",
         maxSizeMB: 20,
         label: "image file",
         description: "or drop an image here.",
-        supportedFormats: ["PNG", "JPG", "JPEG", "WebP", "BMP", "TIFF", "GIF", "HEIC", "HEIF"],
+        supportedFormats: ["PNG", "JPG", "JPEG", "WebP", "BMP", "TIFF", "GIF", "SVG", "HEIC", "HEIF"],
         highlights: ["Preserve quality", "Batch-friendly workflow", "Preview before download"],
       };
     case "word-to-pdf":
@@ -257,6 +257,7 @@ export function ToolDetail(props?: any) {
   const [imageFormat, setImageFormat] = useState<string | null>(null);
   const [imageBatchItems, setImageBatchItems] = useState<ImageBatchItem[]>([]);
   const [outputFormat, setOutputFormat] = useState<string>("png");
+  const [svgMode, setSvgMode] = useState<"embed" | "trace">("embed");
   const [resizeWidth, setResizeWidth] = useState<string>("");
   const [resizeHeight, setResizeHeight] = useState<string>("");
   const [compressQuality, setCompressQuality] = useState<number>(78);
@@ -291,7 +292,7 @@ export function ToolDetail(props?: any) {
   const supportedFormats = uploadConfig.supportedFormats;
   const highlights = uploadConfig.highlights;
   const trustedPoints = TRUST_POINTS;
-  const SUPPORTED_OUTPUT = ["png", "jpg", "jpeg", "webp", "bmp", "tiff", "gif"];
+  const SUPPORTED_OUTPUT = ["png", "jpg", "jpeg", "webp", "bmp", "tiff", "gif", "svg"];
   const compressionPresets = [
     { id: "best", label: "Best Quality", quality: 92, estimateFactor: 0.88, description: "Keep more detail and color fidelity while still shaving off noticeable size." },
     { id: "balanced", label: "Balanced", quality: 78, estimateFactor: 0.65, description: "A practical middle ground for everyday sharing and storage." },
@@ -710,10 +711,13 @@ export function ToolDetail(props?: any) {
     return postFormDataForBlob(apiUrl("/api/add-page-numbers"), formData, "Add Page Numbers");
   };
 
-  const convertImageOnServer = async (fileToConvert: File, outFormat: string): Promise<Blob> => {
+  const convertImageOnServer = async (fileToConvert: File, outFormat: string, svgModeChoice: "embed" | "trace" = "embed"): Promise<Blob> => {
     const formData = new FormData();
     formData.append("files", fileToConvert);
     formData.append("outputFormat", outFormat);
+    if (outFormat === "svg") {
+      formData.append("svgMode", svgModeChoice);
+    }
 
     return postFormDataForBlob(apiUrl("/api/convert-image"), formData, "Image conversion");
   };
@@ -1262,7 +1266,7 @@ export function ToolDetail(props?: any) {
               setProgressStage(`Converting ${currentFile.name}`);
 
               try {
-                const convertedBlob = await convertImageOnServer(currentFile, outputFormat);
+                const convertedBlob = await convertImageOnServer(currentFile, outputFormat, svgMode);
                 const baseName = stripExtension(currentFile.name);
                 const ext = outputFormat === "jpeg" ? "jpg" : outputFormat;
                 const resolvedName = `${baseName}.${ext}`;
@@ -1333,7 +1337,7 @@ export function ToolDetail(props?: any) {
         blob = await splitPdfOnServer(files[0], pageRange);
         outputName = stripExtension(files[0].name) + `-split.pdf`;
       } else if (tool.slug === "image-converter") {
-        blob = await convertImageOnServer(files[0], outputFormat);
+        blob = await convertImageOnServer(files[0], outputFormat, svgMode);
         const baseName = stripExtension(files[0].name);
         const ext = outputFormat === "jpeg" ? "jpg" : outputFormat;
         outputName = `${baseName}.${ext}`;
@@ -2173,14 +2177,39 @@ export function ToolDetail(props?: any) {
                     )}
 
                     {tool.slug === "image-converter" && (
-                      <div className="rounded-2xl border border-border/70 bg-card/80 p-4">
-                        <label className="mb-2 block text-sm font-medium text-foreground">Output format</label>
-                        <select value={outputFormat} onChange={(e) => setOutputFormat(e.target.value)} className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30">
-                          {SUPPORTED_OUTPUT.map((fmt) => (
-                            <option key={fmt} value={fmt}>{fmt.toUpperCase()}</option>
-                          ))}
-                        </select>
-                        <p className="mt-2 text-xs text-muted-foreground">Choose the output file format before conversion.</p>
+                      <div className="space-y-3 rounded-2xl border border-border/70 bg-card/80 p-4">
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-foreground">Output format</label>
+                          <select value={outputFormat} onChange={(e) => setOutputFormat(e.target.value)} className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30">
+                            {SUPPORTED_OUTPUT.map((fmt) => (
+                              <option key={fmt} value={fmt}>{fmt.toUpperCase()}</option>
+                            ))}
+                          </select>
+                        </div>
+                        {outputFormat === "svg" && (
+                          <div className="rounded-xl border border-primary/20 bg-primary/5 p-3">
+                            <p className="text-sm font-medium text-foreground">SVG export mode</p>
+                            <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                              <button
+                                type="button"
+                                onClick={() => setSvgMode("embed")}
+                                className={`rounded-xl border px-3 py-2 text-left text-sm transition-all ${svgMode === "embed" ? "border-primary bg-primary/10 shadow-sm" : "border-border/70 bg-background/70 hover:border-primary/40"}`}
+                              >
+                                <span className="block font-semibold text-foreground">Embed image</span>
+                                <span className="mt-1 block text-xs text-muted-foreground">Default and recommended. Works for photos and preserves the raster image inside SVG.</span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSvgMode("trace")}
+                                className={`rounded-xl border px-3 py-2 text-left text-sm transition-all ${svgMode === "trace" ? "border-primary bg-primary/10 shadow-sm" : "border-border/70 bg-background/70 hover:border-primary/40"}`}
+                              >
+                                <span className="block font-semibold text-foreground">Trace to vector paths</span>
+                                <span className="mt-1 block text-xs text-muted-foreground">Best for simple logos or line art. Photos may look poor, which is expected.</span>
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                        <p className="text-xs text-muted-foreground">Choose the output file format before conversion.</p>
                       </div>
                     )}
 
