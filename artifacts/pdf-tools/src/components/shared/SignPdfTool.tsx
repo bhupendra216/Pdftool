@@ -104,6 +104,7 @@ export function SignPdfTool() {
   const sideDrawPointsRef = useRef<{ x: number; y: number }[]>([]);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [pdfBytes, setPdfBytes] = useState<Uint8Array | null>(null);
+  const [isPdfDocumentReady, setIsPdfDocumentReady] = useState(false);
   // `savePdfBytes` holds a separate, non-transferred copy used for PDF-lib operations.
   // pdfjs may transfer/detach buffers when using workers, so keep an independent copy
   // for the save path to avoid "detached ArrayBuffer" errors.
@@ -116,6 +117,7 @@ export function SignPdfTool() {
   const previewContainerRef = useRef<HTMLDivElement | null>(null);
   const previewCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const canvasWrapperRef = useRef<HTMLDivElement | null>(null);
+  const pdfDocRef = useRef<Awaited<ReturnType<typeof getDocument>['promise']> | null>(null);
   const drawCanvasRefs = useRef<Record<number, HTMLCanvasElement | null>>({});
   const uploadInputRef = useRef<HTMLInputElement | null>(null);
 
@@ -159,8 +161,38 @@ export function SignPdfTool() {
   const resizingRef = useRef<{ id: number; startX: number; startY: number; origW: number; origH: number } | null>(null);
 
   useEffect(() => {
+    if (!pdfBytes) {
+      pdfDocRef.current = null;
+      setIsPdfDocumentReady(false);
+      return;
+    }
+
+    let cancelled = false;
+    pdfDocRef.current = null;
+    setIsPdfDocumentReady(false);
+
+    getDocument({ data: pdfBytes as Uint8Array }).promise
+      .then((pdf) => {
+        if (!cancelled) {
+          pdfDocRef.current = pdf;
+          setIsPdfDocumentReady(true);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setError("Unable to load the selected PDF.");
+          setIsPdfDocumentReady(false);
+        }
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [pdfBytes]);
+
+  useEffect(() => {
     const canvas = previewCanvasRef.current;
-    if (!canvas || !file || !pdfBytes) {
+    if (!canvas || !file || !pdfBytes || !isPdfDocumentReady || !pdfDocRef.current) {
       setRenderedPageSize({ width: 560, height: 760 });
       return;
     }
@@ -169,7 +201,7 @@ export function SignPdfTool() {
 
     const renderCurrentPage = async () => {
       setError(null);
-      const pdf = await getDocument({ data: pdfBytes as Uint8Array }).promise;
+      const pdf = pdfDocRef.current;
       const page = await pdf.getPage(currentPage);
       const baseViewport = page.getViewport({ scale: 1 });
       const availableWidth = Math.max(280, previewBoxSize.width - 24);
@@ -212,7 +244,7 @@ export function SignPdfTool() {
     return () => {
       isActive = false;
     };
-  }, [currentPage, file, pdfBytes, previewBoxSize.height, previewBoxSize.width]);
+  }, [currentPage, file, pdfBytes, isPdfDocumentReady, previewBoxSize.height, previewBoxSize.width]);
 
   useEffect(() => {
     const canvas = activeSignature && activeSignature.type === "draw" ? drawCanvasRefs.current[activeSignature.id] : null;
@@ -248,6 +280,8 @@ export function SignPdfTool() {
       if (prev) URL.revokeObjectURL(prev);
       return null;
     });
+    pdfDocRef.current = null;
+    setIsPdfDocumentReady(false);
     setPdfBytes(null);
     setDownloadUrl((prev) => {
       if (prev) URL.revokeObjectURL(prev);
