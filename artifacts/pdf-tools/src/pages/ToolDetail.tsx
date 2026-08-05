@@ -257,7 +257,7 @@ export function ToolDetail(props?: any) {
   const [imageHeight, setImageHeight] = useState<number | null>(null);
   const [imageFormat, setImageFormat] = useState<string | null>(null);
   const [imageBatchItems, setImageBatchItems] = useState<ImageBatchItem[]>([]);
-  const [outputFormat, setOutputFormat] = useState<string>("png");
+  const [outputFormat, setOutputFormat] = useState<string>(props?.forcedOutputFormat ?? "png");
   const [svgMode, setSvgMode] = useState<"embed" | "trace">("embed");
   const [resizeWidth, setResizeWidth] = useState<string>("");
   const [resizeHeight, setResizeHeight] = useState<string>("");
@@ -277,6 +277,8 @@ export function ToolDetail(props?: any) {
   const [pdfToWordOcr, setPdfToWordOcr] = useState(false);
   const [pdfToWordOutputFormat, setPdfToWordOutputFormat] = useState<"docx" | "doc">("docx");
   const [pdfToWordPageCount, setPdfToWordPageCount] = useState<number | null>(null);
+  const displayToolName = props?.forcedToolName ?? tool?.name ?? "Image Converter";
+  const forcedOutputFormat = props?.forcedOutputFormat as string | undefined;
   const uploadConfig = useMemo(() => getUploadConfig(tool?.slug), [tool?.slug]);
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, "") ?? "";
   const apiUrl = (path: string) => `${apiBaseUrl}${path}`;
@@ -428,8 +430,9 @@ export function ToolDetail(props?: any) {
     setPdfToWordExtractImages(true);
     setPdfToWordOcr(false);
     setPdfToWordOutputFormat("docx");
+    setOutputFormat(forcedOutputFormat ?? "png");
     setImageBatchItems([]);
-  }, [slug]);
+  }, [slug, forcedOutputFormat]);
 
   useEffect(() => {
     return () => {
@@ -939,7 +942,7 @@ export function ToolDetail(props?: any) {
       {
         "@context": "https://schema.org",
         "@type": "SoftwareApplication",
-        name: `PDFKira ${tool.name}`,
+        name: `PDFKira ${displayToolName}`,
         description: tool.seoDescription,
         applicationCategory: "WebApplication",
         operatingSystem: "Web",
@@ -952,7 +955,7 @@ export function ToolDetail(props?: any) {
         itemListElement: [
           { "@type": "ListItem", position: 1, name: "Home", item: SITE_URL },
           { "@type": "ListItem", position: 2, name: "Tools", item: `${SITE_URL}/tools` },
-          { "@type": "ListItem", position: 3, name: tool.name, item: `${SITE_URL}/${tool.slug}` },
+          { "@type": "ListItem", position: 3, name: displayToolName, item: `${SITE_URL}/${tool.slug}` },
         ],
       },
       ...(faqSchema ? [faqSchema] : []),
@@ -997,7 +1000,7 @@ export function ToolDetail(props?: any) {
             <nav className="mb-8 flex items-center text-sm font-medium text-muted-foreground">
               <Link href="/tools" className="transition-colors hover:text-primary">Tools</Link>
               <ChevronRight className="mx-2 h-4 w-4 opacity-50" />
-              <span className="text-foreground">{tool.name}</span>
+              <span className="text-foreground">{displayToolName}</span>
             </nav>
 
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -1006,7 +1009,7 @@ export function ToolDetail(props?: any) {
                   <Icon name={tool.icon} className="h-8 w-8" />
                 </div>
                 <div>
-                  <h1 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">{tool.name}</h1>
+                  <h1 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">{displayToolName}</h1>
                   <p className="mt-2 max-w-2xl text-lg text-muted-foreground">{tool.shortDescription}</p>
                 </div>
               </div>
@@ -1032,7 +1035,7 @@ export function ToolDetail(props?: any) {
             <nav className="mb-8 flex items-center text-sm font-medium text-muted-foreground">
               <Link href="/tools" className="transition-colors hover:text-primary">Tools</Link>
               <ChevronRight className="mx-2 h-4 w-4 opacity-50" />
-              <span className="text-foreground">{tool.name}</span>
+              <span className="text-foreground">{displayToolName}</span>
             </nav>
 
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -1041,7 +1044,7 @@ export function ToolDetail(props?: any) {
                   <Icon name={tool.icon} className="h-8 w-8" />
                 </div>
                 <div>
-                  <h1 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">{tool.name}</h1>
+                  <h1 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">{displayToolName}</h1>
                   <p className="mt-2 max-w-2xl text-lg text-muted-foreground">{tool.shortDescription}</p>
                 </div>
               </div>
@@ -1488,7 +1491,7 @@ export function ToolDetail(props?: any) {
           <nav className="flex items-center text-sm font-medium text-muted-foreground mb-8">
             <Link href="/tools" className="hover:text-primary transition-colors">Tools</Link>
             <ChevronRight className="w-4 h-4 mx-2 opacity-50" />
-            <span className="text-foreground">{tool.name}</span>
+            <span className="text-foreground">{displayToolName}</span>
           </nav>
           
           <div className="flex items-center gap-5 mb-4">
@@ -1497,7 +1500,7 @@ export function ToolDetail(props?: any) {
             </div>
             <div>
               <h1 className="text-3xl md:text-5xl font-bold flex items-center gap-3">
-                {tool.name}
+                {displayToolName}
                 {isComingSoon && (
                   <span className="text-sm font-medium px-3 py-1 bg-muted text-muted-foreground rounded-full border">
                     Coming Soon
@@ -1540,7 +1543,7 @@ export function ToolDetail(props?: any) {
                   </div>
                   <div className="space-y-4">
                     <h2 className="text-4xl font-bold tracking-tight text-foreground md:text-5xl">
-                      {tool.name}
+                      {displayToolName}
                     </h2>
                     <p className="max-w-2xl text-lg leading-relaxed text-muted-foreground md:text-xl">
                       {tool.shortDescription}
@@ -2634,7 +2637,7 @@ export function ToolDetail(props?: any) {
 
       {/* FAQ */}
       {faqsToShow.length > 0 && (
-        <FaqSection faqs={faqsToShow} title={`${tool.name} FAQ`} />
+        <FaqSection faqs={faqsToShow} title={`${displayToolName} FAQ`} />
       )}
 
       {relatedTools.length > 0 && (
