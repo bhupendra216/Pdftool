@@ -83,6 +83,70 @@ test("convert-image accepts SVG input and rasterizes it", async () => {
   }
 });
 
+test("convert-image preserves the full SVG viewBox for raster outputs", async () => {
+  const server = app.listen(0);
+  await onceServerListening(server);
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address === "object" && "port" in address);
+    const port = address.port;
+
+    const svgBuffer = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" width="400" height="300"><rect x="20" y="20" width="360" height="260" fill="red"/></svg>`);
+    const formData = new FormData();
+    formData.append("files", new Blob([svgBuffer], { type: "image/svg+xml" }), "sample.svg");
+    formData.append("outputFormat", "png");
+
+    const response = await fetch(`http://127.0.0.1:${port}/api/convert-image`, {
+      method: "POST",
+      body: formData,
+    });
+
+    assert.equal(response.status, 200);
+    const outputBuffer = Buffer.from(await response.arrayBuffer());
+    const metadata = await sharp(outputBuffer).metadata();
+    assert.equal(metadata.width, 400);
+    assert.equal(metadata.height, 300);
+    assert.equal(metadata.format, "png");
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve(undefined)));
+    });
+  }
+});
+
+test("convert-image preserves right-edge SVG content on raster outputs", async () => {
+  const server = app.listen(0);
+  await onceServerListening(server);
+
+  try {
+    const address = server.address();
+    assert.ok(address && typeof address === "object" && "port" in address);
+    const port = address.port;
+
+    const svgBuffer = Buffer.from(`<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="600" viewBox="0 0 1200 600"><rect width="100%" height="100%" fill="#f7f0df"/><text x="1100" y="300" font-size="48" fill="#8e1810">This text should not be cropped</text></svg>`);
+    const formData = new FormData();
+    formData.append("files", new Blob([svgBuffer], { type: "image/svg+xml" }), "sample.svg");
+    formData.append("outputFormat", "png");
+
+    const response = await fetch(`http://127.0.0.1:${port}/api/convert-image`, {
+      method: "POST",
+      body: formData,
+    });
+
+    assert.equal(response.status, 200);
+    const outputBuffer = Buffer.from(await response.arrayBuffer());
+    const metadata = await sharp(outputBuffer).metadata();
+    assert.equal(metadata.width, 1200);
+    assert.equal(metadata.height, 600);
+    assert.equal(metadata.format, "png");
+  } finally {
+    await new Promise((resolve, reject) => {
+      server.close((error) => (error ? reject(error) : resolve(undefined)));
+    });
+  }
+});
+
 test("convert-image can emit SVG output in embed mode", async () => {
   const server = app.listen(0);
   await onceServerListening(server);

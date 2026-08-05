@@ -3,7 +3,8 @@ import { ArrowRight, BriefcaseBusiness, Building2, Search, Sparkles } from "luci
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
-import { useSEO } from "@/hooks/use-seo";
+import { useSEOAdvanced } from "@/hooks/use-seo";
+import { SITE_URL } from "@/lib/site-config";
 import { categories, companies, getAiJobsSnapshot, getCompanyCards, jobs, locations, type AiJobsSnapshot } from "@/lib/ai-jobs";
 import type { Job } from "@/lib/ai-jobs-data";
 
@@ -13,9 +14,16 @@ function formatDate(value: string) {
 }
 
 export function AiJobs() {
-  useSEO({
-    title: "AI Jobs | PDFKira",
-    description: "Discover remote and hybrid AI jobs from leading companies hiring worldwide.",
+  useSEOAdvanced({
+    title: "AI Jobs",
+    description: "Discover curated remote and hybrid AI jobs from leading companies hiring worldwide.",
+    canonical: `${SITE_URL}/ai-jobs`,
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      name: "AI Jobs",
+      url: `${SITE_URL}/ai-jobs`,
+    },
   });
 
   const [snapshot, setSnapshot] = useState<AiJobsSnapshot>(() => ({

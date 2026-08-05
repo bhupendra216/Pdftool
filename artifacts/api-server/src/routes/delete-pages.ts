@@ -3,12 +3,20 @@ import multer from "multer";
 import { PDFDocument } from "pdf-lib";
 import { loadPdf, parsePageList, preservePdfMetadata, isPdfFile } from "./pdf-utils";
 
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 4 * 1024 * 1024 },
+});
 const router = Router();
 
 router.post("/delete-pages", upload.single("files"), async (req, res) => {
   const file = req.file as Express.Multer.File | undefined;
   const rawPagesToDelete = req.body.pages || req.body.pagesToDelete;
+
+  if (req.fileValidationError) {
+    res.status(413).json({ error: req.fileValidationError });
+    return;
+  }
 
   if (!isPdfFile(file)) {
     res.status(400).json({ error: "No PDF file uploaded" });

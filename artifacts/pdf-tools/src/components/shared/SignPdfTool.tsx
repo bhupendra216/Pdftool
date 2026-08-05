@@ -20,6 +20,7 @@ type SignatureItem = {
   id: number;
   type: SignatureMode;
   pageNumber: number;
+  // Normalized coordinates relative to the PDF page viewport.
   x: number;
   y: number;
   width: number;
@@ -35,6 +36,16 @@ type SignatureItem = {
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
+}
+
+function clampNormalized(value: number) {
+  return clamp(value, 0, 1);
+}
+
+function isSignatureVisibleOnPage(signature: SignatureItem, pageNumber: number) {
+  if (signature.target === "all") return true;
+  if (signature.target === "pages") return signature.targetPages.includes(pageNumber);
+  return signature.pageNumber === pageNumber;
 }
 
 function parseTargetPages(value: string, pageCount: number) {
@@ -85,6 +96,10 @@ function dataUrlToBytes(dataUrl: string) {
   return bytes;
 }
 
+const MIN_ZOOM_PERCENT = 25;
+const MAX_ZOOM_PERCENT = 400;
+const DEFAULT_ZOOM_PERCENT = 100;
+
 export function SignPdfTool() {
   const [file, setFile] = useState<File | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -112,6 +127,9 @@ export function SignPdfTool() {
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [previewBoxSize, setPreviewBoxSize] = useState({ width: 560, height: 760 });
   const [renderedPageSize, setRenderedPageSize] = useState({ width: 560, height: 760 });
+  const [zoomMode, setZoomMode] = useState<"fitWidth" | "fitPage" | "custom">("fitWidth");
+  const [zoomPercent, setZoomPercent] = useState(100);
+  const [isPageRendering, setIsPageRendering] = useState(false);
   const [signatureTarget, setSignatureTarget] = useState<SignatureTarget>("current");
   const [signatureTargetText, setSignatureTargetText] = useState("1");
   const previewContainerRef = useRef<HTMLDivElement | null>(null);
@@ -158,7 +176,7 @@ export function SignPdfTool() {
 
   // Drag / resize interaction refs
   const draggingRef = useRef<{ id: number; startX: number; startY: number; origX: number; origY: number } | null>(null);
-  const resizingRef = useRef<{ id: number; startX: number; startY: number; origW: number; origH: number } | null>(null);
+  const resizingRef = useRef<{ id: number; startX: number; startY: number; origW: number; origH: number; aspectRatio?: number } | null>(null);
 
   useEffect(() => {
     if (!pdfBytes) {
@@ -201,76 +219,76 @@ export function SignPdfTool() {
 
     const renderCurrentPage = async () => {
       setError(null);
+      setIsPageRendering(true);
       const pdf = pdfDocRef.current;
+      if (!pdf) return;
       const page = await pdf.getPage(currentPage);
       const baseViewport = page.getViewport({ scale: 1 });
       const availableWidth = Math.max(280, previewBoxSize.width - 24);
       const availableHeight = Math.max(320, previewBoxSize.height - 24);
-      const scale = Math.min(availableWidth / baseViewport.width, availableHeight / baseViewport.height, 2.4);
-      const viewport = page.getViewport({ scale: Math.max(0.65, scale) });
+
+      const fitWidthScale = availableWidth / baseViewport.width;
+      const fitPageScale = Math.min(fitWidthScale, availableHeight / baseViewport.height);
+      const effectiveScale = zoomMode === "fitPage" ? fitPageScale : zoomMode === "fitWidth" ? fitWidthScale : Math.max(0.1, zoomPercent / 100);
+      const normalizedScale = Math.min(Math.max(effectiveScale, 0.25), 4);
+      const viewport = page.getViewport({ scale: normalizedScale });
       const context = canvas.getContext("2d");
       if (!context || !isActive) return;
 
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      // Make the canvas fill an inner wrapper exactly so overlays can be
-      // positioned relative to the canvas' displayed box rather than the
-      // outer preview container (which may include centering gaps).
-      canvas.style.width = "100%";
-      canvas.style.height = "100%";
-      canvas.style.maxWidth = "100%";
-
-      await page.render({ canvas, canvasContext: context, viewport }).promise;
-      if (!isActive) return;
-      setRenderedPageSize({ width: viewport.width, height: viewport.height });
-
-      // Ensure the wrapper that holds the canvas and overlay layer matches
-      // the canvas' displayed pixel dimensions so absolutely-positioned
-      // overlays align correctly.
+      const ratio = window.devicePixelRatio || 1;
+      canvas.width = Math.round(viewport.width * ratio);
+      canvas.height = Math.round(viewport.height * ratio);
+      canvas.style.width = `${Math.round(viewport.width)}px`;
+      canvas.style.height = `${Math.round(viewport.height)}px`;
       const wrapper = canvasWrapperRef.current;
       if (wrapper) {
-        // Use the canvas intrinsic pixel size as the wrapper pixel size.
-        wrapper.style.width = `${canvas.width}px`;
-        wrapper.style.height = `${canvas.height}px`;
+        wrapper.style.width = `${Math.round(viewport.width)}px`;
+        wrapper.style.height = `${Math.round(viewport.height)}px`;
       }
+
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvas, canvasContext: context, viewport }).promise;
+      if (!isActive) return;
+
+      setRenderedPageSize({ width: viewport.width, height: viewport.height });
+      setZoomPercent(Math.round(normalizedScale * 100));
+      setIsPageRendering(false);
     };
 
     renderCurrentPage().catch(() => {
       if (isActive) {
         setError("Unable to preview the selected PDF page.");
+        setIsPageRendering(false);
       }
     });
 
     return () => {
       isActive = false;
     };
-  }, [currentPage, file, pdfBytes, isPdfDocumentReady, previewBoxSize.height, previewBoxSize.width]);
+  }, [currentPage, file, pdfBytes, isPdfDocumentReady, previewBoxSize.height, previewBoxSize.width, zoomMode, zoomPercent]);
 
   useEffect(() => {
-    const canvas = activeSignature && activeSignature.type === "draw" ? drawCanvasRefs.current[activeSignature.id] : null;
-    if (!canvas || !activeSignature || activeSignature.type !== "draw") {
-      return;
-    }
-
-    const context = canvas.getContext("2d");
-    const boxWidth = Math.max(1, Math.round(activeSignature.width));
-    const boxHeight = Math.max(1, Math.round(activeSignature.height));
-    canvas.width = boxWidth;
-    canvas.height = boxHeight;
-    canvas.style.width = `${boxWidth}px`;
-    canvas.style.height = `${boxHeight}px`;
-
-    if (!context) return;
-    context.clearRect(0, 0, canvas.width, canvas.height);
-
-    if (activeSignature.drawDataUrl) {
+    signatures.forEach((signature) => {
+      if (signature.type !== "draw") return;
+      const canvas = drawCanvasRefs.current[signature.id];
+      if (!canvas || !signature.drawDataUrl) return;
+      const context = canvas.getContext("2d");
+      const boxWidth = Math.max(1, Math.round(signature.width * renderedPageSize.width));
+      const boxHeight = Math.max(1, Math.round(signature.height * renderedPageSize.height));
+      canvas.width = boxWidth;
+      canvas.height = boxHeight;
+      canvas.style.width = `${boxWidth}px`;
+      canvas.style.height = `${boxHeight}px`;
+      if (!context) return;
+      context.clearRect(0, 0, canvas.width, canvas.height);
       const image = new Image();
       image.onload = () => {
         context.drawImage(image, 0, 0, canvas.width, canvas.height);
       };
-      image.src = activeSignature.drawDataUrl;
-    }
-  }, [activeSignature?.id, activeSignature?.drawDataUrl, activeSignature?.width, activeSignature?.height]);
+      image.src = signature.drawDataUrl;
+    });
+  }, [signatures, renderedPageSize.width, renderedPageSize.height]);
 
   const resetState = () => {
     setError(null);
@@ -287,7 +305,22 @@ export function SignPdfTool() {
       if (prev) URL.revokeObjectURL(prev);
       return null;
     });
+    setZoomMode("fitWidth");
+    setZoomPercent(DEFAULT_ZOOM_PERCENT);
   };
+
+  const setCustomZoomPercent = (percent: number) => {
+    setZoomMode("custom");
+    setZoomPercent(clamp(Math.round(percent), MIN_ZOOM_PERCENT, MAX_ZOOM_PERCENT));
+  };
+
+  const zoomIn = () => setCustomZoomPercent(zoomPercent + 20);
+  const zoomOut = () => setCustomZoomPercent(zoomPercent - 20);
+  const resetZoom = () => {
+    setZoomMode("fitWidth");
+    setZoomPercent(DEFAULT_ZOOM_PERCENT);
+  };
+  const fitWidth = () => setZoomMode("fitWidth");
 
   const handleUpload = async (selectedFile: File | null) => {
     if (!selectedFile) return;
@@ -312,6 +345,8 @@ export function SignPdfTool() {
       setSavePdfBytes(saveCopy);
       setPdfBytes(previewCopy);
       setPreviewUrl(URL.createObjectURL(selectedFile));
+      setZoomMode("fitWidth");
+      setZoomPercent(DEFAULT_ZOOM_PERCENT);
     } catch {
       setError("Unable to read the uploaded PDF. Please try another file.");
     } finally {
@@ -327,18 +362,32 @@ export function SignPdfTool() {
 
   const addSignature = () => {
     if (!pdfBytes) return;
+    const baseX = Math.max(24, renderedPageSize.width / 4);
+    const baseY = Math.max(24, renderedPageSize.height / 4);
+    const baseW = Math.max(140, renderedPageSize.width / 4);
+    const baseH = Math.max(80, renderedPageSize.height / 8);
+
+    const normalizedX = baseX / renderedPageSize.width;
+    const normalizedY = baseY / renderedPageSize.height;
+    const normalizedW = baseW / renderedPageSize.width;
+    const normalizedH = baseH / renderedPageSize.height;
+
+    const common = {
+      id: Date.now(),
+      pageNumber: currentPage,
+      x: normalizedX,
+      y: normalizedY,
+      width: normalizedW,
+      height: normalizedH,
+      rotation: 0,
+      target: signatureTarget,
+      targetPages: signatureTarget === "pages" ? parseTargetPages(signatureTargetText, pageCount) : [],
+    };
+
     if (mode === "draw") {
       const newItem: SignatureItem = {
-        id: Date.now(),
+        ...common,
         type: "draw",
-        pageNumber: currentPage,
-        x: Math.max(24, renderedPageSize.width / 4),
-        y: Math.max(24, renderedPageSize.height / 4),
-        width: Math.max(140, renderedPageSize.width / 4),
-        height: Math.max(80, renderedPageSize.height / 8),
-        rotation: 0,
-        target: signatureTarget,
-        targetPages: signatureTarget === "pages" ? parseTargetPages(signatureTargetText, pageCount) : [],
       };
       setSignatures((prev) => [...prev, newItem]);
       setSelectedSignatureId(newItem.id);
@@ -347,18 +396,8 @@ export function SignPdfTool() {
 
     if (mode === "type") {
       const newItem: SignatureItem = {
-        id: Date.now(),
+        ...common,
         type: "type",
-        pageNumber: currentPage,
-        x: Math.max(24, renderedPageSize.width / 4),
-        y: Math.max(24, renderedPageSize.height / 4),
-        width: Math.max(180, renderedPageSize.width / 3),
-        height: Math.max(80, renderedPageSize.height / 8),
-        rotation: 0,
-        target: signatureTarget,
-        targetPages: signatureTarget === "pages" ? parseTargetPages(signatureTargetText, pageCount) : [],
-        text: signatureText || "Signature",
-        fontName,
       };
       setSignatures((prev) => [...prev, newItem]);
       setSelectedSignatureId(newItem.id);
@@ -374,16 +413,8 @@ export function SignPdfTool() {
       const reader = new FileReader();
       reader.onload = () => {
         const newItem: SignatureItem = {
-          id: Date.now(),
+          ...common,
           type: "image",
-          pageNumber: currentPage,
-          x: Math.max(24, renderedPageSize.width / 4),
-          y: Math.max(24, renderedPageSize.height / 4),
-          width: Math.max(180, renderedPageSize.width / 3),
-          height: Math.max(80, renderedPageSize.height / 8),
-          rotation: 0,
-          target: signatureTarget,
-          targetPages: signatureTarget === "pages" ? parseTargetPages(signatureTargetText, pageCount) : [],
           imageDataUrl: reader.result as string,
         };
         setSignatures((prev) => [...prev, newItem]);
@@ -404,18 +435,27 @@ export function SignPdfTool() {
   };
 
   const handlePreviewClick = (event: React.MouseEvent<HTMLDivElement>) => {
-    if (!activeSignature || activeSignature.pageNumber !== currentPage) return;
+    if (!activeSignature || !isSignatureVisibleOnPage(activeSignature, currentPage)) return;
 
-    // Use the actual canvas bounding rect so clicks are measured against the
-    // displayed PDF page rather than the outer container (which may be
-    // larger due to flex centering).
     const canvasEl = previewCanvasRef.current;
     if (!canvasEl) return;
     const rect = canvasEl.getBoundingClientRect();
-    const x = clamp(((event.clientX - rect.left) / Math.max(rect.width, 1)) * renderedPageSize.width, 8, renderedPageSize.width - 8);
-    const y = clamp(((event.clientY - rect.top) / Math.max(rect.height, 1)) * renderedPageSize.height, 8, renderedPageSize.height - 8);
+    const x = clampNormalized((event.clientX - rect.left) / Math.max(rect.width, 1));
+    const y = clampNormalized((event.clientY - rect.top) / Math.max(rect.height, 1));
 
-    updateSignature(activeSignature.id, (item) => ({ ...item, x, y }));
+    updateSignature(activeSignature.id, (item) => ({
+      ...item,
+      x: clamp(x, 0, 1 - item.width),
+      y: clamp(y, 0, 1 - item.height),
+    }));
+  };
+
+  const fitPage = () => setZoomMode("fitPage");
+  const handlePreviewWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+    if (!event.ctrlKey) return;
+    event.preventDefault();
+    const delta = event.deltaY > 0 ? -10 : 10;
+    setCustomZoomPercent(zoomPercent + delta);
   };
 
   const handleCanvasPointerDown = (event: React.PointerEvent<HTMLCanvasElement>) => {
@@ -549,26 +589,27 @@ export function SignPdfTool() {
     ev.stopPropagation();
     const canvasRect = canvasWrapperRef.current?.getBoundingClientRect();
     if (!canvasRect) return;
-    // compute pointer offset inside the signature box so the box doesn't jump
-    const wrapperLeft = canvasRect.left;
-    const wrapperTop = canvasRect.top;
-    const boxLeftPx = wrapperLeft + (signature.x / renderedPageSize.width) * canvasRect.width;
-    const boxTopPx = wrapperTop + (signature.y / renderedPageSize.height) * canvasRect.height;
+    const boxLeftPx = canvasRect.left + signature.x * canvasRect.width;
+    const boxTopPx = canvasRect.top + signature.y * canvasRect.height;
     const pointerOffsetX = ev.clientX - boxLeftPx;
     const pointerOffsetY = ev.clientY - boxTopPx;
     draggingRef.current = { id: signature.id, startX: ev.clientX, startY: ev.clientY, origX: signature.x, origY: signature.y } as any;
-    // store pointer offsets separately on the ref object
     (draggingRef.current as any).offsetX = pointerOffsetX;
     (draggingRef.current as any).offsetY = pointerOffsetY;
     const onMove = (e: PointerEvent) => {
       const d = draggingRef.current;
       if (!d) return;
-      // compute new top-left so pointer keeps same offset inside box
       const pointerX = e.clientX - (d as any).offsetX;
       const pointerY = e.clientY - (d as any).offsetY;
-      const newX = clamp(((pointerX - canvasRect.left) / canvasRect.width) * renderedPageSize.width, 8, renderedPageSize.width - 8);
-      const newY = clamp(((pointerY - canvasRect.top) / canvasRect.height) * renderedPageSize.height, 8, renderedPageSize.height - 8);
-      updateSignature(d.id, (item) => ({ ...item, x: newX, y: newY }));
+      updateSignature(d.id, (item) => {
+        const rawX = clampNormalized((pointerX - canvasRect.left) / canvasRect.width);
+        const rawY = clampNormalized((pointerY - canvasRect.top) / canvasRect.height);
+        return {
+          ...item,
+          x: clamp(rawX, 0, 1 - item.width),
+          y: clamp(rawY, 0, 1 - item.height),
+        };
+      });
     };
     const onUp = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); draggingRef.current = null; };
     window.addEventListener('pointermove', onMove);
@@ -579,27 +620,35 @@ export function SignPdfTool() {
     ev.stopPropagation();
     const canvasRect = canvasWrapperRef.current?.getBoundingClientRect();
     if (!canvasRect) return;
-    // compute initial box right/bottom positions and pointer offset so resize doesn't jump
-    const wrapperLeft2 = canvasRect.left;
-    const wrapperTop2 = canvasRect.top;
-    const boxLeftPx2 = wrapperLeft2 + (signature.x / renderedPageSize.width) * canvasRect.width;
-    const boxTopPx2 = wrapperTop2 + (signature.y / renderedPageSize.height) * canvasRect.height;
-    const boxRightPx = boxLeftPx2 + (signature.width / renderedPageSize.width) * canvasRect.width;
-    const boxBottomPx = boxTopPx2 + (signature.height / renderedPageSize.height) * canvasRect.height;
+    const boxLeftPx = canvasRect.left + signature.x * canvasRect.width;
+    const boxTopPx = canvasRect.top + signature.y * canvasRect.height;
+    const boxRightPx = boxLeftPx + signature.width * canvasRect.width;
+    const boxBottomPx = boxTopPx + signature.height * canvasRect.height;
     const pointerOffsetRight = boxRightPx - ev.clientX;
     const pointerOffsetBottom = boxBottomPx - ev.clientY;
-    resizingRef.current = { id: signature.id, startX: ev.clientX, startY: ev.clientY, origW: signature.width, origH: signature.height } as any;
+    const aspectRatio = signature.width / signature.height || 1;
+    resizingRef.current = { id: signature.id, startX: ev.clientX, startY: ev.clientY, origW: signature.width, origH: signature.height, aspectRatio } as any;
     (resizingRef.current as any).offsetRight = pointerOffsetRight;
     (resizingRef.current as any).offsetBottom = pointerOffsetBottom;
     const onMove = (e: PointerEvent) => {
       const r = resizingRef.current;
       if (!r) return;
-      // compute new width/height so pointer remains at the same distance from bottom-right
       const pointerX = e.clientX + (r as any).offsetRight;
       const pointerY = e.clientY + (r as any).offsetBottom;
-      const newW = clamp(((pointerX - canvasRect.left) / canvasRect.width) * renderedPageSize.width - signature.x, 8, renderedPageSize.width);
-      const newH = clamp(((pointerY - canvasRect.top) / canvasRect.height) * renderedPageSize.height - signature.y, 8, renderedPageSize.height);
-      updateSignature(r.id, (item) => ({ ...item, width: newW, height: newH }));
+      let newWidth = clampNormalized((pointerX - canvasRect.left) / canvasRect.width - signature.x);
+      let newHeight = clampNormalized((pointerY - canvasRect.top) / canvasRect.height - signature.y);
+      if (r.aspectRatio && r.aspectRatio > 0) {
+        const targetHeight = newWidth / r.aspectRatio;
+        const targetWidth = newHeight * r.aspectRatio;
+        if (targetHeight <= newHeight) {
+          newHeight = targetHeight;
+        } else {
+          newWidth = targetWidth;
+        }
+      }
+      newWidth = clamp(newWidth, 0.05, 1 - signature.x);
+      newHeight = clamp(newHeight, 0.05, 1 - signature.y);
+      updateSignature(r.id, (item) => ({ ...item, width: newWidth, height: newHeight }));
     };
     const onUp = () => { window.removeEventListener('pointermove', onMove); window.removeEventListener('pointerup', onUp); resizingRef.current = null; };
     window.addEventListener('pointermove', onMove);
@@ -635,12 +684,11 @@ export function SignPdfTool() {
         for (const targetPage of targetPages) {
           const page = pdfDoc.getPage(targetPage - 1);
           const { width, height } = page.getSize();
-          const normalizedX = (signature.x / previewWidth) * width;
-          const normalizedY = (signature.y / previewHeight) * height;
-          const normalizedWidth = (signature.width / previewWidth) * width;
-          const normalizedHeight = (signature.height / previewHeight) * height;
+          const normalizedX = signature.x * width;
+          const normalizedY = signature.y * height;
+          const normalizedWidth = signature.width * width;
+          const normalizedHeight = signature.height * height;
           const actualY = height - normalizedY - normalizedHeight;
-
           if (signature.type === "type") {
             const fontToUse = signature.fontName === "TimesRomanItalic"
               ? timesItalic
@@ -856,20 +904,56 @@ export function SignPdfTool() {
 
             <div className="space-y-4">
               <div className="rounded-3xl border border-border/70 bg-background/80 p-4">
-                <div className="mb-3 flex items-center justify-between">
-                  <p className="text-sm font-semibold text-foreground">Live preview</p>
-                  {signatures.length > 0 ? <Badge variant="secondary">{signatures.length} placed</Badge> : null}
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                  <div className="space-y-2">
+                    <p className="text-sm font-semibold text-foreground">Live preview</p>
+                    <div className="text-xs text-muted-foreground">Page {currentPage} of {pageCount} · {zoomMode === 'custom' ? `${zoomPercent}%` : zoomMode === 'fitWidth' ? 'Fit width' : 'Fit page'}</div>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Button variant="outline" size="sm" onClick={zoomOut} disabled={!previewUrl}>
+                      -
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={resetZoom} disabled={!previewUrl}>
+                      Reset
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={zoomIn} disabled={!previewUrl}>
+                      +
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={fitWidth} disabled={!previewUrl}>
+                      Fit width
+                    </Button>
+                    <Button variant="outline" size="sm" onClick={fitPage} disabled={!previewUrl}>
+                      Fit page
+                    </Button>
+                    {signatures.length > 0 ? <Badge variant="secondary">{signatures.length} placed</Badge> : null}
+                  </div>
                 </div>
                 <div className="overflow-hidden rounded-2xl border border-border/70 bg-muted/30 p-2">
                   {previewUrl ? (
-                    <div ref={previewContainerRef} className="relative flex items-center justify-center overflow-hidden rounded-2xl border border-border/70 bg-white p-3" onClick={handlePreviewClick}>
+                    <div ref={previewContainerRef} className="relative flex min-h-[320px] items-center justify-center overflow-hidden rounded-2xl border border-border/70 bg-white p-3" onClick={handlePreviewClick} onWheel={handlePreviewWheel}>
+                      {isPageRendering ? (
+                        <div className="absolute inset-0 z-20 flex items-center justify-center bg-white/70 text-sm font-medium text-foreground">
+                          Rendering page...
+                        </div>
+                      ) : null}
                       <div ref={canvasWrapperRef} className="relative" style={{ display: 'inline-block' }}>
-                        <canvas ref={previewCanvasRef} className="max-h-[620px] w-full rounded-xl object-contain" />
-                        {signatures.filter((item) => item.pageNumber === currentPage).map((signature) => (
-                          <div
+                        <canvas ref={previewCanvasRef} className="max-h-[620px] rounded-xl" />
+                        {signatures.filter((item) => isSignatureVisibleOnPage(item, currentPage)).map((signature) => {
+                          const leftPercent = signature.x * 100;
+                          const topPercent = signature.y * 100;
+                          const widthPercent = signature.width * 100;
+                          const heightPercent = signature.height * 100;
+                          return (
+                            <div
                               key={signature.id}
                               className={cn("absolute flex items-center justify-center rounded-lg border-2 border-dashed border-primary/60 bg-primary/10 p-2 shadow-sm", selectedSignatureId === signature.id ? "ring-2 ring-primary" : "")}
-                              style={{ left: `${(signature.x / Math.max(renderedPageSize.width, 1)) * 100}%`, top: `${(signature.y / Math.max(renderedPageSize.height, 1)) * 100}%`, width: `${(signature.width / Math.max(renderedPageSize.width, 1)) * 100}%`, height: `${(signature.height / Math.max(renderedPageSize.height, 1)) * 100}%` }}
+                              style={{
+                                left: `${clamp(leftPercent, 0, 100 - widthPercent)}%`,
+                                top: `${clamp(topPercent, 0, 100 - heightPercent)}%`,
+                                width: `${clamp(widthPercent, 0, 100)}%`,
+                                height: `${clamp(heightPercent, 0, 100)}%`,
+                                transform: `translate(0, 0)`,
+                              }}
                               onClick={(event) => { event.stopPropagation(); setSelectedSignatureId(signature.id); }}
                             >
                             {/* Drag handle */}
@@ -881,8 +965,8 @@ export function SignPdfTool() {
                             {signature.type === "draw" ? (
                               <canvas
                                 ref={setSignatureCanvasRef(signature.id)}
-                                className="absolute inset-0 h-full w-full rounded-lg"
-                                style={{ pointerEvents: 'auto', cursor: signature.type === 'draw' ? 'crosshair' : 'auto' }}
+                                className="absolute inset-0 rounded-lg"
+                                style={{ width: '100%', height: '100%', pointerEvents: 'auto', cursor: signature.type === 'draw' ? 'crosshair' : 'auto' }}
                                 onPointerDown={handleCanvasPointerDown}
                                 onPointerMove={handleCanvasPointerMove}
                                 onPointerUp={handleCanvasPointerUp}
@@ -899,7 +983,7 @@ export function SignPdfTool() {
                               {signature.type === "type" ? (signature.text || "Signature") : signature.type === "image" ? "Image" : "Draw"}
                             </div>
                           </div>
-                        ))}
+                        )})}
                       </div>
                     </div>
                   ) : (

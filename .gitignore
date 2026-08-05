@@ -54,3 +54,11 @@ tmp_*.txt
 tmp_*.json
 tmp_*.log
 .tmp
+error.log
+tmp_out.json
+tmp_headers.txt
+tmp_out.jpeg
+tmp_test.png
+repro-sign-pdf.mjs
+api_backup/
+api_backup/**

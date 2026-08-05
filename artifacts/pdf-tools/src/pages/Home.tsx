@@ -1,4 +1,4 @@
-import { useSEO } from "@/hooks/use-seo";
+import { useMemo } from "react";
 import { Link } from "wouter";
 import { useListTools, useListBlogPosts, useListFaqs } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
@@ -9,13 +9,10 @@ import { FaqSection } from "@/components/shared/FaqSection";
 import { ArrowRight, ShieldCheck, Zap, HeartHandshake } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BrandMark } from "@/components/brand/BrandMark";
+import { useSEOAdvanced } from "@/hooks/use-seo";
+import { SITE_URL } from "@/lib/site-config";
 
 export function Home() {
-  useSEO({
-    title: "PDFKira – Free Online PDF Tools",
-    description: "Merge, split, compress, convert, organize, protect, and edit PDF files online for free with PDFKira."
-  });
-
   const { data: tools, isLoading: loadingTools } = useListTools();
   const { data: posts, isLoading: loadingPosts } = useListBlogPosts();
   const { data: faqs, isLoading: loadingFaqs } = useListFaqs();
@@ -29,6 +26,63 @@ const latestPosts = Array.isArray(posts)
   ? posts.slice(0, 3)
   : [];
 
+  const schema = useMemo(() => {
+    const faqSchema = faqs?.length
+      ? {
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          mainEntity: faqs.slice(0, 6).map((faq) => ({
+            "@type": "Question",
+            name: faq.question,
+            acceptedAnswer: {
+              "@type": "Answer",
+              text: faq.answer,
+            },
+          })),
+        }
+      : null;
+
+    return [
+      {
+        "@context": "https://schema.org",
+        "@type": "Organization",
+        name: "PDFKira",
+        url: SITE_URL,
+        logo: `${SITE_URL}/favicon.png`,
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "WebSite",
+        name: "PDFKira",
+        url: SITE_URL,
+        description: "Free online PDF and image tools for merging, splitting, compressing, converting, OCR, signing, and organizing documents.",
+        potentialAction: {
+          "@type": "SearchAction",
+          target: `${SITE_URL}/tools?q={search_term_string}`,
+          "query-input": "required name=search_term_string",
+        },
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        name: "PDFKira",
+        applicationCategory: "WebApplication",
+        operatingSystem: "Web",
+        url: SITE_URL,
+        offers: { "@type": "Offer", price: 0, priceCurrency: "USD" },
+        description: "A browser-based suite of PDF and image tools focused on speed, privacy, and reliable output quality.",
+      },
+      ...(faqSchema ? [faqSchema] : []),
+    ];
+  }, [faqs]);
+
+  useSEOAdvanced({
+    title: "Free Online PDF and Image Tools",
+    description: "Free, secure, and fast browser-based tools for merging, splitting, compressing, converting, OCR, signing, and organizing PDFs.",
+    canonical: SITE_URL,
+    jsonLd: schema,
+  });
+
   return (
     <div className="flex flex-col min-h-screen">
       {/* Hero Section */}
@@ -37,27 +91,27 @@ const latestPosts = Array.isArray(posts)
         <div className="container relative mx-auto px-4 md:px-6 text-center z-10 max-w-4xl">
           <BrandMark className="mb-6 justify-center" logoClassName="h-16 w-16" wordmarkClassName="text-2xl" />
           <Badge className="mb-6 py-1.5 px-4 bg-primary/10 text-primary border-none text-sm font-medium hover:bg-primary/20 transition-colors">
-            100% Free & Privacy First
+            Free · Secure · No registration required
           </Badge>
           <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-8 text-foreground leading-[1.1]">
-            Every PDF tool you need.<br />
-            <span className="text-primary">None of the clutter.</span>
+            Professional PDF tools.<br />
+            <span className="text-primary">Built for speed, privacy, and quality.</span>
           </h1>
           <p className="text-xl md:text-2xl text-muted-foreground mb-12 max-w-2xl mx-auto leading-relaxed">
-            A reliable set of PDF tools for everyday document work. Merge files, split documents, compress large PDFs, and prepare files for sharing or printing without the usual clutter.
+            PDFKira helps you merge, split, compress, convert, sign, and organize files in your browser with clean output and a straightforward workflow.
           </p>
           <div className="flex flex-col sm:flex-row justify-center gap-4">
             <Button size="lg" asChild className="rounded-full px-8 h-14 text-lg shadow-xl shadow-primary/20 transition-transform hover:-translate-y-1">
-              <Link href="/tools">Explore All Tools</Link>
+              <Link href="/tools">Browse all tools</Link>
             </Button>
             <Button size="lg" variant="outline" asChild className="rounded-full px-8 h-14 text-lg bg-background">
-              <Link href="/tools/merge-pdf">Merge PDF Now</Link>
+              <Link href="/tools/merge-pdf">Start with Merge PDF</Link>
             </Button>
           </div>
           <div className="mt-8 rounded-[28px] border border-border/70 bg-card/80 p-6 shadow-sm backdrop-blur">
-            <p className="text-sm font-medium uppercase tracking-[0.2em] text-primary">Focused workflow</p>
-            <h2 className="mt-2 text-2xl font-semibold text-foreground">A cleaner way to prepare documents</h2>
-            <p className="mt-3 text-muted-foreground">Use the same toolkit for quick edits, batch preparation, and polished exports in a single place.</p>
+            <p className="text-sm font-medium uppercase tracking-[0.2em] text-primary">Why choose PDFKira</p>
+            <h2 className="mt-2 text-2xl font-semibold text-foreground">Trusted PDF tools without the noise</h2>
+            <p className="mt-3 text-muted-foreground">Free to use, built for browsers, and designed to keep your files private while delivering consistent results across desktop and mobile.</p>
           </div>
         </div>
       </section>
@@ -67,8 +121,8 @@ const latestPosts = Array.isArray(posts)
         <div className="container mx-auto px-4 md:px-6">
           <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-4">
             <div>
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">Most Popular Tools</h2>
-              <p className="text-muted-foreground text-lg">The tools our community uses most.</p>
+              <h2 className="text-3xl md:text-4xl font-bold mb-4">Most used tools</h2>
+              <p className="text-muted-foreground text-lg">Quick access to the workflows people rely on most often.</p>
             </div>
             <Button variant="ghost" asChild className="group text-primary hover:text-primary hover:bg-primary/10">
               <Link href="/tools">
@@ -98,8 +152,8 @@ const latestPosts = Array.isArray(posts)
       <section className="py-24 md:py-32 bg-background">
         <div className="container mx-auto px-4 md:px-6">
           <div className="text-center max-w-2xl mx-auto mb-16">
-            <h2 className="text-3xl md:text-4xl font-bold mb-6">Why PDFKira?</h2>
-            <p className="text-xl text-muted-foreground">Built to be the last PDF utility you'll ever need to bookmark.</p>
+              <h2 className="text-3xl md:text-4xl font-bold mb-6">Why PDFKira?</h2>
+              <p className="text-xl text-muted-foreground">A focused set of browser-based tools that keeps document work simple, secure, and dependable.</p>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-3 gap-12">
@@ -107,22 +161,22 @@ const latestPosts = Array.isArray(posts)
               <div className="w-16 h-16 mx-auto bg-primary/10 text-primary rounded-2xl flex items-center justify-center mb-6">
                 <Zap className="w-8 h-8" />
               </div>
-              <h3 className="text-2xl font-bold mb-4">Lightning Fast</h3>
-              <p className="text-muted-foreground leading-relaxed">Most operations happen right in your browser. When servers are needed, our highly optimized backend processes files in seconds.</p>
+              <h3 className="text-2xl font-bold mb-4">Fast processing</h3>
+              <p className="text-muted-foreground leading-relaxed">Most tasks run in the browser, and heavier jobs are handled by an optimized backend that returns files quickly.</p>
             </div>
             <div className="text-center">
               <div className="w-16 h-16 mx-auto bg-secondary text-secondary-foreground rounded-2xl flex items-center justify-center mb-6">
                 <ShieldCheck className="w-8 h-8" />
               </div>
-              <h3 className="text-2xl font-bold mb-4">Privacy First</h3>
-              <p className="text-muted-foreground leading-relaxed">Your files are your business. Uploaded files are processed securely over HTTPS and automatically deleted from our servers.</p>
+              <h3 className="text-2xl font-bold mb-4">Your files stay private</h3>
+              <p className="text-muted-foreground leading-relaxed">Documents are processed securely over HTTPS and removed after processing so your content does not linger on our servers.</p>
             </div>
             <div className="text-center">
               <div className="w-16 h-16 mx-auto bg-accent/10 text-accent rounded-2xl flex items-center justify-center mb-6">
                 <HeartHandshake className="w-8 h-8" />
               </div>
-              <h3 className="text-2xl font-bold mb-4">Beautifully Crafted</h3>
-              <p className="text-muted-foreground leading-relaxed">No ads, no popups, no confusing interfaces. Just a clean, premium experience that respects your time and attention.</p>
+              <h3 className="text-2xl font-bold mb-4">Clean workflow</h3>
+              <p className="text-muted-foreground leading-relaxed">No ads, no distractions, and no unnecessary steps. The interface stays focused on the task at hand.</p>
             </div>
           </div>
         </div>
@@ -134,8 +188,8 @@ const latestPosts = Array.isArray(posts)
           <div className="container mx-auto px-4 md:px-6">
             <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-4">
               <div>
-                <h2 className="text-3xl md:text-4xl font-bold mb-4">Latest Insights</h2>
-                <p className="text-muted-foreground text-lg">Tips and tricks for document management.</p>
+                <h2 className="text-3xl md:text-4xl font-bold mb-4">Latest insights</h2>
+                <p className="text-muted-foreground text-lg">Practical guides for working faster with PDFs and images.</p>
               </div>
               <Button variant="ghost" asChild className="group text-primary hover:bg-primary/10">
                 <Link href="/blog">

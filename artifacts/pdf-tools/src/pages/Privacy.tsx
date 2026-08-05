@@ -1,7 +1,18 @@
-import { useSEO } from "@/hooks/use-seo";
+import { useSEOAdvanced } from "@/hooks/use-seo";
+import { SITE_URL } from "@/lib/site-config";
 
 export function Privacy() {
-  useSEO({ title: "Privacy Policy" });
+  useSEOAdvanced({
+    title: "Privacy Policy",
+    description: "Read how PDFKira handles file processing, temporary storage, and privacy protections.",
+    canonical: `${SITE_URL}/privacy`,
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      name: "Privacy Policy",
+      url: `${SITE_URL}/privacy`,
+    },
+  });
   return (
     <div className="bg-background min-h-screen pb-24">
       <div className="bg-card border-b border-border pt-20 pb-16 mb-16">

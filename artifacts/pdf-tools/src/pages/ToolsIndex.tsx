@@ -1,20 +1,16 @@
-import { useSEO } from "@/hooks/use-seo";
+import { useMemo, useState } from "react";
 import { useListTools } from "@workspace/api-client-react";
 import { ToolCard } from "@/components/shared/ToolCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Search } from "lucide-react";
-import { useState, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { BrandMark } from "@/components/brand/BrandMark";
+import { useSEOAdvanced } from "@/hooks/use-seo";
+import { SITE_URL } from "@/lib/site-config";
 
 export function ToolsIndex() {
-  useSEO({
-    title: "All PDF Tools",
-    description: "Browse our complete collection of free, secure PDF tools for merging, splitting, compressing, and editing with PDFKira."
-  });
-
   const { data: tools, isLoading } = useListTools();
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("All");
@@ -35,14 +31,27 @@ export function ToolsIndex() {
     });
   }, [tools, searchQuery, activeCategory]);
 
+  useSEOAdvanced({
+    title: "All PDF Tools",
+    description: "Browse PDFKira's free PDF and image tools for merging, splitting, compressing, converting, signing, OCR, and organizing files.",
+    canonical: `${SITE_URL}/tools`,
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@type": "CollectionPage",
+      name: "PDFKira Tools",
+      url: `${SITE_URL}/tools`,
+      description: "A complete collection of browser-based PDF and image tools.",
+    },
+  });
+
   return (
     <div className="bg-background min-h-screen pb-24">
       <div className="bg-card border-b border-border pt-16 pb-12 mb-12">
         <div className="container mx-auto px-4 md:px-6 text-center max-w-3xl">
           <BrandMark className="mb-6 justify-center" logoClassName="h-16 w-16" wordmarkClassName="text-xl" />
-          <h1 className="text-4xl md:text-5xl font-bold mb-6">Every tool for your PDFs</h1>
+          <h1 className="text-4xl md:text-5xl font-bold mb-6">All PDF and image tools in one place</h1>
           <p className="text-xl text-muted-foreground mb-10">
-            A complete suite to help you manage your documents efficiently and securely.
+            Explore browser-based tools for common document workflows, built to keep results accurate and easy to review.
           </p>
           
           <div className="relative max-w-xl mx-auto">
@@ -51,7 +60,7 @@ export function ToolsIndex() {
             </div>
             <Input 
               type="text" 
-              placeholder="Search for a tool (e.g. merge, compress)..." 
+              placeholder="Search for a tool, such as merge, compress, or sign..." 
               className="h-14 pl-12 pr-4 rounded-full text-lg shadow-sm border-2 focus-visible:ring-0 focus-visible:border-primary transition-colors"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -93,7 +102,7 @@ export function ToolsIndex() {
         ) : (
           <div className="text-center py-20 bg-card rounded-3xl border border-border mt-8">
             <BrandMark className="mb-6 justify-center" logoClassName="h-9 w-9" wordmarkClassName="text-lg" />
-            <p className="text-xl text-muted-foreground">No tools found matching your search.</p>
+            <p className="text-xl text-muted-foreground">No tools match your current search and category filters.</p>
             <Button 
               variant="link" 
               className="mt-4 text-primary"

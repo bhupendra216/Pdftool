@@ -4,7 +4,10 @@ import { PDFDocument } from "pdf-lib";
 import { loadPdf, preservePdfMetadata, isPdfFile } from "./pdf-utils";
 import { applyImageWatermarkToPdf, applyPageNumbersToPdf, applyWatermarkToPdf } from "./pdf-annotations";
 
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 4 * 1024 * 1024 },
+});
 const router = Router();
 
 router.post("/watermark-pdf", upload.fields([{ name: "files", maxCount: 1 }, { name: "logo", maxCount: 1 }, { name: "file", maxCount: 1 }]), async (req, res) => {
@@ -13,6 +16,11 @@ router.post("/watermark-pdf", upload.fields([{ name: "files", maxCount: 1 }, { n
   const logoFile = files.logo?.[0];
   const text = typeof req.body.text === "string" ? req.body.text.trim() : "";
   const position = typeof req.body.position === "string" ? req.body.position.trim() : "bottom-right";
+
+  if (req.fileValidationError) {
+    res.status(413).json({ error: req.fileValidationError });
+    return;
+  }
 
   if (!isPdfFile(file)) {
     res.status(400).json({ error: "No PDF file uploaded" });
@@ -46,6 +54,11 @@ router.post("/add-page-numbers", upload.single("files"), async (req, res) => {
   const file = req.file as Express.Multer.File | undefined;
   const startNumber = Number(req.body.startNumber ?? 1);
   const position = String(req.body.position || "bottom-right").trim();
+
+  if (req.fileValidationError) {
+    res.status(413).json({ error: req.fileValidationError });
+    return;
+  }
 
   if (!isPdfFile(file)) {
     res.status(400).json({ error: "No PDF file uploaded" });

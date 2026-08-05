@@ -1,7 +1,18 @@
-import { useSEO } from "@/hooks/use-seo";
+import { useSEOAdvanced } from "@/hooks/use-seo";
+import { SITE_URL } from "@/lib/site-config";
 
 export function Terms() {
-  useSEO({ title: "Terms of Service" });
+  useSEOAdvanced({
+    title: "Terms of Service",
+    description: "Review the terms that govern use of PDFKira's browser-based PDF and image tools.",
+    canonical: `${SITE_URL}/terms`,
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      name: "Terms of Service",
+      url: `${SITE_URL}/terms`,
+    },
+  });
   return (
     <div className="bg-background min-h-screen pb-24">
       <div className="bg-card border-b border-border pt-20 pb-16 mb-16">

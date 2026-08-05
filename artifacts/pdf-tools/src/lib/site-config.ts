@@ -1,5 +1,8 @@
-// Central site URL used for generating canonical links, sitemaps and JSON-LD.
-// TODO: update to https://pdfkira.com once domain is purchased, then set up
-// a 301 redirect from pdfkira.vercel.app in Vercel project settings and
-// resubmit the sitemap in Search Console.
-export const SITE_URL = "https://pdfkira.vercel.app";
+const DEFAULT_SITE_URL = "https://pdfkira.com";
+
+function normalizeSiteUrl(value: string) {
+	return value.replace(/\/$/, "");
+}
+
+export const SITE_NAME = "PDFKira";
+export const SITE_URL = normalizeSiteUrl(import.meta.env.VITE_SITE_URL || DEFAULT_SITE_URL);

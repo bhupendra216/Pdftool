@@ -1,10 +1,9 @@
 import { useEffect } from 'react';
-import { SITE_URL } from '@/lib/site-config';
+import { SITE_NAME, SITE_URL } from '@/lib/site-config';
 
 // Use public kira.jpeg as the canonical social image
 const logo = '/favicon.png';
-
-const siteName = "PDFKira";
+const defaultDescription = 'Free online PDF and image tools for merging, splitting, compressing, converting, OCR, signing, and organizing files securely in your browser.';
 
 function updateMeta(selector: string, value: string) {
   let metaTag = document.querySelector(selector);
@@ -32,25 +31,29 @@ export function useSEO({
   description?: string;
 }) {
   useEffect(() => {
-    const pageTitle = title.includes(siteName) ? title : `${title} | ${siteName}`;
+    const pageTitle = title.includes(SITE_NAME) ? title : `${title} | ${SITE_NAME}`;
     document.title = pageTitle;
 
     updateMeta('meta[property="og:title"]', pageTitle);
     updateMeta('meta[name="twitter:title"]', pageTitle);
     updateMeta('meta[property="og:image"]', logo);
     updateMeta('meta[name="twitter:image"]', logo);
+    updateMeta('meta[property="og:site_name"]', SITE_NAME);
+    updateMeta('meta[name="twitter:card"]', 'summary_large_image');
+    updateMeta('meta[name="robots"]', 'index, follow');
 
-    if (description) {
+    const resolvedDescription = description || defaultDescription;
+    if (resolvedDescription) {
       let metaDescription = document.querySelector('meta[name="description"]');
       if (!metaDescription) {
         metaDescription = document.createElement('meta');
         metaDescription.setAttribute('name', 'description');
         document.head.appendChild(metaDescription);
       }
-      metaDescription.setAttribute('content', description);
+      metaDescription.setAttribute('content', resolvedDescription);
 
-      updateMeta('meta[property="og:description"]', description);
-      updateMeta('meta[name="twitter:description"]', description);
+      updateMeta('meta[property="og:description"]', resolvedDescription);
+      updateMeta('meta[name="twitter:description"]', resolvedDescription);
     }
   }, [title, description]);
 }
@@ -64,7 +67,7 @@ export function useSEOAdvanced({
   title: string;
   description?: string;
   canonical?: string;
-  jsonLd?: Record<string, unknown> | string;
+  jsonLd?: Record<string, unknown> | Record<string, unknown>[] | string;
 }) {
   useSEO({ title, description });
 

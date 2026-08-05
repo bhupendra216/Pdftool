@@ -1,29 +1,9 @@
-import { mkdirSync } from "node:fs";
-import { DatabaseSync } from "node:sqlite";
 import { execSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
 import os from "node:os";
-import path from "node:path";
-
-const DEFAULT_DB_PATH = path.join(process.cwd(), "data", "admin-analytics.sqlite3");
-const DB_PATH = process.env.ADMIN_DB_PATH || DEFAULT_DB_PATH;
-
-let dbInstance: DatabaseSync | null = null;
 
 type DbCountRow = { count: number | string | null };
 type DbAvgRow = { avg: number | string | null };
-type AdminSessionRow = {
-  token: string;
-  username: string;
-  created_at: string;
-  createdAt: string;
-  expires_at: string;
-  expiresAt: string;
-  ip_address: string | null;
-  ipAddress: string | null;
-  user_agent: string | null;
-  userAgent: string | null;
-};
 type LoginAttemptRow = {
   attempts: number | string;
   firstAttemptAt: string;
@@ -46,18 +26,29 @@ type AnalyticsErrorRow = {
   statusCode: number | null;
   ipAddress: string | null;
 };
-type AnalyticsAggregateRow = {
-  tool?: string;
-  path?: string;
-  day?: string;
-  count: number | string | null;
-  avg?: number | string | null;
-  visitors?: number | string | null;
-  conversions?: number | string | null;
-  ocr?: number | string | null;
-  pdf?: number | string | null;
-  country?: string;
-  user_agent?: string;
+type AnalyticsEventRecord = {
+  id: string;
+  ts: string;
+  type: string;
+  path: string;
+  method: string;
+  tool: string | null;
+  statusCode: number | null;
+  responseTimeMs: number | null;
+  ipAddress: string | null;
+  country: string | null;
+  userAgent: string | null;
+  referrer: string | null;
+  success: number | null;
+  fileSize: number | null;
+};
+type AdminMemoryStore = {
+  sessions: Map<string, AdminSession>;
+  loginAttempts: Map<string, LoginAttemptRow>;
+  analyticsEvents: AnalyticsEventRecord[];
+};
+type GlobalWithStore = typeof globalThis & {
+  __pdfKiraAdminStore?: AdminMemoryStore;
 };
 
 function toNumber(value: number | string | null | undefined): number {
@@ -88,138 +79,100 @@ export type AdminSession = {
   userAgent: string;
 };
 
-function ensureDbFile() {
-  mkdirSync(path.dirname(DB_PATH), { recursive: true });
+function getMemoryStore(): AdminMemoryStore {
+  const globalStore = globalThis as GlobalWithStore;
+  if (!globalStore.__pdfKiraAdminStore) {
+    // Serverless deployments do not have durable disk storage across cold starts or
+    // multiple instances, so this fallback is intentionally in-memory only.
+    // Revisit this before analytics become a critical production dependency.
+    globalStore.__pdfKiraAdminStore = {
+      sessions: new Map(),
+      loginAttempts: new Map(),
+      analyticsEvents: [],
+    };
+  }
+  return globalStore.__pdfKiraAdminStore;
 }
 
 export function getDb() {
-  if (dbInstance) return dbInstance;
-  ensureDbFile();
-  dbInstance = new DatabaseSync(DB_PATH);
-  dbInstance.exec(`
-    PRAGMA journal_mode = WAL;
-    CREATE TABLE IF NOT EXISTS admin_sessions (
-      token TEXT PRIMARY KEY,
-      username TEXT NOT NULL,
-      created_at TEXT NOT NULL,
-      expires_at TEXT NOT NULL,
-      ip_address TEXT,
-      user_agent TEXT
-    );
-    CREATE TABLE IF NOT EXISTS admin_login_attempts (
-      ip_address TEXT PRIMARY KEY,
-      attempts INTEGER NOT NULL DEFAULT 0,
-      first_attempt_at TEXT NOT NULL,
-      last_attempt_at TEXT NOT NULL
-    );
-    CREATE TABLE IF NOT EXISTS analytics_events (
-      id TEXT PRIMARY KEY,
-      ts TEXT NOT NULL,
-      type TEXT NOT NULL,
-      path TEXT NOT NULL,
-      method TEXT NOT NULL,
-      tool TEXT,
-      status_code INTEGER,
-      response_time_ms REAL,
-      ip_address TEXT,
-      country TEXT,
-      user_agent TEXT,
-      referrer TEXT,
-      success INTEGER,
-      file_size INTEGER
-    );
-    CREATE INDEX IF NOT EXISTS idx_analytics_ts ON analytics_events(ts);
-    CREATE INDEX IF NOT EXISTS idx_analytics_type ON analytics_events(type);
-  `);
-  return dbInstance;
+  return getMemoryStore();
 }
 
 export function createAdminSession(username: string, ipAddress: string, userAgent: string) {
   const token = randomBytes(24).toString("hex");
   const createdAt = new Date().toISOString();
   const expiresAt = new Date(Date.now() + 8 * 60 * 60 * 1000).toISOString();
-  getDb()
-    .prepare(
-      `INSERT INTO admin_sessions(token, username, created_at, expires_at, ip_address, user_agent) VALUES (?, ?, ?, ?, ?, ?)`
-    )
-    .run(token, username, createdAt, expiresAt, ipAddress, userAgent);
+  const session: AdminSession = { token, username, createdAt, expiresAt, ipAddress, userAgent };
+  getMemoryStore().sessions.set(token, session);
   return { token, expiresAt };
 }
 
 export function getAdminSession(token: string): AdminSession | null {
-  const row = getDb()
-    .prepare(`SELECT token, username, created_at as createdAt, expires_at as expiresAt, ip_address as ipAddress, user_agent as userAgent FROM admin_sessions WHERE token = ?`)
-    .get(token) as AdminSessionRow | undefined;
-  if (!row) return null;
-  if (new Date(row.expiresAt).getTime() <= Date.now()) {
+  const session = getMemoryStore().sessions.get(token);
+  if (!session) return null;
+  if (new Date(session.expiresAt).getTime() <= Date.now()) {
     deleteAdminSession(token);
     return null;
   }
-  return {
-    token: row.token,
-    username: row.username,
-    createdAt: row.createdAt,
-    expiresAt: row.expiresAt,
-    ipAddress: row.ipAddress ?? "",
-    userAgent: row.userAgent ?? "",
-  };
+  return session;
 }
 
 export function deleteAdminSession(token: string) {
-  getDb().prepare(`DELETE FROM admin_sessions WHERE token = ?`).run(token);
+  getMemoryStore().sessions.delete(token);
 }
 
 export function registerLoginAttempt(ipAddress: string) {
+  const store = getMemoryStore();
   const now = new Date().toISOString();
-  const existing = getDb().prepare(`SELECT attempts, first_attempt_at as firstAttemptAt, last_attempt_at as lastAttemptAt FROM admin_login_attempts WHERE ip_address = ?`).get(ipAddress) as LoginAttemptRow | undefined;
+  const existing = store.loginAttempts.get(ipAddress);
   if (!existing) {
-    getDb().prepare(`INSERT INTO admin_login_attempts(ip_address, attempts, first_attempt_at, last_attempt_at) VALUES (?, 1, ?, ?)`)
-      .run(ipAddress, now, now);
+    store.loginAttempts.set(ipAddress, { attempts: 1, firstAttemptAt: now, lastAttemptAt: now });
     return { attempts: 1, blocked: false };
   }
   const attempts = Number(existing.attempts) + 1;
-  getDb().prepare(`UPDATE admin_login_attempts SET attempts = ?, last_attempt_at = ? WHERE ip_address = ?`).run(attempts, now, ipAddress);
+  store.loginAttempts.set(ipAddress, { ...existing, attempts, lastAttemptAt: now });
   return { attempts, blocked: attempts >= 8 };
 }
 
 export function resetLoginAttempts(ipAddress: string) {
-  getDb().prepare(`DELETE FROM admin_login_attempts WHERE ip_address = ?`).run(ipAddress);
+  getMemoryStore().loginAttempts.delete(ipAddress);
 }
 
 export function isLoginBlocked(ipAddress: string) {
-  const row = getDb().prepare(`SELECT attempts, last_attempt_at as lastAttemptAt FROM admin_login_attempts WHERE ip_address = ?`).get(ipAddress) as LoginAttemptRow | undefined;
+  const store = getMemoryStore();
+  const row = store.loginAttempts.get(ipAddress);
   if (!row) return false;
   const lastAttemptAt = new Date(row.lastAttemptAt).getTime();
   const windowMs = 15 * 60 * 1000;
   if (Date.now() - lastAttemptAt > windowMs) {
-    getDb().prepare(`DELETE FROM admin_login_attempts WHERE ip_address = ?`).run(ipAddress);
+    store.loginAttempts.delete(ipAddress);
     return false;
   }
   return Number(row.attempts) >= 8;
 }
 
 export function recordAnalyticsEvent(event: AnalyticsEventInput) {
-  const id = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-  getDb()
-    .prepare(
-      `INSERT INTO analytics_events(id, ts, type, path, method, tool, status_code, response_time_ms, ip_address, country, user_agent, referrer, success, file_size) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-    )
-    .run(
-      id,
-      new Date().toISOString(),
-      event.type,
-      event.path,
-      event.method,
-      event.tool ?? null,
-      event.statusCode ?? null,
-      event.responseTimeMs ?? null,
-      event.ipAddress ?? null,
-      event.country ?? null,
-      event.userAgent ?? null,
-      event.referrer ?? null,
-      event.success ? 1 : 0,
-      event.fileSize ?? null,
-    );
+  const record: AnalyticsEventRecord = {
+    id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+    ts: new Date().toISOString(),
+    type: event.type,
+    path: event.path,
+    method: event.method,
+    tool: event.tool ?? null,
+    statusCode: event.statusCode ?? null,
+    responseTimeMs: event.responseTimeMs ?? null,
+    ipAddress: event.ipAddress ?? null,
+    country: event.country ?? null,
+    userAgent: event.userAgent ?? null,
+    referrer: event.referrer ?? null,
+    success: event.success ? 1 : 0,
+    fileSize: event.fileSize ?? null,
+  };
+  getMemoryStore().analyticsEvents.push(record);
+}
+
+function getAnalyticsEvents() {
+  return getMemoryStore().analyticsEvents;
 }
 
 export function getOverviewStats() {
@@ -229,43 +182,44 @@ export function getOverviewStats() {
   const last7DaysStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
   const last30DaysStart = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000).toISOString();
   const last15Minutes = new Date(now.getTime() - 15 * 60 * 1000).toISOString();
+  const events = getAnalyticsEvents();
 
-  const totalVisitors = getDb().prepare(`SELECT COUNT(DISTINCT ip_address) as count FROM analytics_events WHERE ip_address IS NOT NULL`).get() as DbCountRow;
-  const visitorsToday = getDb().prepare(`SELECT COUNT(DISTINCT ip_address) as count FROM analytics_events WHERE ts >= ? AND ip_address IS NOT NULL`).get(todayStart) as DbCountRow;
-  const visitorsYesterday = getDb().prepare(`SELECT COUNT(DISTINCT ip_address) as count FROM analytics_events WHERE ts >= ? AND ts < ? AND ip_address IS NOT NULL`).get(yesterdayStart, todayStart) as DbCountRow;
-  const visitorsLast7Days = getDb().prepare(`SELECT COUNT(DISTINCT ip_address) as count FROM analytics_events WHERE ts >= ? AND ip_address IS NOT NULL`).get(last7DaysStart) as DbCountRow;
-  const visitorsLast30Days = getDb().prepare(`SELECT COUNT(DISTINCT ip_address) as count FROM analytics_events WHERE ts >= ? AND ip_address IS NOT NULL`).get(last30DaysStart) as DbCountRow;
-  const visitorsAllTime = toNumber(totalVisitors.count);
+  const visitorsAllTime = new Set(events.filter((event) => event.ipAddress).map((event) => event.ipAddress!)).size;
+  const visitorsToday = new Set(events.filter((event) => event.ipAddress && event.ts >= todayStart).map((event) => event.ipAddress!)).size;
+  const visitorsYesterday = new Set(events.filter((event) => event.ipAddress && event.ts >= yesterdayStart && event.ts < todayStart).map((event) => event.ipAddress!)).size;
+  const visitorsLast7Days = new Set(events.filter((event) => event.ipAddress && event.ts >= last7DaysStart).map((event) => event.ipAddress!)).size;
+  const visitorsLast30Days = new Set(events.filter((event) => event.ipAddress && event.ts >= last30DaysStart).map((event) => event.ipAddress!)).size;
+  const activeUsers = new Set(events.filter((event) => event.ipAddress && event.ts >= last15Minutes).map((event) => event.ipAddress!)).size;
 
-  const toolUses = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE type = 'tool_use'`).get() as DbCountRow;
-  const successfulConversions = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE type = 'tool_use' AND success = 1`).get() as DbCountRow;
-  const failedConversions = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE type = 'tool_use' AND success = 0`).get() as DbCountRow;
-  const avgProcessingTime = getDb().prepare(`SELECT AVG(response_time_ms) as avg FROM analytics_events WHERE response_time_ms IS NOT NULL`).get() as DbAvgRow;
-  const totalOcrRequests = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE tool = 'OCR Image to Text'`).get() as DbCountRow;
-  const totalPdfRequests = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE tool IN ('Merge PDF','Split PDF','Compress PDF','Protect PDF','Unlock PDF','Organize PDF','Delete Pages','Extract Pages','PDF to Word','Word to PDF','JPG to PDF','PDF to JPG')`).get() as DbCountRow;
-  const activeUsers = getDb().prepare(`SELECT COUNT(DISTINCT ip_address) as count FROM analytics_events WHERE ts >= ? AND ip_address IS NOT NULL`).get(last15Minutes) as DbCountRow;
-
-  const toolUsesCount = toNumber(toolUses.count);
-  const successfulConversionsCount = toNumber(successfulConversions.count);
+  const toolUsesCount = events.filter((event) => event.type === "tool_use").length;
+  const successfulConversionsCount = events.filter((event) => event.type === "tool_use" && event.success === 1).length;
+  const failedConversionsCount = events.filter((event) => event.type === "tool_use" && event.success === 0).length;
+  const responseTimes = events.filter((event) => event.responseTimeMs != null).map((event) => Number(event.responseTimeMs));
+  const averageProcessingTime = responseTimes.length > 0 ? responseTimes.reduce((sum, value) => sum + value, 0) / responseTimes.length : 0;
+  const totalOcrRequests = events.filter((event) => event.tool === "OCR Image to Text").length;
+  const totalPdfRequests = events.filter((event) => {
+    const tool = event.tool;
+    return tool && ["Merge PDF", "Split PDF", "Compress PDF", "Protect PDF", "Unlock PDF", "Organize PDF", "Delete Pages", "Extract Pages", "PDF to Word", "Word to PDF", "JPG to PDF", "PDF to JPG"].includes(tool);
+  }).length;
   const successRate = toolUsesCount > 0 ? Math.round((successfulConversionsCount / toolUsesCount) * 1000) / 10 : 0;
 
   const system = getSystemStats();
 
   return {
     totalVisitors: visitorsAllTime,
-    visitorsToday: toNumber(visitorsToday.count),
-    visitorsYesterday: toNumber(visitorsYesterday.count),
-    visitorsLast7Days: toNumber(visitorsLast7Days.count),
-    visitorsLast30Days: toNumber(visitorsLast30Days.count),
+    visitorsToday,
+    visitorsYesterday,
+    visitorsLast7Days,
+    visitorsLast30Days,
     visitorsAllTime,
     totalToolUses: toolUsesCount,
     totalSuccessfulConversions: successfulConversionsCount,
-    failedConversions: toNumber(failedConversions.count),
+    failedConversions: failedConversionsCount,
     successRate,
-    averageProcessingTime: toNumber(avgProcessingTime.avg),
-    totalOcrRequests: toNumber(totalOcrRequests.count),
-    totalPdfRequests: toNumber(totalPdfRequests.count),
-    activeUsers: toNumber(activeUsers.count),
+    averageProcessingTime,
+    totalOcrRequests,
+    totalPdfRequests,
+    activeUsers,
     serverUptime: system.serverUptime,
     memoryUsage: system.memoryUsage,
     cpuUsage: system.cpuUsage,
@@ -275,99 +229,132 @@ export function getOverviewStats() {
 }
 
 export function getToolStats() {
-  const rows = getDb()
-    .prepare(`SELECT tool, COUNT(*) as count FROM analytics_events WHERE type = 'tool_use' AND tool IS NOT NULL GROUP BY tool ORDER BY count DESC`)
-    .all() as AnalyticsAggregateRow[];
-  const total = rows.reduce((sum, row) => sum + toNumber(row.count), 0);
-  return rows.map((row) => ({
-    name: row.tool,
-    count: toNumber(row.count),
-    percentage: total > 0 ? Math.round((toNumber(row.count) / total) * 1000) / 10 : 0,
-  }));
+  const events = getAnalyticsEvents();
+  const rows = events.filter((event) => event.type === "tool_use" && event.tool).reduce<Record<string, number>>((accumulator, event) => {
+    const tool = event.tool as string;
+    accumulator[tool] = (accumulator[tool] || 0) + 1;
+    return accumulator;
+  }, {});
+  const total = Object.values(rows).reduce((sum, count) => sum + count, 0);
+  return Object.entries(rows)
+    .map(([tool, count]) => ({
+      name: tool,
+      count,
+      percentage: total > 0 ? Math.round((count / total) * 1000) / 10 : 0,
+    }))
+    .sort((left, right) => right.count - left.count);
 }
 
 export function getAnalyticsSeries() {
-  const rows = getDb()
-    .prepare(`SELECT substr(ts, 1, 10) as day, COUNT(DISTINCT ip_address) as visitors, SUM(CASE WHEN type='tool_use' AND success=1 THEN 1 ELSE 0 END) as conversions, SUM(CASE WHEN tool='OCR Image to Text' THEN 1 ELSE 0 END) as ocr, SUM(CASE WHEN tool IN ('Merge PDF','Split PDF','Compress PDF','Protect PDF','Unlock PDF','Organize PDF','Delete Pages','Extract Pages','PDF to Word','Word to PDF','JPG to PDF','PDF to JPG') THEN 1 ELSE 0 END) as pdf FROM analytics_events GROUP BY substr(ts, 1, 10) ORDER BY day DESC LIMIT 30`)
-    .all() as AnalyticsAggregateRow[];
-  return rows.reverse().map((row) => ({
-    day: row.day,
-    visitors: toNumber(row.visitors),
-    conversions: toNumber(row.conversions),
-    ocr: toNumber(row.ocr),
-    pdf: toNumber(row.pdf),
-  }));
+  const events = getAnalyticsEvents();
+  const grouped = new Map<string, { day: string; visitors: Set<string>; conversions: number; ocr: number; pdf: number }>();
+
+  for (const event of events) {
+    const day = event.ts.slice(0, 10);
+    const entry = grouped.get(day) || { day, visitors: new Set<string>(), conversions: 0, ocr: 0, pdf: 0 };
+    if (event.ipAddress) entry.visitors.add(event.ipAddress);
+    if (event.type === "tool_use" && event.success === 1) entry.conversions += 1;
+    if (event.tool === "OCR Image to Text") entry.ocr += 1;
+    if (event.tool && ["Merge PDF", "Split PDF", "Compress PDF", "Protect PDF", "Unlock PDF", "Organize PDF", "Delete Pages", "Extract Pages", "PDF to Word", "Word to PDF", "JPG to PDF", "PDF to JPG"].includes(event.tool)) entry.pdf += 1;
+    grouped.set(day, entry);
+  }
+
+  return Array.from(grouped.values())
+    .sort((left, right) => left.day.localeCompare(right.day))
+    .map((row) => ({
+      day: row.day,
+      visitors: row.visitors.size,
+      conversions: row.conversions,
+      ocr: row.ocr,
+      pdf: row.pdf,
+    }));
 }
 
 export function getVisitorBreakdowns() {
-  const countries = getDb().prepare(`SELECT country, COUNT(*) as count FROM analytics_events WHERE country IS NOT NULL AND country != '' GROUP BY country ORDER BY count DESC LIMIT 10`).all() as AnalyticsAggregateRow[];
-  const browsers = getDb().prepare(`SELECT user_agent, COUNT(*) as count FROM analytics_events WHERE user_agent IS NOT NULL GROUP BY user_agent ORDER BY count DESC LIMIT 10`).all() as AnalyticsAggregateRow[];
+  const events = getAnalyticsEvents();
+  const countries = new Map<string, number>();
+  const browsers = new Map<string, number>();
+  for (const event of events) {
+    if (event.country) {
+      countries.set(event.country, (countries.get(event.country) || 0) + 1);
+    }
+    const browser = detectBrowser(event.userAgent || "");
+    browsers.set(browser, (browsers.get(browser) || 0) + 1);
+  }
   return {
-    countries: countries.map((row) => ({ name: row.country, count: toNumber(row.count) })),
-    browsers: browsers.map((row) => ({ name: detectBrowser(row.user_agent), count: toNumber(row.count) })),
-    os: browsers.map((row) => ({ name: detectOs(row.user_agent), count: toNumber(row.count) })),
-    devices: browsers.map((row) => ({ name: detectDevice(row.user_agent), count: toNumber(row.count) })),
+    countries: Array.from(countries.entries()).sort((left, right) => right[1] - left[1]).slice(0, 10).map(([name, count]) => ({ name, count })),
+    browsers: Array.from(browsers.entries()).sort((left, right) => right[1] - left[1]).slice(0, 10).map(([name, count]) => ({ name, count })),
+    os: Array.from(browsers.entries()).sort((left, right) => right[1] - left[1]).slice(0, 10).map(([name, count]) => ({ name: detectOs(name), count })),
+    devices: Array.from(browsers.entries()).sort((left, right) => right[1] - left[1]).slice(0, 10).map(([name, count]) => ({ name: detectDevice(name), count })),
   };
 }
 
 export function getLogs(limit = 100, offset = 0, filters: { status?: string; tool?: string; search?: string } = {}) {
-  const where: string[] = [];
-  const params: any[] = [];
-  if (filters.status) {
-    where.push(`status_code = ?`);
-    params.push(Number(filters.status));
-  }
-  if (filters.tool) {
-    where.push(`tool = ?`);
-    params.push(filters.tool);
-  }
-  if (filters.search) {
-    where.push(`(path LIKE ? OR tool LIKE ? OR country LIKE ?)`);
-    const term = `%${filters.search}%`;
-    params.push(term, term, term);
-  }
-  const whereClause = where.length ? `WHERE ${where.join(" AND ")}` : "";
-  const rows = getDb()
-    .prepare(`SELECT ts, ip_address as ipAddress, country, tool, status_code as statusCode, response_time_ms as processingTime, file_size as fileSize, success FROM analytics_events ${whereClause} ORDER BY ts DESC LIMIT ? OFFSET ?`)
-    .all(...params, limit, offset) as AnalyticsEventRow[];
-  return rows.map((row) => ({
-    time: row.ts,
-    ipAddress: row.ipAddress,
-    country: row.country || "Unknown",
-    requestedTool: row.tool || "N/A",
-    statusCode: row.statusCode,
-    processingTime: toNumber(row.processingTime),
-    fileSize: toNumber(row.fileSize),
-    success: Boolean(row.success),
-  }));
+  const events = getAnalyticsEvents().filter((event) => {
+    if (filters.status && event.statusCode !== Number(filters.status)) return false;
+    if (filters.tool && event.tool !== filters.tool) return false;
+    if (filters.search) {
+      const search = filters.search.toLowerCase();
+      return [event.path, event.tool || "", event.country || ""].some((field) => field.toLowerCase().includes(search));
+    }
+    return true;
+  });
+
+  return events
+    .sort((left, right) => right.ts.localeCompare(left.ts))
+    .slice(offset, offset + limit)
+    .map((event) => ({
+      time: event.ts,
+      ipAddress: event.ipAddress,
+      country: event.country || "Unknown",
+      requestedTool: event.tool || "N/A",
+      statusCode: event.statusCode,
+      processingTime: toNumber(event.responseTimeMs),
+      fileSize: toNumber(event.fileSize),
+      success: Boolean(event.success),
+    }));
 }
 
 export function getErrors() {
-  const totalErrors = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE success = 0`).get() as DbCountRow;
-  const recentErrors = getDb().prepare(`SELECT ts, path, tool, status_code as statusCode, ip_address as ipAddress FROM analytics_events WHERE success = 0 ORDER BY ts DESC LIMIT 10`).all() as AnalyticsErrorRow[];
-  const mostCommon = getDb().prepare(`SELECT path, COUNT(*) as count FROM analytics_events WHERE success = 0 GROUP BY path ORDER BY count DESC LIMIT 10`).all() as AnalyticsAggregateRow[];
-  const ocrFailures = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE tool = 'OCR Image to Text' AND success = 0`).get() as DbCountRow;
-  const conversionFailures = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE type = 'tool_use' AND success = 0`).get() as DbCountRow;
-  const http500s = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE status_code >= 500`).get() as DbCountRow;
-  const http404s = getDb().prepare(`SELECT COUNT(*) as count FROM analytics_events WHERE status_code = 404`).get() as DbCountRow;
+  const events = getAnalyticsEvents();
+  const recentErrors = events.filter((event) => event.success === 0).sort((left, right) => right.ts.localeCompare(left.ts)).slice(0, 10).map((event) => ({
+    ts: event.ts,
+    path: event.path,
+    tool: event.tool,
+    statusCode: event.statusCode,
+    ipAddress: event.ipAddress,
+  }));
+  const mostCommon = new Map<string, number>();
+  for (const event of events.filter((item) => item.success === 0)) {
+    mostCommon.set(event.path, (mostCommon.get(event.path) || 0) + 1);
+  }
   return {
-    totalErrors: Number(totalErrors.count || 0),
+    totalErrors: events.filter((event) => event.success === 0).length,
     recentErrors,
-    mostCommonErrors: mostCommon.map((row) => ({ path: row.path, count: toNumber(row.count) })),
-    ocrFailures: Number(ocrFailures.count || 0),
-    conversionFailures: Number(conversionFailures.count || 0),
-    http500s: Number(http500s.count || 0),
-    http404s: Number(http404s.count || 0),
+    mostCommonErrors: Array.from(mostCommon.entries()).sort((left, right) => right[1] - left[1]).slice(0, 10).map(([path, count]) => ({ path, count })),
+    ocrFailures: events.filter((event) => event.tool === "OCR Image to Text" && event.success === 0).length,
+    conversionFailures: events.filter((event) => event.type === "tool_use" && event.success === 0).length,
+    http500s: events.filter((event) => Number(event.statusCode) >= 500).length,
+    http404s: events.filter((event) => Number(event.statusCode) === 404).length,
   };
 }
 
 export function getPerformance() {
-  const avgResponse = getDb().prepare(`SELECT AVG(response_time_ms) as avg FROM analytics_events WHERE response_time_ms IS NOT NULL`).get() as DbAvgRow;
-  const slowest = getDb().prepare(`SELECT path, AVG(response_time_ms) as avg FROM analytics_events WHERE response_time_ms IS NOT NULL GROUP BY path ORDER BY avg DESC LIMIT 10`).all() as AnalyticsAggregateRow[];
+  const events = getAnalyticsEvents();
+  const responseTimes = events.filter((event) => event.responseTimeMs != null).map((event) => Number(event.responseTimeMs));
+  const slowest = new Map<string, number[]>();
+  for (const event of events.filter((item) => item.responseTimeMs != null)) {
+    const values = slowest.get(event.path) || [];
+    values.push(Number(event.responseTimeMs));
+    slowest.set(event.path, values);
+  }
   const system = getSystemStats();
   return {
-    averageApiResponseTime: toNumber(avgResponse.avg),
-    slowestApis: slowest.map((row) => ({ path: row.path, avgMs: toNumber(row.avg) })),
+    averageApiResponseTime: responseTimes.length > 0 ? responseTimes.reduce((sum, value) => sum + value, 0) / responseTimes.length : 0,
+    slowestApis: Array.from(slowest.entries())
+      .map(([path, values]) => ({ path, avgMs: values.reduce((sum, value) => sum + value, 0) / values.length }))
+      .sort((left, right) => right.avgMs - left.avgMs)
+      .slice(0, 10),
     memoryUsage: system.memoryUsage,
     cpuUsage: system.cpuUsage,
     diskUsage: system.diskUsage,
@@ -377,13 +364,25 @@ export function getPerformance() {
 }
 
 export function getSearchAnalytics() {
-  const searches = getDb().prepare(`SELECT tool, COUNT(*) as count FROM analytics_events WHERE type = 'tool_use' AND tool IS NOT NULL GROUP BY tool ORDER BY count DESC LIMIT 10`).all() as AnalyticsAggregateRow[];
-  const pages = getDb().prepare(`SELECT path, COUNT(*) as count FROM analytics_events WHERE type = 'page_view' GROUP BY path ORDER BY count DESC LIMIT 10`).all() as AnalyticsAggregateRow[];
-  const downloads = getDb().prepare(`SELECT path, COUNT(*) as count FROM analytics_events WHERE path LIKE '%download%' GROUP BY path ORDER BY count DESC LIMIT 10`).all() as AnalyticsAggregateRow[];
+  const events = getAnalyticsEvents();
+  const searches = new Map<string, number>();
+  const pages = new Map<string, number>();
+  const downloads = new Map<string, number>();
+  for (const event of events) {
+    if (event.type === "tool_use" && event.tool) {
+      searches.set(event.tool, (searches.get(event.tool) || 0) + 1);
+    }
+    if (event.type === "page_view") {
+      pages.set(event.path, (pages.get(event.path) || 0) + 1);
+    }
+    if (event.path.includes("download")) {
+      downloads.set(event.path, (downloads.get(event.path) || 0) + 1);
+    }
+  }
   return {
-    mostSearchedTools: searches.map((row) => ({ name: row.tool, count: toNumber(row.count) })),
-    mostVisitedPages: pages.map((row) => ({ path: row.path, count: toNumber(row.count) })),
-    mostDownloadedOutputs: downloads.map((row) => ({ path: row.path, count: toNumber(row.count) })),
+    mostSearchedTools: Array.from(searches.entries()).sort((left, right) => right[1] - left[1]).slice(0, 10).map(([name, count]) => ({ name, count })),
+    mostVisitedPages: Array.from(pages.entries()).sort((left, right) => right[1] - left[1]).slice(0, 10).map(([path, count]) => ({ path, count })),
+    mostDownloadedOutputs: Array.from(downloads.entries()).sort((left, right) => right[1] - left[1]).slice(0, 10).map(([path, count]) => ({ path, count })),
     averageSessionDuration: 0,
     bounceRate: 0,
   };

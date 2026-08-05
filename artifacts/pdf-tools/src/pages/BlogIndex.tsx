@@ -1,25 +1,36 @@
-import { useSEO } from "@/hooks/use-seo";
+import { useMemo } from "react";
 import { useListBlogPosts } from "@workspace/api-client-react";
 import { BlogCard } from "@/components/shared/BlogCard";
 import { Skeleton } from "@/components/ui/skeleton";
 import { BrandMark } from "@/components/brand/BrandMark";
+import { useSEOAdvanced } from "@/hooks/use-seo";
+import { SITE_URL } from "@/lib/site-config";
 
 export function BlogIndex() {
-  useSEO({
-    title: "Blog & Guides",
-    description: "Expert advice, guides, and news about document management and PDF tools from PDFKira."
-  });
-
   const { data: posts, isLoading } = useListBlogPosts();
+  const schema = useMemo(() => ({
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    name: "PDFKira Blog",
+    url: `${SITE_URL}/blog`,
+    description: "Practical guides and product updates for working with PDFs and images.",
+  }), []);
+
+  useSEOAdvanced({
+    title: "PDF Guides and Tutorials",
+    description: "Read practical PDFKira guides on merging, compressing, converting, OCR, signing, and other document workflows.",
+    canonical: `${SITE_URL}/blog`,
+    jsonLd: schema,
+  });
 
   return (
     <div className="bg-background min-h-screen pb-24">
       <div className="bg-card border-b border-border pt-20 pb-16 mb-16">
         <div className="container mx-auto px-4 md:px-6 text-center max-w-3xl">
           <BrandMark className="mb-6 justify-center" logoClassName="h-16 w-16" wordmarkClassName="text-xl" />
-          <h1 className="text-4xl md:text-6xl font-bold mb-6 tracking-tight">Resources & Guides</h1>
+          <h1 className="text-4xl md:text-6xl font-bold mb-6 tracking-tight">Practical PDF guides</h1>
           <p className="text-xl text-muted-foreground leading-relaxed">
-            Everything you need to know about working with PDFs, document management, and our latest feature updates.
+            Clear, useful articles about PDF workflows, image conversion, and secure document handling.
           </p>
         </div>
       </div>

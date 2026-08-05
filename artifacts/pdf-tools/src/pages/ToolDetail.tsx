@@ -3,7 +3,7 @@ import { useParams, Link } from "wouter";
 import { PDFDocument } from "pdf-lib";
 import { GlobalWorkerOptions, getDocument } from "pdfjs-dist";
 import { useGetTool, useGetBlogPost, useListTools, useListFaqs, useOcrImageToText } from "@workspace/api-client-react";
-import { useSEO } from "@/hooks/use-seo";
+import { useSEOAdvanced } from "@/hooks/use-seo";
 import { formatBytes } from "@/lib/utils";
 import { UploadArea } from "@/components/shared/UploadArea";
 import JSZip from "jszip";
@@ -22,6 +22,7 @@ import { BrandMark } from "@/components/brand/BrandMark";
 import { QrCodeGeneratorTool } from "@/components/shared/QrCodeGeneratorTool";
 import { SignPdfTool } from "@/components/shared/SignPdfTool";
 import { removePagesById } from "@/lib/page-state";
+import { SITE_URL } from "@/lib/site-config";
 
 GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
 
@@ -916,9 +917,53 @@ export function ToolDetail(props?: any) {
     return asciiMatch?.[1] || fallback;
   };
 
-  useSEO({
+  const toolSchema = useMemo(() => {
+    if (!tool) return null;
+
+    const faqSchema = tool.faqs?.length
+      ? {
+          "@context": "https://schema.org",
+          "@type": "FAQPage",
+          mainEntity: tool.faqs.map((faq) => ({
+            "@type": "Question",
+            name: faq.question,
+            acceptedAnswer: {
+              "@type": "Answer",
+              text: faq.answer,
+            },
+          })),
+        }
+      : null;
+
+    return [
+      {
+        "@context": "https://schema.org",
+        "@type": "SoftwareApplication",
+        name: `PDFKira ${tool.name}`,
+        description: tool.seoDescription,
+        applicationCategory: "WebApplication",
+        operatingSystem: "Web",
+        url: `${SITE_URL}/${tool.slug}`,
+        offers: { "@type": "Offer", price: 0, priceCurrency: "USD" },
+      },
+      {
+        "@context": "https://schema.org",
+        "@type": "BreadcrumbList",
+        itemListElement: [
+          { "@type": "ListItem", position: 1, name: "Home", item: SITE_URL },
+          { "@type": "ListItem", position: 2, name: "Tools", item: `${SITE_URL}/tools` },
+          { "@type": "ListItem", position: 3, name: tool.name, item: `${SITE_URL}/${tool.slug}` },
+        ],
+      },
+      ...(faqSchema ? [faqSchema] : []),
+    ];
+  }, [tool]);
+
+  useSEOAdvanced({
     title: tool?.seoTitle || "Loading...",
-    description: tool?.seoDescription || "PDF tool"
+    description: tool?.seoDescription || "Browser-based PDF tool",
+    canonical: tool ? `${SITE_URL}/${tool.slug}` : SITE_URL,
+    jsonLd: toolSchema || undefined,
   });
 
   if (isLoading) {

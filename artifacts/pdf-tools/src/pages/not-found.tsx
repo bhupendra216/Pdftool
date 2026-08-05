@@ -1,9 +1,20 @@
-import { useSEO } from "@/hooks/use-seo";
+import { useSEOAdvanced } from "@/hooks/use-seo";
+import { SITE_URL } from "@/lib/site-config";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 
 export default function NotFound() {
-  useSEO({ title: "404 - Page Not Found" });
+  useSEOAdvanced({
+    title: "404 - Page Not Found",
+    description: "The page you requested could not be found on PDFKira.",
+    canonical: `${SITE_URL}/404`,
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@type": "WebPage",
+      name: "404 - Page Not Found",
+      url: `${SITE_URL}/404`,
+    },
+  });
   return (
     <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-background min-h-[70vh]">
       <h1 className="text-8xl font-black text-primary mb-4 tracking-tighter">404</h1>

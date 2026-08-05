@@ -1,5 +1,12 @@
 {
   "version": 2,
+  "comment": "Deploy root is the repository root; the static frontend is built from artifacts/pdf-tools and served from artifacts/pdf-tools/dist/public.",
+  "functions": {
+    "api/[[...path]].js": {
+      "maxDuration": 60,
+      "memory": 1024
+    }
+  },
   "routes": [
     { "src": "^/assets/(.*)$", "dest": "/artifacts/pdf-tools/dist/public/assets/$1" },
     { "src": "^/(favicon.svg|robots.txt|404.html)$", "dest": "/artifacts/pdf-tools/dist/public/$1" },

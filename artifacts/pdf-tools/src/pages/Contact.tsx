@@ -1,12 +1,20 @@
-import { useSEO } from "@/hooks/use-seo";
+import { useSEOAdvanced } from "@/hooks/use-seo";
+import { SITE_URL } from "@/lib/site-config";
 import { Button } from "@/components/ui/button";
 import { Mail, Clock } from "lucide-react";
 import { BrandMark } from "@/components/brand/BrandMark";
 
 export function Contact() {
-  useSEO({
-    title: "Contact Us",
-    description: "Get in touch with PDFKira for support or business inquiries."
+  useSEOAdvanced({
+    title: "Contact PDFKira",
+    description: "Contact PDFKira for support, product feedback, partnerships, or general questions.",
+    canonical: `${SITE_URL}/contact`,
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@type": "ContactPage",
+      name: "Contact PDFKira",
+      url: `${SITE_URL}/contact`,
+    },
   });
 
   return (
@@ -14,9 +22,9 @@ export function Contact() {
       <div className="bg-card border-b border-border pt-20 pb-16 mb-16">
         <div className="container mx-auto px-4 md:px-6 text-center max-w-3xl">
           <BrandMark className="mb-6 justify-center" logoClassName="h-16 w-16" wordmarkClassName="text-xl" />
-          <h1 className="text-4xl md:text-6xl font-bold mb-6 tracking-tight">Contact Us</h1>
+          <h1 className="text-4xl md:text-6xl font-bold mb-6 tracking-tight">Contact PDFKira</h1>
           <p className="text-xl text-muted-foreground leading-relaxed">
-            Have questions, feedback, or business inquiries? We'd love to hear from you.
+            Send support questions, product feedback, or business inquiries to the team behind PDFKira.
           </p>
         </div>
       </div>
@@ -60,7 +68,7 @@ export function Contact() {
             <p className="text-sm font-medium uppercase tracking-[0.18em] text-primary">Contact note</p>
             <h2 className="mt-2 text-2xl font-bold tracking-tight text-foreground">Reach the right team</h2>
             <p className="mt-4 text-base leading-7 text-muted-foreground">
-              Use the email address above for general questions, tool feedback, or support with uploads and document processing.
+              Use the email address above for general questions, tool feedback, or help with uploads and document processing.
             </p>
             <div className="mt-8 rounded-2xl bg-secondary/40 p-5">
               <p className="text-sm font-medium text-foreground">Quick contact</p>

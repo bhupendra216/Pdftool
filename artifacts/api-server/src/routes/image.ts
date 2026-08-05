@@ -41,6 +41,79 @@ const isSvgFile = (file: Express.Multer.File) => {
 
 const OUTPUT_FORMATS = new Set(["png", "jpg", "jpeg", "webp", "bmp", "tiff", "gif", "svg"]);
 
+const parseSvgDimension = (value: string | undefined) => {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  const match = trimmed.match(/^(-?\d*\.?\d+)(px|pt|pc|cm|mm|in)?$/i);
+  if (!match) return undefined;
+
+  const number = Number(match[1]);
+  if (Number.isNaN(number)) return undefined;
+
+  const unit = match[2]?.toLowerCase();
+  if (!unit || unit === "px") return number;
+  if (unit === "pt") return number * 1.3333333333;
+  if (unit === "pc") return number * 16;
+  if (unit === "in") return number * 96;
+  if (unit === "cm") return number * 37.7952755906;
+  if (unit === "mm") return number * 3.7795275591;
+  return undefined;
+};
+
+const getSvgCanvasSize = (buffer: Buffer, metadata: Awaited<ReturnType<Sharp["metadata"]>>) => {
+  const svgText = buffer.toString("utf8");
+  const viewBoxMatch = svgText.match(/viewBox\s*=\s*["']([^"']+)["']/i);
+  const widthMatch = svgText.match(/<svg\b[^>]*\bwidth\s*=\s*["']([^"']+)["']/i);
+  const heightMatch = svgText.match(/<svg\b[^>]*\bheight\s*=\s*["']([^"']+)["']/i);
+  const styleMatch = svgText.match(/<svg\b[^>]*\bstyle\s*=\s*["']([^"']+)["']/i);
+
+  const viewBox = viewBoxMatch?.[1]?.trim().split(/\s+/).filter(Boolean).map(Number);
+  const parsedWidth = parseSvgDimension(widthMatch?.[1]);
+  const parsedHeight = parseSvgDimension(heightMatch?.[1]);
+  const styleWidth = styleMatch?.[1]?.match(/width\s*:\s*([^;]+)/i)?.[1];
+  const styleHeight = styleMatch?.[1]?.match(/height\s*:\s*([^;]+)/i)?.[1];
+  const parsedStyleWidth = parseSvgDimension(styleWidth);
+  const parsedStyleHeight = parseSvgDimension(styleHeight);
+  const viewBoxWidth = viewBox && viewBox.length >= 4 ? viewBox[2] : undefined;
+  const viewBoxHeight = viewBox && viewBox.length >= 4 ? viewBox[3] : undefined;
+
+  const width = parsedWidth ?? parsedStyleWidth ?? viewBoxWidth ?? metadata.width ?? 1;
+  const height = parsedHeight ?? parsedStyleHeight ?? viewBoxHeight ?? metadata.height ?? 1;
+
+  return {
+    width: Math.max(1, Math.round(width)),
+    height: Math.max(1, Math.round(height)),
+  };
+};
+
+const renderSvgForOutput = async (buffer: Buffer, targetFormat: string) => {
+  const image = sharp(buffer, { failOnError: true, limitInputPixels: false });
+  const metadata = await image.metadata();
+  const width = Math.max(1, metadata.width || 1);
+  const height = Math.max(1, metadata.height || 1);
+  const background = targetFormat === "jpg" || targetFormat === "jpeg"
+    ? { r: 255, g: 255, b: 255, alpha: 1 }
+    : { r: 0, g: 0, b: 0, alpha: 0 };
+
+  let transformed: Sharp = image;
+  if (targetFormat === "png") {
+    transformed = image.png({ quality: 100 });
+  } else if (targetFormat === "webp") {
+    transformed = image.webp({ quality: 90 });
+  } else if (targetFormat === "jpg" || targetFormat === "jpeg") {
+    transformed = image.flatten({ background }).jpeg({ quality: 90 });
+  } else if (targetFormat === "bmp") {
+    transformed = image.png();
+  } else if (targetFormat === "tiff") {
+    transformed = image.tiff();
+  } else if (targetFormat === "gif") {
+    transformed = image.gif();
+  }
+
+  const outBuffer = await transformed.toBuffer();
+  return { outBuffer, width, height };
+};
+
 function extForFormat(format: string) {
   if (format === "jpg" || format === "jpeg") return "jpg";
   if (format === "png") return "png";
@@ -59,7 +132,7 @@ const traceSvg = (buffer: Buffer) => {
         reject(err);
         return;
       }
-      resolve(svg);
+      resolve(svg ?? "");
     });
   });
 };
@@ -103,46 +176,61 @@ router.post("/convert-image", upload.array("files"), async (req, res) => {
   }
 
   try {
-    const image = sharp(file.buffer, { failOnError: true, limitInputPixels: false });
+    const isSvgInput = isSvgFile(file);
     let resolvedFormat = normalizedOutFormat;
-    let transformed: Sharp = image;
-
-    if (resolvedFormat === "png") {
-      transformed = image.png({ quality: 100 });
-    } else if (resolvedFormat === "webp") {
-      transformed = image.webp({ quality: 90 });
-    } else if (resolvedFormat === "jpg" || resolvedFormat === "jpeg") {
-      transformed = image.jpeg({ quality: 90 });
-    } else if (resolvedFormat === "bmp") {
-      transformed = image.bmp();
-    } else if (resolvedFormat === "tiff") {
-      transformed = image.tiff();
-    } else if (resolvedFormat === "gif") {
-      transformed = image.gif();
-    }
-
-    const metadata = await image.metadata();
     let outBuffer: Buffer;
     let contentType = "image/png";
     let outExt = extForFormat(resolvedFormat);
 
     if (resolvedFormat === "svg") {
-      const rasterBuffer = await image.png({ quality: 100 }).toBuffer();
-      const width = Math.max(1, metadata.width || 1);
-      const height = Math.max(1, metadata.height || 1);
-      const encoded = rasterBuffer.toString("base64");
+      const svgBuffer = file.buffer;
+      const metadata = await sharp(svgBuffer, { failOnError: true, limitInputPixels: false }).metadata();
+      const { width, height } = getSvgCanvasSize(svgBuffer, metadata);
+      const rendered = await renderSvgForOutput(svgBuffer, "png");
+      const base64 = rendered.outBuffer.toString("base64");
 
       if (svgMode === "trace") {
-        const traced = await traceSvg(rasterBuffer);
+        const traced = await traceSvg(rendered.outBuffer);
         outBuffer = Buffer.from(traced);
       } else {
-        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><image width="${width}" height="${height}" href="data:image/png;base64,${encoded}"/></svg>`;
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><image width="${width}" height="${height}" href="data:image/png;base64,${base64}"/></svg>`;
         outBuffer = Buffer.from(svg);
       }
 
       contentType = "image/svg+xml";
       outExt = "svg";
+    } else if (isSvgInput) {
+      const rendered = await renderSvgForOutput(file.buffer, resolvedFormat);
+      outBuffer = rendered.outBuffer;
+      if (resolvedFormat === "jpg" || resolvedFormat === "jpeg") {
+        contentType = "image/jpeg";
+      } else if (resolvedFormat === "bmp") {
+        contentType = "image/bmp";
+      } else if (resolvedFormat === "tiff") {
+        contentType = "image/tiff";
+      } else if (resolvedFormat === "gif") {
+        contentType = "image/gif";
+      } else {
+        contentType = `image/${resolvedFormat}`;
+      }
     } else {
+      const image = sharp(file.buffer, { failOnError: true, limitInputPixels: false });
+      let transformed: Sharp = image;
+
+      if (resolvedFormat === "png") {
+        transformed = image.png({ quality: 100 });
+      } else if (resolvedFormat === "webp") {
+        transformed = image.webp({ quality: 90 });
+      } else if (resolvedFormat === "jpg" || resolvedFormat === "jpeg") {
+        transformed = image.jpeg({ quality: 90 });
+      } else if (resolvedFormat === "bmp") {
+        transformed = image.png();
+      } else if (resolvedFormat === "tiff") {
+        transformed = image.tiff();
+      } else if (resolvedFormat === "gif") {
+        transformed = image.gif();
+      }
+
       outBuffer = await transformed.toBuffer();
       if (resolvedFormat === "jpg" || resolvedFormat === "jpeg") {
         contentType = "image/jpeg";

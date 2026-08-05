@@ -2,7 +2,10 @@ import { Router } from "express";
 import multer from "multer";
 import { PDFDocument } from "pdf-lib";
 
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 4 * 1024 * 1024 },
+});
 const router = Router();
 
 function parsePageRange(pageRange: string, totalPages: number): number[] {
@@ -49,6 +52,11 @@ router.post(
 
     if (!files || files.length === 0) {
       res.status(400).json({ error: "No files uploaded" });
+      return;
+    }
+
+    if (req.fileValidationError) {
+      res.status(413).json({ error: req.fileValidationError });
       return;
     }
 

@@ -1,6 +1,7 @@
+import { useMemo } from "react";
 import { useParams, Link } from "wouter";
 import { useGetBlogPost, useGetTool } from "@workspace/api-client-react";
-import { useSEO } from "@/hooks/use-seo";
+import { useSEOAdvanced } from "@/hooks/use-seo";
 import { format } from "date-fns";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -9,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight, Clock, Calendar } from "lucide-react";
 import { BrandMark } from "@/components/brand/BrandMark";
+import { SITE_URL } from "@/lib/site-config";
 
 export function BlogDetail() {
   const { slug } = useParams<{ slug: string }>();
@@ -19,9 +21,28 @@ export function BlogDetail() {
     query: { enabled: !!post?.relatedToolSlug, queryKey: ["getTool", post?.relatedToolSlug] } as any
   });
 
-  useSEO({
+  const jsonLd = useMemo(() => post ? {
+    "@context": "https://schema.org",
+    "@type": "BlogPosting",
+    headline: post.title,
+    description: post.excerpt,
+    datePublished: post.publishedAt,
+    dateModified: post.publishedAt,
+    mainEntityOfPage: `${SITE_URL}/blog/${post.slug}`,
+    url: `${SITE_URL}/blog/${post.slug}`,
+    author: { "@type": "Organization", name: "PDFKira" },
+    publisher: {
+      "@type": "Organization",
+      name: "PDFKira",
+      logo: { "@type": "ImageObject", url: `${SITE_URL}/favicon.png` },
+    },
+  } : null, [post]);
+
+  useSEOAdvanced({
     title: post?.title || "Loading...",
-    description: post?.excerpt || "Blog post"
+    description: post?.excerpt || "Practical PDF guide",
+    canonical: post ? `${SITE_URL}/blog/${post.slug}` : `${SITE_URL}/blog`,
+    jsonLd: jsonLd || undefined,
   });
 
   if (isLoading) {
@@ -44,7 +65,7 @@ export function BlogDetail() {
       <div className="container mx-auto px-4 py-32 text-center max-w-2xl">
         <h1 className="text-4xl font-bold mb-6">Post not found</h1>
         <p className="text-xl text-muted-foreground mb-8">We couldn't find the article you're looking for.</p>
-        <Button asChild><Link href="/blog">Back to Blog</Link></Button>
+        <Button asChild><Link href="/blog">Back to blog</Link></Button>
       </div>
     );
   }
@@ -96,7 +117,7 @@ export function BlogDetail() {
             <div className="w-16 h-16 bg-background rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm overflow-hidden">
               <img src="/favicon.png" alt="PDFKira" className="w-10 h-10 object-cover rounded-full" />
             </div>
-            <h3 className="text-2xl font-bold mb-4">Try it yourself</h3>
+            <h3 className="text-2xl font-bold mb-4">Apply this guide in the tool</h3>
             <p className="text-muted-foreground mb-8 max-w-lg mx-auto">
               Put this guide into practice using our free, secure <strong>{relatedTool.name}</strong> tool.
             </p>
