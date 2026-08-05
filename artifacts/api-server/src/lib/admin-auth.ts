@@ -1,4 +1,5 @@
-import { createAdminSession, deleteAdminSession, getAdminSession, isLoginBlocked, registerLoginAttempt, resetLoginAttempts } from "./admin-store";
+import { createHmac, timingSafeEqual } from "node:crypto";
+import { isLoginBlocked, registerLoginAttempt, resetLoginAttempts } from "./admin-store";
 
 const loginAttempts = new Map<string, { count: number; resetAt: number }>();
 
@@ -6,17 +7,39 @@ export function getAdminCredentials() {
   const username = process.env.ADMIN_USERNAME?.trim();
   const password = process.env.ADMIN_PASSWORD?.trim();
 
-  if (!username || !password) {
-    // Fallback to default credentials if environment variables are not set.
-    // WARNING: This is insecure for production. Please set ADMIN_USERNAME and ADMIN_PASSWORD in your environment.
-    const fallbackUsername = "admin";
-    const fallbackPassword = "admin123";
-    console.warn(
-      "ADMIN_USERNAME or ADMIN_PASSWORD not set. Falling back to default admin credentials. Set environment variables on your host to secure the admin login."
-    );
-    return { username: username || fallbackUsername, password: password || fallbackPassword };
-  }
+  if (!username || !password) throw new Error("ADMIN_USERNAME and ADMIN_PASSWORD must be configured");
   return { username, password };
+}
+
+function sessionSecret() {
+  const secret = process.env.ADMIN_SESSION_SECRET?.trim();
+  if (!secret) throw new Error("ADMIN_SESSION_SECRET must be configured");
+  return secret;
+}
+
+function signSession(username: string, expiresAt: number) {
+  const payload = `${username}|${expiresAt}`;
+  const signature = createHmac("sha256", sessionSecret()).update(payload).digest("base64url");
+  return `${Buffer.from(payload).toString("base64url")}.${signature}`;
+}
+
+function verifySession(token: string) {
+  const [encodedPayload, providedSignature] = token.split(".");
+  if (!encodedPayload || !providedSignature) return null;
+  try {
+    const payload = Buffer.from(encodedPayload, "base64url").toString("utf8");
+    const expectedSignature = createHmac("sha256", sessionSecret()).update(payload).digest("base64url");
+    const provided = Buffer.from(providedSignature);
+    const expected = Buffer.from(expectedSignature);
+    if (provided.length !== expected.length || !timingSafeEqual(provided, expected)) return null;
+    const separator = payload.lastIndexOf("|");
+    const username = payload.slice(0, separator);
+    const expiresAt = Number(payload.slice(separator + 1));
+    if (!username || !Number.isFinite(expiresAt) || expiresAt <= Date.now()) return null;
+    return { username, expiresAt };
+  } catch {
+    return null;
+  }
 }
 
 export function getClientIp(req: any) {
@@ -39,13 +62,13 @@ export function requireAdmin(req: any, res: any, next: any) {
     return;
   }
 
-  const session = getAdminSession(token);
+  const session = verifySession(token);
   if (!session) {
     res.status(401).json({ error: "Unauthorized" });
     return;
   }
 
-  req.admin = session;
+  req.admin = { username: session.username, expiresAt: new Date(session.expiresAt).toISOString() };
   next();
 }
 
@@ -76,12 +99,12 @@ export function loginAdmin(req: any, res: any) {
     }
     resetLoginAttempts(ipAddress);
     loginAttempts.delete(ipAddress);
-    const session = createAdminSession(username, ipAddress, req.get("user-agent") || "unknown");
-    res.cookie("admin_session", session.token, {
+    const expiresAt = Date.now() + 8 * 60 * 60 * 1000;
+    res.cookie("admin_session", signSession(username, expiresAt), {
       httpOnly: true,
-      sameSite: "lax",
+      sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
       path: "/",
-      maxAge: 8 * 60 * 60,
+      maxAge: 8 * 60 * 60 * 1000,
       secure: process.env.NODE_ENV === "production",
     });
     res.json({ ok: true, username });
@@ -96,9 +119,10 @@ export function loginAdmin(req: any, res: any) {
 
 export function logoutAdmin(req: any, res: any) {
   const token = readAdminSessionToken(req);
-  if (token) {
-    deleteAdminSession(token);
-  }
-  res.clearCookie("admin_session", { path: "/" });
+  res.clearCookie("admin_session", {
+    path: "/",
+    sameSite: process.env.NODE_ENV === "production" ? "none" : "lax",
+    secure: process.env.NODE_ENV === "production",
+  });
   res.json({ ok: true });
 }
