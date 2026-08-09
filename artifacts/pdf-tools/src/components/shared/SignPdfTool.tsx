@@ -202,6 +202,7 @@ export function SignPdfTool() {
     const renderCurrentPage = async () => {
       setError(null);
       const pdf = pdfDocRef.current;
+      if (!pdf) return;
       const page = await pdf.getPage(currentPage);
       const baseViewport = page.getViewport({ scale: 1 });
       const availableWidth = Math.max(280, previewBoxSize.width - 24);

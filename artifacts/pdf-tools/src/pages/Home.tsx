@@ -32,21 +32,21 @@ const latestPosts = Array.isArray(posts)
   return (
     <div className="flex flex-col min-h-screen">
       {/* Hero Section */}
-      <section className="relative overflow-hidden bg-background pt-24 pb-32 md:pt-36 md:pb-48">
+      <section className="relative overflow-hidden bg-background pt-4 pb-6 md:pt-6 md:pb-8">
         <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
         <div className="container relative mx-auto px-4 md:px-6 text-center z-10 max-w-4xl">
-          <BrandMark className="mb-6 justify-center" logoClassName="h-16 w-16" wordmarkClassName="text-2xl" />
-          <Badge className="mb-6 py-1.5 px-4 bg-primary/10 text-primary border-none text-sm font-medium hover:bg-primary/20 transition-colors">
+          <BrandMark className="mx-auto mb-0 justify-center" logoClassName="h-[5.75rem] w-[5.75rem]" wordmarkClassName="text-2xl" />
+          <Badge className="mx-auto mb-1 py-1.5 px-4 bg-primary/10 text-primary border-none text-sm font-medium hover:bg-primary/20 transition-colors">
             100% Free & Privacy First
           </Badge>
-          <h1 className="text-5xl md:text-7xl font-extrabold tracking-tight mb-8 text-foreground leading-[1.1]">
+          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-1 text-foreground leading-[1.02]">
             Every PDF tool you need.<br />
             <span className="text-primary">None of the clutter.</span>
           </h1>
-          <p className="text-xl md:text-2xl text-muted-foreground mb-12 max-w-2xl mx-auto leading-relaxed">
-            A reliable set of PDF tools for everyday document work. Merge files, split documents, compress large PDFs, and prepare files for sharing or printing without the usual clutter.
+          <p className="text-base md:text-lg text-muted-foreground mb-2 max-w-lg mx-auto leading-snug">
+            Fast, free PDF tools for merging, splitting, compressing, and converting—no signup required.
           </p>
-          <div className="flex flex-col sm:flex-row justify-center gap-4">
+          <div className="flex flex-col sm:flex-row justify-center gap-3">
             <Button size="lg" asChild className="rounded-full px-8 h-14 text-lg shadow-xl shadow-primary/20 transition-transform hover:-translate-y-1">
               <Link href="/tools">Explore All Tools</Link>
             </Button>
@@ -54,21 +54,16 @@ const latestPosts = Array.isArray(posts)
               <Link href="/tools/merge-pdf">Merge PDF Now</Link>
             </Button>
           </div>
-          <div className="mt-8 rounded-[28px] border border-border/70 bg-card/80 p-6 shadow-sm backdrop-blur">
-            <p className="text-sm font-medium uppercase tracking-[0.2em] text-primary">Focused workflow</p>
-            <h2 className="mt-2 text-2xl font-semibold text-foreground">A cleaner way to prepare documents</h2>
-            <p className="mt-3 text-muted-foreground">Use the same toolkit for quick edits, batch preparation, and polished exports in a single place.</p>
-          </div>
         </div>
       </section>
 
       {/* Popular Tools */}
-      <section className="py-20 md:py-32 bg-card border-y border-border">
+      <section className="py-10 md:py-14 bg-card border-y border-border">
         <div className="container mx-auto px-4 md:px-6">
-          <div className="flex flex-col md:flex-row md:items-end justify-between mb-12 gap-4">
+          <div className="flex flex-col md:flex-row md:items-end justify-between mb-6 gap-4">
             <div>
-              <h2 className="text-3xl md:text-4xl font-bold mb-4">Most Popular Tools</h2>
-              <p className="text-muted-foreground text-lg">The tools our community uses most.</p>
+              <h2 className="text-3xl md:text-4xl font-bold mb-2">Most Popular Tools</h2>
+              <p className="text-muted-foreground text-base">The tools our community uses most.</p>
             </div>
             <Button variant="ghost" asChild className="group text-primary hover:text-primary hover:bg-primary/10">
               <Link href="/tools">

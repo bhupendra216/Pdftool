@@ -198,6 +198,36 @@ export const tools: ToolRecord[] = [
     blogSlug: "how-to-convert-pdf-to-word",
   },
   {
+    slug: "pdf-to-markdown",
+    name: "PDF to Markdown",
+    shortDescription: "Turn a PDF into clean Markdown text in your browser.",
+    category: "Convert",
+    icon: "FileText",
+    popular: false,
+    status: "available",
+    seoTitle: "Convert PDF to Markdown Online Free | PDF Tools",
+    seoDescription:
+      "Extract text from a PDF and export it as Markdown without uploading your document.",
+    steps: [
+      "Upload the PDF you want to convert.",
+      "Review the generated Markdown output.",
+      "Download the .md file or copy the text.",
+    ],
+    faqs: [
+      {
+        question: "Does this upload my PDF to a server?",
+        answer:
+          "No. The conversion runs entirely in your browser, and your PDF never leaves your device.",
+      },
+      {
+        question: "Can it preserve headings and lists?",
+        answer:
+          "It preserves text layout as Markdown-friendly text, including basic headings and lists when detected.",
+      },
+    ],
+    blogSlug: null,
+  },
+  {
     slug: "word-to-pdf",
     name: "Word to PDF",
     shortDescription: "Convert a Word document into a shareable PDF.",

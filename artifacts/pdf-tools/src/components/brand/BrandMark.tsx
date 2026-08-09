@@ -15,11 +15,13 @@ export function BrandMark({
 }: BrandMarkProps) {
   return (
     <div className={cn("inline-flex items-center gap-2.5", className)}>
-      <img
-        src="/favicon.png"
-        alt="PDFKira"
-        className={cn("block shrink-0 overflow-hidden rounded-xl object-cover object-center scale-[1.08]", logoClassName)}
-      />
+      <span className={cn("inline-flex items-center justify-center overflow-hidden rounded-xl bg-background dark:bg-white", logoClassName)}>
+        <img
+          src="/favicon.png"
+          alt="PDFKira"
+          className="block h-full w-full object-cover object-center"
+        />
+      </span>
       {showWordmark ? (
         <span className={cn("font-bold leading-none tracking-tight text-foreground", wordmarkClassName)}>
           PDFKira

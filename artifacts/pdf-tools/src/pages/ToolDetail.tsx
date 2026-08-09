@@ -93,6 +93,15 @@ const getUploadConfig = (slug?: string): UploadConfig => {
         supportedFormats: ["PDF"],
         highlights: ["Extract editable content", "Retain readable structure", "Supports up to 20 pages"],
       };
+    case "pdf-to-markdown":
+      return {
+        accept: "application/pdf,.pdf",
+        maxSizeMB: 50,
+        label: "PDF file",
+        description: "or drop a PDF here.",
+        supportedFormats: ["PDF"],
+        highlights: ["Convert directly in the browser", "Download a Markdown (.md) file", "No file upload required"],
+      };
     case "ocr-image-to-text":
       return {
         accept: "image/png,image/jpeg,application/pdf,.png,.jpg,.jpeg,.pdf",
@@ -266,6 +275,7 @@ export function ToolDetail(props?: any) {
   const [upscaleHeight, setUpscaleHeight] = useState<string>("");
   const [password, setPassword] = useState<string>("");
   const [ocrText, setOcrText] = useState<string>("");
+  const [markdownResult, setMarkdownResult] = useState<string>("");
   const [watermarkText, setWatermarkText] = useState<string>("CONFIDENTIAL");
   const [watermarkPosition, setWatermarkPosition] = useState<string>("bottom-right");
   const [watermarkLogo, setWatermarkLogo] = useState<File | null>(null);
@@ -370,6 +380,7 @@ export function ToolDetail(props?: any) {
     "add-page-numbers": "Add Page Numbers",
     "image-converter": "Convert Image",
     "pdf-to-word": "Convert to Word",
+    "pdf-to-markdown": "Convert to Markdown",
     "word-to-pdf": "Convert to PDF",
     "jpg-to-pdf": "Convert to PDF",
     "pdf-to-jpg": "Convert to JPG",
@@ -388,6 +399,7 @@ export function ToolDetail(props?: any) {
   const uploadHintBySlug: Record<string, string> = {
     "image-converter": "Upload up to 30 image files at once to convert them in a batch.",
     "pdf-to-word": "Upload a PDF with 20 pages or fewer to convert it into a Word document.",
+    "pdf-to-markdown": "Upload a PDF and convert it into Markdown text right in your browser.",
     "word-to-pdf": "Upload a Word document to convert it into a PDF.",
     "jpg-to-pdf": "Upload one or more image files to convert them into a PDF.",
     "pdf-to-jpg": "Upload a PDF to convert its pages into JPG images.",
@@ -428,6 +440,7 @@ export function ToolDetail(props?: any) {
     setPdfToWordOcr(false);
     setPdfToWordOutputFormat("docx");
     setImageBatchItems([]);
+    setMarkdownResult("");
   }, [slug]);
 
   useEffect(() => {
@@ -916,6 +929,70 @@ export function ToolDetail(props?: any) {
     return asciiMatch?.[1] || fallback;
   };
 
+  const extractTextLinesFromPage = async (page: any) => {
+    const textContent = await page.getTextContent();
+    const items = (textContent.items || []) as any[];
+
+    const normalizedItems = items
+      .map((item) => {
+        const [a, b, c, d, x, y] = item.transform || [];
+        return {
+          str: String(item.str || "").replace(/\s+/g, " ").trim(),
+          x: typeof x === "number" ? x : 0,
+          y: typeof y === "number" ? y : 0,
+        };
+      })
+      .filter((item) => item.str.length > 0);
+
+    const groupedByLine = new Map<number, Array<{ x: number; str: string }>>();
+    const getLineKey = (y: number) => Math.round(y / 3) * 3;
+
+    normalizedItems.forEach((item) => {
+      const key = getLineKey(item.y);
+      const group = groupedByLine.get(key) ?? [];
+      group.push({ x: item.x, str: item.str });
+      groupedByLine.set(key, group);
+    });
+
+    return Array.from(groupedByLine.entries())
+      .sort((a, b) => b[0] - a[0])
+      .map(([_, group]) => group.sort((a, b) => a.x - b.x).map((item) => item.str).join(" ").trim())
+      .filter((line) => line.length > 0);
+  };
+
+  const normalizeMarkdownLine = (line: string) => {
+    const trimmed = line.trim();
+    if (!trimmed) return "";
+    if (/^[\-*•\u2022]\s+/.test(trimmed) || /^[0-9]+\.\s+/.test(trimmed)) {
+      return trimmed;
+    }
+    if (/^[A-Z0-9][A-Z0-9\s\-:\'\(\)]{4,60}$/.test(trimmed) && trimmed === trimmed.toUpperCase()) {
+      return `## ${trimmed}`;
+    }
+    return trimmed;
+  };
+
+  const extractMarkdownFromPdf = async (file: File, onStage?: (stage: string) => void) => {
+    const bytes = await file.arrayBuffer();
+    const pdf = await getDocument({ data: bytes }).promise;
+    const pageCount = pdf.numPages;
+    const pages: string[] = [];
+
+    for (let pageIndex = 1; pageIndex <= pageCount; pageIndex += 1) {
+      onStage?.(`Extracting text from page ${pageIndex} of ${pageCount}...`);
+      const page = await pdf.getPage(pageIndex);
+      const lines = await extractTextLinesFromPage(page);
+      const normalizedLines = lines.map(normalizeMarkdownLine).filter(Boolean);
+      if (pageCount > 1) {
+        pages.push(`## Page ${pageIndex}\n\n${normalizedLines.join("\n\n")}`);
+      } else {
+        pages.push(normalizedLines.join("\n\n"));
+      }
+    }
+
+    return pages.filter(Boolean).join("\n\n");
+  };
+
   useSEO({
     title: tool?.seoTitle || "Loading...",
     description: tool?.seoDescription || "PDF tool"
@@ -1169,6 +1246,7 @@ export function ToolDetail(props?: any) {
         setPdfPages([]);
         resetImagePreviewState();
         setDownloadUrl(null);
+        setMarkdownResult("");
         setImageBatchItems([]);
       } else if (tool?.slug === "image-converter") {
         if (updated.length === 1) {
@@ -1178,6 +1256,8 @@ export function ToolDetail(props?: any) {
           syncImageBatchItems(updated);
         }
         setStatus("options");
+      } else if (tool?.slug === "pdf-to-markdown") {
+        setMarkdownResult("");
       }
       return updated;
     });
@@ -1344,6 +1424,12 @@ export function ToolDetail(props?: any) {
       } else if (tool.slug === "pdf-to-word") {
         blob = await convertPdfToWordOnServer(files[0]);
         outputName = stripExtension(files[0].name) + ".docx";
+      } else if (tool.slug === "pdf-to-markdown") {
+        const markdown = await extractMarkdownFromPdf(files[0], setProgressStage);
+        const baseName = stripExtension(files[0].name);
+        blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+        outputName = `${baseName}.md`;
+        setMarkdownResult(markdown);
       } else if (tool.slug === "word-to-pdf") {
         blob = await convertWordToPdfOnServer(files[0]);
         outputName = stripExtension(files[0].name) + ".pdf";
@@ -2508,6 +2594,42 @@ export function ToolDetail(props?: any) {
                       <Button variant="ghost" onClick={() => { setStatus("idle"); setFiles([]); setDownloadUrl(null); setDownloadSizeBytes(null); setProcessingTimeMs(null); }} className="mt-4 text-muted-foreground">
                         Start Over
                       </Button>
+                    </div>
+                  </div>
+                );
+              }
+
+              if (tool.slug === "pdf-to-markdown") {
+                return (
+                  <div className="py-12 animate-in zoom-in-95 duration-500 max-w-4xl mx-auto">
+                    <div className="rounded-3xl border border-border/70 bg-background/90 p-8 shadow-sm">
+                      <div className="flex items-center justify-center mb-6">
+                        <div className="rounded-2xl bg-primary/10 p-4 text-primary">
+                          <Download className="w-8 h-8" />
+                        </div>
+                      </div>
+                      <h3 className="text-2xl font-bold mb-4 text-center">Markdown conversion complete</h3>
+                      <p className="text-center text-muted-foreground mb-6">Your PDF has been converted to Markdown and is ready to download or copy.</p>
+
+                      <div className="mb-6 rounded-3xl border border-border/70 bg-card/80 p-4">
+                        <textarea
+                          readOnly
+                          value={markdownResult}
+                          className="min-h-[320px] w-full rounded-3xl border border-border bg-background p-4 text-sm leading-relaxed text-foreground"
+                        />
+                      </div>
+
+                      <div className="grid gap-3 sm:grid-cols-3">
+                        <Button size="lg" className="w-full rounded-2xl h-14 text-lg shadow-xl shadow-primary/20 hover:-translate-y-1 transition-transform" asChild disabled={!downloadUrl}>
+                          <a href={downloadUrl ?? "#"} download={downloadFileName}>Download Markdown</a>
+                        </Button>
+                        <Button size="lg" className="w-full rounded-2xl h-14 text-lg" onClick={async () => { await navigator.clipboard.writeText(markdownResult || ""); }}>
+                          Copy to Clipboard
+                        </Button>
+                        <Button variant="outline" size="lg" className="w-full rounded-2xl h-14 text-lg" onClick={() => { setStatus("idle"); setFiles([]); setDownloadUrl(null); setMarkdownResult(""); }}>
+                          Start Over
+                        </Button>
+                      </div>
                     </div>
                   </div>
                 );

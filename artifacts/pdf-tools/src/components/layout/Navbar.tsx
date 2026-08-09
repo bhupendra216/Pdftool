@@ -24,9 +24,9 @@ export function Navbar() {
         {/* Logo */}
         <Link
           href="/"
-          className="flex items-center gap-3 transition-opacity hover:opacity-80"
+          className="flex items-center gap-3 transition-opacity hover:opacity-80 focus:outline-none focus-visible:outline-none focus-visible:ring-0"
         >
-          <BrandMark logoClassName="h-14 w-14" wordmarkClassName="text-lg" />
+          <BrandMark logoClassName="h-14 w-14" wordmarkClassName="text-lg" showWordmark />
         </Link>
 
         {/* Desktop Navigation */}
