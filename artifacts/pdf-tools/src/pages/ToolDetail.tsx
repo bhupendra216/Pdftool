@@ -3,7 +3,8 @@ import { useParams, Link } from "wouter";
 import { PDFDocument } from "pdf-lib";
 import { GlobalWorkerOptions, getDocument } from "pdfjs-dist";
 import { useGetTool, useGetBlogPost, useListTools, useListFaqs, useOcrImageToText } from "@workspace/api-client-react";
-import { useSEO } from "@/hooks/use-seo";
+import { useSEOAdvanced } from "@/hooks/use-seo";
+import { SITE_URL } from "@/lib/site-config";
 import { formatBytes } from "@/lib/utils";
 import { UploadArea } from "@/components/shared/UploadArea";
 import JSZip from "jszip";
@@ -993,9 +994,95 @@ export function ToolDetail(props?: any) {
     return pages.filter(Boolean).join("\n\n");
   };
 
-  useSEO({
+  const toolUrl = `${SITE_URL}/tools/${tool?.slug || ''}`;
+
+  const pageHeading = useMemo(() => {
+    switch (tool?.slug) {
+      case "pdf-to-markdown":
+        return "Convert PDF to Markdown Online";
+      case "merge-pdf":
+        return "Merge PDF Files Online";
+      case "compress-pdf":
+        return "Compress PDF Files Online";
+      case "split-pdf":
+        return "Split PDF Files Online";
+      case "organize-pdf":
+        return "Organize PDF Pages Online";
+      case "pdf-to-jpg":
+        return "Convert PDF to JPG Online";
+      case "ocr-image-to-text":
+        return "Extract Text from Images and PDFs";
+      default:
+        return `${tool?.name || "PDF tool"} Online`;
+    }
+  }, [tool?.slug, tool?.name]);
+
+  const pageIntro = useMemo(() => {
+    if (!tool) {
+      return "Process your PDF with fast, private browser-based tools. Get the job done quickly with an intuitive interface and no account required.";
+    }
+
+    switch (tool.slug) {
+      case "pdf-to-markdown":
+        return "Convert PDF content into editable Markdown in the browser. PDFKira preserves headings, lists, and text blocks so you can move insights from reports, slides, and documentation into a format that works with editors, wikis, and developer workflows. This tool is designed for privacy-first use, letting you generate Markdown without unnecessary uploads or accounts. The result is a clean, reusable file that is easy to edit, publish, or version-control.";
+      case "merge-pdf":
+        return "Combine multiple PDFs into one polished document with a simple drag-and-drop workflow. Ideal for assembling invoices, contracts, presentations, and reports, this tool keeps your files private while letting you reorder content before download. PDFKira makes merging fast and reliable, so you can create a single, shareable PDF in seconds. If you want to continue refining output, related tools below help you split, compress, or organize the final file.";
+      case "compress-pdf":
+        return "Reduce PDF file size with a privacy-first compression workflow that keeps your content on your side. PDFKira helps shrink documents for email, web sharing, or archiving while preserving visual clarity and text readability. Use the tool to optimize scan-heavy files, reports, and presentations without sacrificing layout. The result is a smaller PDF that is easier to store, transmit, and preview across devices.";
+      case "split-pdf":
+        return "Split a large PDF into smaller, usable pieces without installing software. This tool makes it easy to isolate chapters, forms, or sections from a longer document while keeping the operation private and browser-based. Use it to extract pages for review, share just the portion you need, or create separate files for printing and distribution. The interface is intentionally simple so you can complete the task in a few clicks.";
+      case "organize-pdf":
+        return "Reorder, rotate, and manage PDF pages in a clean browser interface that feels fast and dependable. Whether you need to rearrange a report, remove blank pages, or prepare a print-ready document, PDFKira gives you direct control without accounts or bloat. Drag pages into the right order, apply rotation, and download the finished PDF once it matches your target layout.";
+      case "pdf-to-jpg":
+        return "Convert PDF pages into high-quality JPG images in a private, browser-based workflow. This tool is ideal for extracting visuals, diagrams, and scanned pages from reports or presentations into editable image files. PDFKira keeps the process fast and secure, producing clean JPG output that is ready to save, share, or insert into documents and slides.";
+      case "ocr-image-to-text":
+        return "Extract searchable text from images and scanned PDFs without extra software. PDFKira OCR turns printed documents into editable text that you can copy, edit, and reuse. It works directly in the browser and is designed to preserve privacy while making scanned content easier to search and work with. Use it for receipts, screenshots, forms, and scanned pages.";
+      default:
+        return `${tool.shortDescription || "Process your PDF with fast, private browser-based tools."} Get the job done quickly with an intuitive interface and no account required.`;
+    }
+  }, [tool]);
+
+  const breadcrumbJsonLd = useMemo(() => ({
+    '@context': 'https://schema.org',
+    '@type': 'BreadcrumbList',
+    'itemListElement': [
+      {
+        '@type': 'ListItem',
+        'position': 1,
+        'name': 'Home',
+        'item': `${SITE_URL}/`
+      },
+      {
+        '@type': 'ListItem',
+        'position': 2,
+        'name': 'Tools',
+        'item': `${SITE_URL}/tools`
+      },
+      {
+        '@type': 'ListItem',
+        'position': 3,
+        'name': tool?.name || 'Tool',
+        'item': toolUrl
+      }
+    ]
+  }), [tool?.name, toolUrl]);
+
+  const applicationJsonLd = useMemo(() => ({
+    '@context': 'https://schema.org',
+    '@type': 'SoftwareApplication',
+    name: tool?.name || 'PDFKira Tool',
+    description: tool?.seoDescription || tool?.shortDescription || '',
+    applicationCategory: 'Utility',
+    operatingSystem: 'Web',
+    url: toolUrl,
+    offers: { '@type': 'Offer', price: 0, priceCurrency: 'USD' },
+  }), [tool?.name, tool?.seoDescription, tool?.shortDescription, toolUrl]);
+
+  useSEOAdvanced({
     title: tool?.seoTitle || "Loading...",
-    description: tool?.seoDescription || "PDF tool"
+    description: tool?.seoDescription || "PDF tool",
+    canonical: toolUrl,
+    jsonLd: [applicationJsonLd, breadcrumbJsonLd],
   });
 
   if (isLoading) {
@@ -1538,7 +1625,7 @@ export function ToolDetail(props?: any) {
             </div>
             <div>
               <h1 className="text-3xl md:text-5xl font-bold flex items-center gap-3">
-                {tool.name}
+                {pageHeading}
                 {isComingSoon && (
                   <span className="text-sm font-medium px-3 py-1 bg-muted text-muted-foreground rounded-full border">
                     Coming Soon
@@ -1548,7 +1635,7 @@ export function ToolDetail(props?: any) {
             </div>
           </div>
           <p className="text-lg md:text-xl text-muted-foreground max-w-3xl ml-[72px]">
-            {tool.shortDescription}
+            {pageIntro}
           </p>
         </div>
       </div>
@@ -2713,6 +2800,22 @@ export function ToolDetail(props?: any) {
       {faqsToShow.length > 0 && (
         <FaqSection faqs={faqsToShow} title={`${tool.name} FAQ`} />
       )}
+
+      <section className="border-t border-border/70 bg-background py-20">
+        <div className="container mx-auto max-w-5xl px-4 md:px-6">
+          <div className="mb-8">
+            <h2 className="text-2xl font-bold text-foreground">Related tools</h2>
+            <p className="mt-2 text-sm text-muted-foreground">Explore nearby PDF workflows on PDFKira.</p>
+            <div className="mt-4 flex flex-wrap gap-3">
+              {relatedTools.map((relatedTool) => (
+                <Link key={relatedTool.slug} href={`/tools/${relatedTool.slug}`} className="rounded-full border border-border/70 bg-background/90 px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/5">
+                  {relatedTool.name}
+                </Link>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
 
       {relatedTools.length > 0 && (
         <section className="border-t border-border/70 bg-background py-20">

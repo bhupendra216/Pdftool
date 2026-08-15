@@ -2,12 +2,11 @@ import { useSEO } from "@/hooks/use-seo";
 import { useListTools } from "@workspace/api-client-react";
 import { ToolCard } from "@/components/shared/ToolCard";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Input } from "@/components/ui/input";
-import { Search } from "lucide-react";
+import { PageHero } from "@/components/shared/PageHero";
+import { BrandMark } from "@/components/brand/BrandMark";
 import { useState, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { BrandMark } from "@/components/brand/BrandMark";
 
 export function ToolsIndex() {
   useSEO({
@@ -36,29 +35,16 @@ export function ToolsIndex() {
   }, [tools, searchQuery, activeCategory]);
 
   return (
-    <div className="bg-background min-h-screen pb-24">
-      <div className="bg-card border-b border-border pt-16 pb-12 mb-12">
-        <div className="container mx-auto px-4 md:px-6 text-center max-w-3xl">
-          <BrandMark className="mb-6 justify-center" logoClassName="h-16 w-16" wordmarkClassName="text-xl" />
-          <h1 className="text-4xl md:text-5xl font-bold mb-6">Every tool for your PDFs</h1>
-          <p className="text-xl text-muted-foreground mb-10">
-            A complete suite to help you manage your documents efficiently and securely.
-          </p>
-          
-          <div className="relative max-w-xl mx-auto">
-            <div className="absolute inset-y-0 left-4 flex items-center pointer-events-none text-muted-foreground">
-              <Search className="h-5 w-5" />
-            </div>
-            <Input 
-              type="text" 
-              placeholder="Search for a tool (e.g. merge, compress)..." 
-              className="h-14 pl-12 pr-4 rounded-full text-lg shadow-sm border-2 focus-visible:ring-0 focus-visible:border-primary transition-colors"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-        </div>
-      </div>
+    <div className="bg-background pb-24">
+      <PageHero
+        title="All PDF and image tools in one place"
+        description="A complete suite to help you manage your documents efficiently and securely."
+        searchId="tools-search"
+        searchLabel="Search PDF tools"
+        searchPlaceholder="Search PDF tools..."
+        searchValue={searchQuery}
+        onSearchChange={setSearchQuery}
+      />
 
       <div className="container mx-auto px-4 md:px-6">
         <div className="flex flex-wrap items-center justify-center gap-2 mb-12">

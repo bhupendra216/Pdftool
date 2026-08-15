@@ -18,7 +18,12 @@ export function FaqSection({ faqs, title = "Frequently Asked Questions" }: { faq
             Quick answers to common questions before you upload or download.
           </p>
         </div>
-        <Accordion type="single" collapsible className="w-full space-y-4">
+        <Accordion
+          type="single"
+          collapsible
+          defaultValue={faqs.length > 0 ? `item-0` : undefined}
+          className="w-full space-y-4"
+        >
           {faqs.map((faq, index) => (
             <AccordionItem key={index} value={`item-${index}`} className="rounded-2xl border border-border/70 bg-background/90 px-6 shadow-sm">
               <AccordionTrigger className="py-5 text-left text-lg font-medium text-foreground transition-colors hover:no-underline hover:text-primary">

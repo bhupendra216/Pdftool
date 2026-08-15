@@ -17,6 +17,13 @@ export function Navbar() {
     { href: "/ai-jobs", label: "AI Jobs" },
   ];
 
+  const isActiveLink = (href: string) => {
+    if (href === "/tools") {
+      return location === "/" || location.startsWith(href);
+    }
+    return location.startsWith(href);
+  };
+
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border/40 bg-background/80 backdrop-blur-md">
       <div className="container mx-auto px-4 md:px-6 h-16 flex items-center justify-between">
@@ -35,10 +42,10 @@ export function Navbar() {
             <Link
               key={link.href}
               href={link.href}
-              className={`text-sm font-medium transition-colors hover:text-primary ${
-                location.startsWith(link.href)
-                  ? "text-primary"
-                  : "text-muted-foreground"
+              className={`text-sm transition-all duration-200 ${
+                isActiveLink(link.href)
+                  ? "rounded-full bg-primary/10 px-3 py-1 text-primary font-semibold shadow-sm shadow-primary/10"
+                  : "text-muted-foreground hover:text-primary"
               }`}
             >
               {link.label}
@@ -72,10 +79,10 @@ export function Navbar() {
                   key={link.href}
                   href={link.href}
                   onClick={() => setIsOpen(false)}
-                  className={`text-lg font-medium transition-colors hover:text-primary ${
-                    location.startsWith(link.href)
-                      ? "text-primary"
-                      : "text-muted-foreground"
+                  className={`text-lg font-medium transition-all duration-200 ${
+                    isActiveLink(link.href)
+                      ? "rounded-full bg-primary/10 px-3 py-2 text-primary"
+                      : "text-muted-foreground hover:text-primary"
                   }`}
                 >
                   {link.label}

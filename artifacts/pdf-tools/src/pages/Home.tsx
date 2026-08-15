@@ -8,7 +8,6 @@ import { BlogCard } from "@/components/shared/BlogCard";
 import { FaqSection } from "@/components/shared/FaqSection";
 import { ArrowRight, ShieldCheck, Zap, HeartHandshake } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { BrandMark } from "@/components/brand/BrandMark";
 
 export function Home() {
   useSEO({
@@ -17,48 +16,45 @@ export function Home() {
   });
 
   const { data: tools, isLoading: loadingTools } = useListTools();
-  const { data: posts, isLoading: loadingPosts } = useListBlogPosts();
+  const { data: posts } = useListBlogPosts();
   const { data: faqs, isLoading: loadingFaqs } = useListFaqs();
 
   const popularTools = Array.isArray(tools)
-  ? tools.filter((t) => t.popular).slice(0, 6)
-  : [];
- 
- // const latestPosts = posts?.slice(0, 3) || [];
-const latestPosts = Array.isArray(posts)
-  ? posts.slice(0, 3)
-  : [];
+    ? tools.filter((tool) => tool.popular).slice(0, 6)
+    : [];
+
+  const latestPosts = Array.isArray(posts)
+    ? posts.slice(0, 3)
+    : [];
 
   return (
-    <div className="flex flex-col min-h-screen">
-      {/* Hero Section */}
-      <section className="relative overflow-hidden bg-background pt-4 pb-6 md:pt-6 md:pb-8">
-        <div className="absolute inset-0 bg-[linear-gradient(to_right,#80808012_1px,transparent_1px),linear-gradient(to_bottom,#80808012_1px,transparent_1px)] bg-[size:24px_24px]"></div>
-        <div className="container relative mx-auto px-4 md:px-6 text-center z-10 max-w-4xl">
-          <BrandMark className="mx-auto mb-0 justify-center" logoClassName="h-[5.75rem] w-[5.75rem]" wordmarkClassName="text-2xl" />
-          <Badge className="mx-auto mb-1 py-1.5 px-4 bg-primary/10 text-primary border-none text-sm font-medium hover:bg-primary/20 transition-colors">
-            100% Free & Privacy First
-          </Badge>
-          <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight mb-1 text-foreground leading-[1.02]">
-            Every PDF tool you need.<br />
-            <span className="text-primary">None of the clutter.</span>
-          </h1>
-          <p className="text-base md:text-lg text-muted-foreground mb-2 max-w-lg mx-auto leading-snug">
-            Fast, free PDF tools for merging, splitting, compressing, and converting—no signup required.
-          </p>
-          <div className="flex flex-col sm:flex-row justify-center gap-3">
-            <Button size="lg" asChild className="rounded-full px-8 h-14 text-lg shadow-xl shadow-primary/20 transition-transform hover:-translate-y-1">
-              <Link href="/tools">Explore All Tools</Link>
-            </Button>
-            <Button size="lg" variant="outline" asChild className="rounded-full px-8 h-14 text-lg bg-background">
-              <Link href="/tools/merge-pdf">Merge PDF Now</Link>
-            </Button>
+    <div className="flex flex-col">
+      <section className="bg-background border-b border-border">
+        <div className="container mx-auto px-4 md:px-6 py-10 md:py-12">
+          <div className="mx-auto max-w-3xl text-center">
+            <Badge className="mx-auto mb-4 py-1.5 px-4 bg-primary/10 text-primary border-none text-sm font-medium hover:bg-primary/20 transition-colors">
+              100% Free & Privacy First
+            </Badge>
+            <h1 className="text-4xl md:text-5xl font-extrabold tracking-tight text-foreground leading-tight">
+              Every PDF tool you need.<br />
+              <span className="text-primary">None of the clutter.</span>
+            </h1>
+            <p className="mx-auto mt-4 max-w-2xl text-base md:text-lg text-muted-foreground leading-7">
+              Fast, free PDF tools for merging, splitting, compressing, and converting—no signup required.
+            </p>
+            <div className="mt-6 flex flex-col items-center justify-center gap-3 sm:flex-row">
+              <Button size="lg" asChild className="rounded-full px-8 h-14 text-lg shadow-xl shadow-primary/20 transition-transform hover:-translate-y-1">
+                <Link href="/tools">Explore All Tools</Link>
+              </Button>
+              <Button size="default" variant="outline" asChild className="rounded-full px-6 h-12 text-base text-muted-foreground border-muted-foreground/40 hover:border-muted-foreground hover:text-foreground">
+                <Link href="/tools/merge-pdf">Merge PDF Now</Link>
+              </Button>
+            </div>
           </div>
         </div>
       </section>
 
-      {/* Popular Tools */}
-      <section className="py-10 md:py-14 bg-card border-y border-border">
+      <section className="py-10 md:py-12 bg-card border-y border-border">
         <div className="container mx-auto px-4 md:px-6">
           <div className="flex flex-col md:flex-row md:items-end justify-between mb-6 gap-4">
             <div>

@@ -1,10 +1,8 @@
 import { useEffect } from 'react';
-import { SITE_URL } from '@/lib/site-config';
+import { SITE_URL, SITE_IMAGE, SITE_NAME } from '@/lib/site-config';
 
-// Use public kira.jpeg as the canonical social image
-const logo = '/favicon.png';
-
-const siteName = "PDFKira";
+const logo = SITE_IMAGE;
+const siteName = SITE_NAME;
 
 function updateMeta(selector: string, value: string) {
   let metaTag = document.querySelector(selector);
@@ -64,7 +62,7 @@ export function useSEOAdvanced({
   title: string;
   description?: string;
   canonical?: string;
-  jsonLd?: Record<string, unknown> | string;
+  jsonLd?: Record<string, unknown> | Array<Record<string, unknown>> | string;
 }) {
   useSEO({ title, description });
 

@@ -5,8 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
-    "build": "echo \"skip build (static output committed)\"",
-    "vercel-build": "echo \"skip build (static output committed)\"",
+    "generate:seo": "tsx ../../scripts/generate-seo.ts",
+    "build": "pnpm exec tsx ../../scripts/generate-seo.ts && pnpm exec vite build --config vite.config.ts",
+    "vercel-build": "pnpm exec tsx ../../scripts/generate-seo.ts && pnpm exec vite build --config vite.config.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
@@ -51,6 +52,7 @@
     "@vitejs/plugin-react": "catalog:",
     "@workspace/api-client-react": "workspace:*",
     "class-variance-authority": "catalog:",
+    "tsx": "catalog:",
     "clsx": "catalog:",
     "cmdk": "^1.1.1",
     "date-fns": "^3.6.0",

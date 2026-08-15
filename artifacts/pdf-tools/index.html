@@ -9,8 +9,7 @@
     <meta
       name="description"
       content="Fast, private, and free online PDF tools — merge, split, compress, convert, organize, and edit PDFs securely in your browser with PDFKira."
-    />
-    <meta name="keywords" content="PDF tools, merge PDF, split PDF, compress PDF, convert PDF, OCR, edit PDF, PDFKira, online PDF" />
+    />    <link rel="canonical" href="%VITE_SITE_URL%" />    <meta name="keywords" content="PDF tools, merge PDF, split PDF, compress PDF, convert PDF, OCR, edit PDF, PDFKira, online PDF" />
     <meta name="robots" content="index, follow" />
 
     <!-- Open Graph -->
@@ -20,8 +19,8 @@
       content="PDFKira provides fast, privacy-focused PDF tools: merge, split, compress, convert (with OCR), and edit PDFs online for free."
     />
     <meta property="og:type" content="website" />
-    <meta property="og:url" content="https://pdfkira.vercel.app" />
-    <meta property="og:image" content="/favicon.png" />
+    <meta property="og:url" content="%VITE_SITE_URL%" />
+    <meta property="og:image" content="%VITE_SITE_URL%/favicon.png" />
     <meta property="og:site_name" content="PDFKira" />
 
     <!-- Twitter -->
@@ -31,7 +30,7 @@
       name="twitter:description"
       content="Fast, privacy-first PDF tools online: merge, split, compress, convert (OCR), and edit PDFs with PDFKira." 
     />
-    <meta name="twitter:image" content="/favicon.png" />
+    <meta name="twitter:image" content="%VITE_SITE_URL%/favicon.png" />
 
     <!-- Icons -->
     <link rel="icon" type="image/png" href="/favicon.png" />
@@ -47,16 +46,16 @@
     />
     
     <!-- Structured data -->
-    <script type="application/ld+json">
+    <script id="web-site-jsonld" type="application/ld+json">
     {
       "@context": "https://schema.org",
       "@type": "WebSite",
       "name": "PDFKira",
-      "url": "https://pdfkira.vercel.app",
+      "url": "%VITE_SITE_URL%",
       "description": "Fast, private, and free online PDF tools to merge, split, compress, convert (with OCR), and edit PDFs.",
       "potentialAction": {
         "@type": "SearchAction",
-        "target": "https://pdfkira.vercel.app/?q={search_term_string}",
+        "target": "%VITE_SITE_URL%/?q={search_term_string}",
         "query-input": "required name=search_term_string"
       }
     }

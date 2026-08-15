@@ -40,7 +40,7 @@ export interface BlogPostRecord {
 
 export const homepageFaqs: FaqItem[] = [
   {
-    question: "Is PDF Tools really free to use?",
+    question: "Is PDFKira really free to use?",
     answer:
       "Yes. Every tool on this site is free during our MVP phase, with no account required. We may introduce optional paid plans for heavy or automated use later, but the core tools stay free.",
   },
