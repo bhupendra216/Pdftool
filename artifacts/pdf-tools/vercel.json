@@ -1,8 +1,12 @@
 {
   "version": 2,
+  "functions": {
+    "api/[[...path]].js": { "maxDuration": 60, "memory": 1024 }
+  },
   "routes": [
-    { "src": "^/assets/(.*)$", "dest": "/assets/$1" },
-    { "src": "^/(favicon.png|favicon.svg|favicon.ico|kira.jpeg|kira.jpg|kiralogo.png|robots.txt|404.html|sitemap.xml)$", "dest": "/$1" }    { "src": "^/api/(.*)$", "dest": "/api/[[...path]].js" },
-    { "src": "(.*)", "dest": "/index.html" }
+    { "src": "^/assets/(.*)$", "dest": "/artifacts/pdf-tools/dist/public/assets/$1" },
+    { "src": "^/(favicon.svg|robots.txt|404.html|sitemap.xml)$", "dest": "/artifacts/pdf-tools/dist/public/$1" },
+    { "src": "^/api/(.*)$", "dest": "/api/[[...path]].js" },
+    { "src": "(.*)", "dest": "/artifacts/pdf-tools/dist/public/index.html" }
   ]
 }
