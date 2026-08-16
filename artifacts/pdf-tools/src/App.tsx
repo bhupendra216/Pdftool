@@ -25,6 +25,7 @@ import { AiJobs } from '@/pages/AiJobs';
 import { AdminLogin } from '@/pages/admin/AdminLogin';
 import { AdminDashboard } from '@/pages/admin/AdminDashboard';
 import NotFound from '@/pages/not-found';
+import Seo from '@/components/Seo';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -36,27 +37,64 @@ const queryClient = new QueryClient({
 });
 
 function Router() {
+  const humanizePath = (path: string) => {
+    if (!path || path === '/') return 'Home';
+    const cleaned = path.replace(/:\w+/g, '').replace(/^\//, '').replace(/\/$/, '');
+    const part = cleaned.split('/').pop() || cleaned;
+    const words = part.replace(/-/g, ' ').split(' ').filter(Boolean).map(w => {
+      if (w.toLowerCase() === 'pdf') return 'PDF';
+      return w.charAt(0).toUpperCase() + w.slice(1);
+    });
+    return words.join(' ');
+  };
+
+  const generateDescription = (human: string) => {
+    const action = human.split(' ')[0]?.toLowerCase() || 'manage';
+    const verbsMap: Record<string, string> = {
+      tools: 'use various PDF tools to',
+      blog: 'read articles about',
+      about: 'learn about',
+      contact: 'contact',
+      privacy: 'review privacy for',
+      terms: 'review terms for',
+      admin: 'manage',
+    };
+    const actionPhrase = verbsMap[action] ?? `${action}`;
+    return `Free online tool to ${actionPhrase} PDFs. Fast, private, and secure. No sign-up required.`;
+  };
+
+  const withSeo = (Component: any, path: string) => {
+    const human = humanizePath(path);
+    const title = `${human} - Free Online PDF Tool | PDFKira`;
+    const description = generateDescription(human);
+    return (props: any) => (
+      <>
+        <Seo title={title} description={description} path={path} />
+        <Component {...props} />
+      </>
+    );
+  };
   return (
     <Layout>
       <Switch>
-        <Route path="/" component={Home} />
-        <Route path="/tools" component={ToolsIndex} />
-        <Route path="/tools/:slug" component={ToolDetail} />
-        <Route path="/merge-pdf" component={MergePdfPage} />
-        <Route path="/split-pdf" component={SplitPdfPage} />
-        <Route path="/compress-pdf" component={CompressPdfPage} />
-        <Route path="/convert-pdf" component={ConvertPdfPage} />
-        <Route path="/pdf-ocr" component={PdfOcrPage} />
-        <Route path="/organize-pdf" component={OrganizePdfPage} />
-        <Route path="/blog" component={BlogIndex} />
-        <Route path="/blog/:slug" component={BlogDetail} />
-        <Route path="/about" component={About} />
-        <Route path="/privacy" component={Privacy} />
-        <Route path="/terms" component={Terms} />
-        <Route path="/contact" component={Contact} />
-        <Route path="/ai-jobs" component={AiJobs} />
-        <Route path="/admin/login" component={AdminLogin} />
-        <Route path="/admin/dashboard" component={AdminDashboard} />
+        <Route path="/" component={withSeo(Home, '/')} />
+        <Route path="/tools" component={withSeo(ToolsIndex, '/tools')} />
+        <Route path="/tools/:slug" component={withSeo(ToolDetail, '/tools/:slug')} />
+        <Route path="/merge-pdf" component={withSeo(MergePdfPage, '/merge-pdf')} />
+        <Route path="/split-pdf" component={withSeo(SplitPdfPage, '/split-pdf')} />
+        <Route path="/compress-pdf" component={withSeo(CompressPdfPage, '/compress-pdf')} />
+        <Route path="/convert-pdf" component={withSeo(ConvertPdfPage, '/convert-pdf')} />
+        <Route path="/pdf-ocr" component={withSeo(PdfOcrPage, '/pdf-ocr')} />
+        <Route path="/organize-pdf" component={withSeo(OrganizePdfPage, '/organize-pdf')} />
+        <Route path="/blog" component={withSeo(BlogIndex, '/blog')} />
+        <Route path="/blog/:slug" component={withSeo(BlogDetail, '/blog/:slug')} />
+        <Route path="/about" component={withSeo(About, '/about')} />
+        <Route path="/privacy" component={withSeo(Privacy, '/privacy')} />
+        <Route path="/terms" component={withSeo(Terms, '/terms')} />
+        <Route path="/contact" component={withSeo(Contact, '/contact')} />
+        <Route path="/ai-jobs" component={withSeo(AiJobs, '/ai-jobs')} />
+        <Route path="/admin/login" component={withSeo(AdminLogin, '/admin/login')} />
+        <Route path="/admin/dashboard" component={withSeo(AdminDashboard, '/admin/dashboard')} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

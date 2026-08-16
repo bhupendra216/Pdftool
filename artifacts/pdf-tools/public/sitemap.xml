@@ -1,6 +1,57 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
+    <loc>https://pdfkira.vercel.app/</loc>
+  </url>
+  <url>
+    <loc>https://pdfkira.vercel.app/tools</loc>
+  </url>
+  <!-- Static top-level tool pages (also accessible via /tools/:slug) -->
+  <url><loc>https://pdfkira.vercel.app/merge-pdf</loc></url>
+  <url><loc>https://pdfkira.vercel.app/split-pdf</loc></url>
+  <url><loc>https://pdfkira.vercel.app/compress-pdf</loc></url>
+  <url><loc>https://pdfkira.vercel.app/convert-pdf</loc></url>
+  <url><loc>https://pdfkira.vercel.app/pdf-ocr</loc></url>
+  <url><loc>https://pdfkira.vercel.app/organize-pdf</loc></url>
+
+  <!-- All tool slugs (from API content) at canonical /tools/{slug} -->
+  <url><loc>https://pdfkira.vercel.app/tools/merge-pdf</loc></url>
+  <url><loc>https://pdfkira.vercel.app/tools/split-pdf</loc></url>
+  <url><loc>https://pdfkira.vercel.app/tools/compress-pdf</loc></url>
+  <url><loc>https://pdfkira.vercel.app/tools/image-converter</loc></url>
+  <url><loc>https://pdfkira.vercel.app/tools/pdf-to-word</loc></url>
+  <url><loc>https://pdfkira.vercel.app/tools/pdf-to-markdown</loc></url>
+  <url><loc>https://pdfkira.vercel.app/tools/word-to-pdf</loc></url>
+  <url><loc>https://pdfkira.vercel.app/tools/jpg-to-pdf</loc></url>
+  <url><loc>https://pdfkira.vercel.app/tools/pdf-to-jpg</loc></url>
+  <url><loc>https://pdfkira.vercel.app/tools/image-resize</loc></url>
+  <url><loc>https://pdfkira.vercel.app/tools/image-compress</loc></url>
+  <url><loc>https://pdfkira.vercel.app/tools/image-upscale</loc></url>
+  <url><loc>https://pdfkira.vercel.app/tools/rotate-pdf</loc></url>
+  <url><loc>https://pdfkira.vercel.app/tools/organize-pdf</loc></url>
+  <url><loc>https://pdfkira.vercel.app/tools/delete-pages</loc></url>
+  <url><loc>https://pdfkira.vercel.app/tools/extract-pages</loc></url>
+  <url><loc>https://pdfkira.vercel.app/tools/unlock-pdf</loc></url>
+  <url><loc>https://pdfkira.vercel.app/tools/protect-pdf</loc></url>
+  <url><loc>https://pdfkira.vercel.app/tools/watermark-pdf</loc></url>
+  <url><loc>https://pdfkira.vercel.app/tools/add-page-numbers</loc></url>
+  <url><loc>https://pdfkira.vercel.app/tools/ocr-image-to-text</loc></url>
+  <url><loc>https://pdfkira.vercel.app/tools/qr-code-generator</loc></url>
+  <url><loc>https://pdfkira.vercel.app/tools/sign-pdf</loc></url>
+
+  <!-- Other static pages -->
+  <url><loc>https://pdfkira.vercel.app/blog</loc></url>
+  <url><loc>https://pdfkira.vercel.app/about</loc></url>
+  <url><loc>https://pdfkira.vercel.app/privacy</loc></url>
+  <url><loc>https://pdfkira.vercel.app/terms</loc></url>
+  <url><loc>https://pdfkira.vercel.app/contact</loc></url>
+  <url><loc>https://pdfkira.vercel.app/ai-jobs</loc></url>
+  <url><loc>https://pdfkira.vercel.app/admin/login</loc></url>
+  <url><loc>https://pdfkira.vercel.app/admin/dashboard</loc></url>
+</urlset>
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <url>
     <loc>https://example.com/</loc>
     <lastmod>2026-08-09</lastmod>
     <changefreq>weekly</changefreq>

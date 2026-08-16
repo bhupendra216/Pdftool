@@ -14,7 +14,8 @@
     "pnpm": ">=11"
   },
   "dependencies": {
-    "@replit/connectors-sdk": "^0.4.1"
+    "@replit/connectors-sdk": "^0.4.1",
+    "react-helmet-async": "^3.0.0"
   },
   "devDependencies": {
     "playwright": "^1.62.1",
