@@ -7,6 +7,8 @@ import { useSEOAdvanced } from "@/hooks/use-seo";
 import { SITE_URL } from "@/lib/site-config";
 import { formatBytes } from "@/lib/utils";
 import { UploadArea } from "@/components/shared/UploadArea";
+import DownloadPdfPage from '@/pages/download-pdf';
+import SearchFreePdfsPage from '@/pages/search-free-pdfs';
 import JSZip from "jszip";
 import { FilePreviewList } from "@/components/shared/FilePreviewList";
 import { FaqSection } from "@/components/shared/FaqSection";
@@ -1654,120 +1656,168 @@ export function ToolDetail(props?: any) {
             </p>
           </div>
         ) : status === "idle" ? (
-          <div className="relative overflow-hidden rounded-3xl border border-border/70 bg-card/90 p-6 md:p-10 shadow-sm">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,theme(colors.primary/12),transparent_32%),radial-gradient(circle_at_bottom_left,theme(colors.accent/10),transparent_28%)] opacity-80" />
-            <div className="relative grid gap-8 lg:grid-cols-[minmax(0,1.25fr)_360px] lg:items-start">
-              <div className="space-y-8">
-                <Badge variant="secondary" className="rounded-full border border-border/60 bg-background/80 px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                  Secure processing · Fast · Free · No registration
-                </Badge>
+          tool?.slug === 'search-free-pdfs' ? (
+            <div className="relative overflow-hidden rounded-3xl border border-border/70 bg-card/90 p-6 md:p-10 shadow-sm">
+              <div className="max-w-6xl mx-auto">
+                <SearchFreePdfsPage />
 
-                <div className="flex items-start gap-4">
-                  <div className="rounded-3xl bg-primary p-4 text-primary-foreground shadow-lg shadow-primary/20">
-                    <Icon name={tool.icon} className="h-8 w-8" />
-                  </div>
-                  <div className="space-y-4">
-                    <h2 className="text-4xl font-bold tracking-tight text-foreground md:text-5xl">
-                      {tool.name}
-                    </h2>
-                    <p className="max-w-2xl text-lg leading-relaxed text-muted-foreground md:text-xl">
-                      {tool.shortDescription}
-                    </p>
-                  </div>
-                </div>
+                <div className="mt-8">
+                  <Badge variant="secondary" className="rounded-full border border-border/60 bg-background/80 px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    Secure processing · Fast · Free · No registration
+                  </Badge>
 
-                <div className="flex flex-wrap gap-2">
-                  {trustedPoints.map((point) => (
-                    <Badge key={point} variant="outline" className="rounded-full border-border/70 bg-background/80 px-3 py-1.5 text-xs font-medium text-foreground">
-                      {point}
-                    </Badge>
-                  ))}
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-3">
-                  {highlights.map((highlight) => (
-                    <div key={highlight} className="rounded-2xl border border-border/70 bg-background/80 p-4 shadow-sm">
-                      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                        <Sparkles className="h-5 w-5" />
+                  <div className="mt-6 grid gap-3 md:grid-cols-3">
+                    {highlights.map((highlight) => (
+                      <div key={highlight} className="rounded-2xl border border-border/70 bg-background/80 p-4 shadow-sm">
+                        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                          <Sparkles className="h-5 w-5" />
+                        </div>
+                        <p className="text-sm font-medium text-foreground">{highlight}</p>
                       </div>
-                      <p className="text-sm font-medium text-foreground">{highlight}</p>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="grid gap-3 md:grid-cols-3">
-                  {landingSteps.map((step, index) => (
-                    <div key={step} className="rounded-2xl border border-border/70 bg-background/80 p-4 shadow-sm transition-transform duration-200 hover:-translate-y-0.5">
-                      <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-                        {index + 1}
-                      </div>
-                      <p className="text-sm leading-relaxed text-muted-foreground">{step}</p>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-4 rounded-[28px] border border-border/70 bg-background/90 p-5 shadow-sm backdrop-blur-sm">
-                <UploadArea
-                  onFilesSelected={handleFilesSelected}
-                  onError={setErrorMessage}
-                  multiple={allowsMultipleFiles}
-                  accept={uploadConfig.accept}
-                  maxSizeMB={uploadConfig.maxSizeMB}
-                  label={uploadConfig.label}
-                  description={uploadConfig.description}
-                />
-
-                {errorMessage && (
-                  <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
-                    {errorMessage}
-                  </div>
-                )}
-
-                <div className="grid gap-3 rounded-2xl border border-border/70 bg-card/80 p-4">
-                  <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
-                    <ShieldCheck className="h-4 w-4 text-primary" />
-                    Supported formats
-                  </div>
-                  <div className="flex flex-wrap gap-2">
-                    {supportedFormats.map((format) => (
-                      <Badge key={format} variant="secondary" className="rounded-full px-3 py-1 text-xs">
-                        {format}
-                      </Badge>
                     ))}
                   </div>
-                  <div className="grid gap-2 text-sm text-muted-foreground">
-                    <div className="flex items-center gap-2">
-                      <Zap className="h-4 w-4 text-primary" />
-                      Smooth drag-and-drop upload
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <img src="/favicon.png" alt="PDFKira" className="h-4 w-4 object-cover rounded-sm" />
-                      Friendly preview before processing
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Layers3 className="h-4 w-4 text-primary" />
-                      Built for desktop and mobile
-                    </div>
+
+                  <div className="mt-6 grid gap-3 md:grid-cols-3">
+                    {landingSteps.map((step, index) => (
+                      <div key={step} className="rounded-2xl border border-border/70 bg-background/80 p-4 shadow-sm transition-transform duration-200 hover:-translate-y-0.5">
+                        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+                          {index + 1}
+                        </div>
+                        <p className="text-sm leading-relaxed text-muted-foreground">{step}</p>
+                      </div>
+                    ))}
                   </div>
                 </div>
               </div>
             </div>
-          </div>
+          ) : (
+            <div className="relative overflow-hidden rounded-3xl border border-border/70 bg-card/90 p-6 md:p-10 shadow-sm">
+              <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,theme(colors.primary/12),transparent_32%),radial-gradient(circle_at_bottom_left,theme(colors.accent/10),transparent_28%)] opacity-80" />
+              <div className="relative grid gap-8 lg:grid-cols-[minmax(0,1.25fr)_360px] lg:items-start">
+                <div className="space-y-8">
+                  <Badge variant="secondary" className="rounded-full border border-border/60 bg-background/80 px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                    Secure processing · Fast · Free · No registration
+                  </Badge>
+
+                  <div className="flex items-start gap-4">
+                    <div className="rounded-3xl bg-primary p-4 text-primary-foreground shadow-lg shadow-primary/20">
+                      <Icon name={tool.icon} className="h-8 w-8" />
+                    </div>
+                    <div className="space-y-4">
+                      <h2 className="text-4xl font-bold tracking-tight text-foreground md:text-5xl">
+                        {tool.name}
+                      </h2>
+                      <p className="max-w-2xl text-lg leading-relaxed text-muted-foreground md:text-xl">
+                        {tool.shortDescription}
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    {trustedPoints.map((point) => (
+                      <Badge key={point} variant="outline" className="rounded-full border-border/70 bg-background/80 px-3 py-1.5 text-xs font-medium text-foreground">
+                        {point}
+                      </Badge>
+                    ))}
+                  </div>
+
+                  <div className="grid gap-3 sm:grid-cols-3">
+                    {highlights.map((highlight) => (
+                      <div key={highlight} className="rounded-2xl border border-border/70 bg-background/80 p-4 shadow-sm">
+                        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                          <Sparkles className="h-5 w-5" />
+                        </div>
+                        <p className="text-sm font-medium text-foreground">{highlight}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="grid gap-3 md:grid-cols-3">
+                    {landingSteps.map((step, index) => (
+                      <div key={step} className="rounded-2xl border border-border/70 bg-background/80 p-4 shadow-sm transition-transform duration-200 hover:-translate-y-0.5">
+                        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
+                          {index + 1}
+                        </div>
+                        <p className="text-sm leading-relaxed text-muted-foreground">{step}</p>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="space-y-4 rounded-[28px] border border-border/70 bg-background/90 p-5 shadow-sm backdrop-blur-sm">
+                  {tool?.slug === 'download-pdf' ? (
+                    <DownloadPdfPage />
+                  ) : (
+                    <UploadArea
+                      onFilesSelected={handleFilesSelected}
+                      onError={setErrorMessage}
+                      multiple={allowsMultipleFiles}
+                      accept={uploadConfig.accept}
+                      maxSizeMB={uploadConfig.maxSizeMB}
+                      label={uploadConfig.label}
+                      description={uploadConfig.description}
+                    />
+                  )}
+
+                  {errorMessage && (
+                    <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                      {errorMessage}
+                    </div>
+                  )}
+
+                  {tool?.slug === 'search-free-pdfs' ? null : (
+                  <div className="grid gap-3 rounded-2xl border border-border/70 bg-card/80 p-4">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+                      <ShieldCheck className="h-4 w-4 text-primary" />
+                      Supported formats
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                      {supportedFormats.map((format) => (
+                        <Badge key={format} variant="secondary" className="rounded-full px-3 py-1 text-xs">
+                          {format}
+                        </Badge>
+                      ))}
+                    </div>
+                    <div className="grid gap-2 text-sm text-muted-foreground">
+                      <div className="flex items-center gap-2">
+                        <Zap className="h-4 w-4 text-primary" />
+                        Smooth drag-and-drop upload
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <img src="/favicon.png" alt="PDFKira" className="h-4 w-4 object-cover rounded-sm" />
+                        Friendly preview before processing
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Layers3 className="h-4 w-4 text-primary" />
+                        Built for desktop and mobile
+                      </div>
+                    </div>
+                  </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          )
         ) : (
           <div className="bg-card rounded-3xl shadow-sm border border-border p-6 md:p-10 transition-all">
             
             {status === "options" && (
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <UploadArea
-                  onFilesSelected={handleFilesSelected}
-                  onError={setErrorMessage}
-                  multiple={allowsMultipleFiles}
-                  accept={uploadConfig.accept}
-                  maxSizeMB={uploadConfig.maxSizeMB}
-                  label={uploadConfig.label}
-                  description={uploadConfig.description}
-                        />
+                {tool?.slug === 'download-pdf' ? (
+                  <DownloadPdfPage />
+                ) : tool?.slug === 'search-free-pdfs' ? (
+                  <SearchFreePdfsPage />
+                ) : (
+                  <UploadArea
+                    onFilesSelected={handleFilesSelected}
+                    onError={setErrorMessage}
+                    multiple={allowsMultipleFiles}
+                    accept={uploadConfig.accept}
+                    maxSizeMB={uploadConfig.maxSizeMB}
+                    label={uploadConfig.label}
+                    description={uploadConfig.description}
+                  />
+                )}
                 <p className="mt-4 text-sm text-muted-foreground text-center">
                   {uploadHint}
                 </p>

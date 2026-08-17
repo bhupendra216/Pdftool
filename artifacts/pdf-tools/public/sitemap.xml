@@ -43,4 +43,7 @@
   <url><loc>https://pdfkira.vercel.app/ai-jobs</loc></url>
   <url><loc>https://pdfkira.vercel.app/admin/login</loc></url>
   <url><loc>https://pdfkira.vercel.app/admin/dashboard</loc></url>
+    <url>
+    <loc>https://pdfkira.vercel.app/download-pdf</loc>
+  </url>
 </urlset>

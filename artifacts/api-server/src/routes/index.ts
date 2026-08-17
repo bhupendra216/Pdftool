@@ -15,6 +15,8 @@ import extractPagesRouter from "./extract-pages";
 import pdfAnnotationsRouter from "./pdf-annotations-route";
 import adminRouter from "./admin";
 import aiJobsRouter from "./ai-jobs";
+import downloadPdfRouter from "./download-pdf";
+import searchPdfsRouter from "./search-pdfs";
 
 const router: IRouter = Router();
 
@@ -34,5 +36,7 @@ router.use(extractPagesRouter);
 router.use(pdfAnnotationsRouter);
 router.use(adminRouter);
 router.use(aiJobsRouter);
+router.use(downloadPdfRouter);
+router.use(searchPdfsRouter);
 
 export default router;

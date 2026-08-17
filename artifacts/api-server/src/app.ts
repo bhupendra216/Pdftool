@@ -5,6 +5,7 @@ import router from "./routes";
 import { logger } from "./lib/logger";
 import { getClientIp } from "./lib/admin-auth";
 import { recordAnalyticsEvent } from "./lib/admin-store";
+import downloadPdfRouter from "./routes/download-pdf";
 
 const app: Express = express();
 
@@ -91,6 +92,8 @@ function inferToolName(path: string) {
     "/api/organize-pdf": "Organize PDF",
     "/api/delete-pages": "Delete Pages",
     "/api/extract-pages": "Extract Pages",
+    "/api/download-pdf": "Download PDF from URL",
+
   };
   return mapping[path] || null;
 }

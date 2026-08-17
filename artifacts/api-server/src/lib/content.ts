@@ -589,6 +589,64 @@ export const tools: ToolRecord[] = [
     ],
     blogSlug: null,
   },
+  {
+    slug: "search-free-pdfs",
+    name: "Search Free PDFs",
+    shortDescription: "Discover public-domain and openly-licensed PDFs on the Internet Archive.",
+    category: "Discover",
+    icon: "Search",
+    popular: false,
+    status: "available",
+    seoTitle: "Search Free PDFs Online | PDFKira",
+    seoDescription:
+      "Search public-domain and openly-licensed PDFs hosted on the Internet Archive. Find books and documents you can legally download.",
+    steps: [
+      "Enter a search term (title, author, or topic).",
+      "Browse results with cover thumbnails, title, and source.",
+      "Click a result to open the Internet Archive item page and review licensing before downloading.",
+    ],
+    faqs: [
+      {
+        question: "What does this search show?",
+        answer:
+          "Results come from the Internet Archive and surface public-domain or openly-licensed texts that the Archive hosts. We filter to items that include a PDF format.",
+      },
+      {
+        question: "Do you host the PDFs?",
+        answer:
+          "No. This feature links to the Internet Archive item page — we do not proxy or download files for this search tool.",
+      },
+    ],
+    blogSlug: null,
+  },
+  {
+    slug: "download-pdf",
+    name: "Download PDF",
+    shortDescription: "Download a PDF from any public URL through a secure server-side proxy.",
+    category: "Utility",
+    icon: "Download",
+    popular: false,
+    status: "available",
+    seoTitle: "Download PDF From URL Online Free | PDFKira",
+    seoDescription:
+      "Fetch and download PDFs from public links safely through our proxy. Fast, private, and secure.",
+    steps: [
+      "Paste a public PDF link into the tool.",
+      "Click Download to fetch and validate the file on the server.",
+      "Receive a verified PDF download in your browser.",
+    ],
+    faqs: [
+      {
+        question: "What kind of links work?",
+        answer: "Public http(s) links to PDF files. The server validates the file and checks it is a real PDF before downloading.",
+      },
+      {
+        question: "Is this secure?",
+        answer: "Yes — internal and private network addresses are blocked and files over 50MB are rejected.",
+      },
+    ],
+    blogSlug: null,
+  },
 ];
 
 export const blogPosts: BlogPostRecord[] = [
