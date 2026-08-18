@@ -98,7 +98,13 @@ export default function SearchFreePdfsPage() {
               <div className="flex items-center justify-between mb-1">
                 <div className="text-sm font-semibold leading-tight text-foreground" style={{display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', overflow: 'hidden'}}>{r.title}</div>
                 {r.source && (
-                  <div className="text-[10px] rounded px-2 py-0.5 bg-muted text-muted-foreground ml-2" style={{whiteSpace: 'nowrap'}}>{r.source}</div>
+                  r.source === 'Internet Archive' ? (
+                    <div className="text-[10px] rounded px-2 py-0.5 ml-2" style={{whiteSpace: 'nowrap', backgroundColor: '#0066cc', color: '#fff'}}>{'Internet Archive'}</div>
+                  ) : r.source === 'Project Gutenberg' ? (
+                    <div className="text-[10px] rounded px-2 py-0.5 ml-2" style={{whiteSpace: 'nowrap', backgroundColor: '#800080', color: '#fff'}}>{'Project Gutenberg'}</div>
+                  ) : (
+                    <div className="text-[10px] rounded px-2 py-0.5 bg-muted text-muted-foreground ml-2" style={{whiteSpace: 'nowrap'}}>{r.source}</div>
+                  )
                 )}
               </div>
               <div className="text-xs text-muted-foreground truncate">{r.creator}{r.year ? ` • ${r.year}` : ''}</div>

@@ -5,9 +5,10 @@ import "./index.css";
 
 import { setBaseUrl } from "@workspace/api-client-react";
 
-console.log("VITE_API_BASE_URL =", import.meta.env.VITE_API_BASE_URL);
+const resolvedApiBase = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? "http://localhost:3000" : "");
+console.log("Resolved API base:", resolvedApiBase);
 
-setBaseUrl(import.meta.env.VITE_API_BASE_URL);
+setBaseUrl(resolvedApiBase);
 
 createRoot(document.getElementById("root")!).render(
 	<HelmetProvider>

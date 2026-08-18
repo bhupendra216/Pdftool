@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { useParams, Link } from "wouter";
 import { PDFDocument } from "pdf-lib";
 import { GlobalWorkerOptions, getDocument } from "pdfjs-dist";
+import * as pdfjsLib from "pdfjs-dist";
+const OPS = (pdfjsLib as any).OPS as any;
 import { useGetTool, useGetBlogPost, useListTools, useListFaqs, useOcrImageToText } from "@workspace/api-client-react";
 import { useSEOAdvanced } from "@/hooks/use-seo";
 import { SITE_URL } from "@/lib/site-config";
@@ -249,6 +251,7 @@ export function ToolDetail(props?: any) {
   const [progressStage, setProgressStage] = useState("Preparing...");
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [downloadFileName, setDownloadFileName] = useState("processed.pdf");
+  const [downloadShortName, setDownloadShortName] = useState<string | null>(null);
   const [downloadSizeBytes, setDownloadSizeBytes] = useState<number | null>(null);
   const [processingTimeMs, setProcessingTimeMs] = useState<number | null>(null);
   const [pageRange, setPageRange] = useState("");
@@ -279,6 +282,7 @@ export function ToolDetail(props?: any) {
   const [password, setPassword] = useState<string>("");
   const [ocrText, setOcrText] = useState<string>("");
   const [markdownResult, setMarkdownResult] = useState<string>("");
+  const [extractedImageCount, setExtractedImageCount] = useState<number>(0);
   const [watermarkText, setWatermarkText] = useState<string>("CONFIDENTIAL");
   const [watermarkPosition, setWatermarkPosition] = useState<string>("bottom-right");
   const [watermarkLogo, setWatermarkLogo] = useState<File | null>(null);
@@ -429,6 +433,7 @@ export function ToolDetail(props?: any) {
     setProgress(0);
     setProgressStage("Preparing...");
     setDownloadUrl(null);
+    setDownloadShortName(null);
     setDownloadFileName("processed.pdf");
     setDownloadSizeBytes(null);
     setProcessingTimeMs(null);
@@ -932,6 +937,7 @@ export function ToolDetail(props?: any) {
     return asciiMatch?.[1] || fallback;
   };
 
+  // Returns an array of { text: string, y: number } where y is the vertical position
   const extractTextLinesFromPage = async (page: any) => {
     const textContent = await page.getTextContent();
     const items = (textContent.items || []) as any[];
@@ -959,8 +965,8 @@ export function ToolDetail(props?: any) {
 
     return Array.from(groupedByLine.entries())
       .sort((a, b) => b[0] - a[0])
-      .map(([_, group]) => group.sort((a, b) => a.x - b.x).map((item) => item.str).join(" ").trim())
-      .filter((line) => line.length > 0);
+      .map(([key, group]) => ({ text: group.sort((a, b) => a.x - b.x).map((item) => item.str).join(" ").trim(), y: key }))
+      .filter((line) => line.text.length > 0);
   };
 
   const normalizeMarkdownLine = (line: string) => {
@@ -980,20 +986,321 @@ export function ToolDetail(props?: any) {
     const pdf = await getDocument({ data: bytes }).promise;
     const pageCount = pdf.numPages;
     const pages: string[] = [];
+    const collectedImages: Array<{ filename: string; blob: Blob }> = [];
 
     for (let pageIndex = 1; pageIndex <= pageCount; pageIndex += 1) {
-      onStage?.(`Extracting text from page ${pageIndex} of ${pageCount}...`);
+      onStage?.(`Extracting text and images from page ${pageIndex} of ${pageCount}...`);
       const page = await pdf.getPage(pageIndex);
-      const lines = await extractTextLinesFromPage(page);
-      const normalizedLines = lines.map(normalizeMarkdownLine).filter(Boolean);
+
+      // extract text lines with y positions
+      const lineObjs = await extractTextLinesFromPage(page); // {text,y}[]
+
+      // extract images from operator list
+      const opList = await page.getOperatorList();
+      const fnArray = opList.fnArray || [];
+      const argsArray = opList.argsArray || [];
+
+      const pageImages: Array<{ filename: string; blob: Blob; y: number }> = [];
+      let imgCounter = 0;
+      const seenImageKeys = new Set<string>();
+
+      // debug: report operator list sizes
+      // eslint-disable-next-line no-console
+      // debug: operator list length (removed verbose logging)
+
+      let imageOpsFound = false;
+      for (let i = 0; i < fnArray.length; i++) {
+        const fn = fnArray[i];
+        if (fn === OPS.paintImageXObject || fn === OPS.paintInlineImageXObject) imageOpsFound = true;
+        if (fn !== OPS.paintImageXObject && fn !== OPS.paintInlineImageXObject) continue;
+        const args = argsArray[i] || [];
+
+        // attempt to read image object and transform
+        let imgObj: any = null;
+        let transform: any = null;
+
+        if (fn === OPS.paintImageXObject) {
+          // args often [imageName]
+          const name = args[0];
+          transform = args[1] || null;
+          // try several fallbacks to obtain the image object
+          try {
+            if (page.objs && typeof page.objs.get === 'function') {
+              imgObj = page.objs.get(name);
+              // found imgObj via page.objs.get for ${name}
+            }
+          } catch (e) {
+            imgObj = null;
+          }
+          if (!imgObj && page.objs && Object.prototype.hasOwnProperty.call(page.objs, name)) {
+            imgObj = page.objs[name];
+            // found imgObj via page.objs[name] for ${name}
+          }
+          if (!imgObj && page.objs && page.objs._objs && page.objs._objs[name]) {
+            imgObj = page.objs._objs[name];
+            // found imgObj via page.objs._objs for ${name}
+          }
+          if (!imgObj && page.commonObjs && typeof page.commonObjs.get === 'function') {
+            try {
+              imgObj = page.commonObjs.get(name);
+              // found imgObj via page.commonObjs.get for ${name}
+            } catch (e) {
+              imgObj = null;
+            }
+          }
+          if (!imgObj && page.commonObjs && Object.prototype.hasOwnProperty.call(page.commonObjs, name)) {
+            imgObj = page.commonObjs[name];
+            // found imgObj via page.commonObjs[name] for ${name}
+          }
+        } else if (fn === OPS.paintInlineImageXObject) {
+          // inline image data may be in args[0]
+          imgObj = args[0] || null;
+          transform = args[1] || null;
+        }
+
+        // debug: report operator and args
+        // eslint-disable-next-line no-console
+        // operator debug: fn and args
+        if (!imgObj) {
+          continue;
+        }
+
+        // attempt to determine width/height and draw to canvas
+          let width = imgObj.width || imgObj.w || (imgObj.data && imgObj.data.width) || null;
+          let height = imgObj.height || imgObj.h || (imgObj.data && imgObj.data.height) || null;
+
+          // log a short summary of imgObj to help diagnose missing fields
+          try {
+            const keys = Object.keys(imgObj || {});
+            const keySummary = keys.slice(0, 20).map((k) => {
+              const v = imgObj[k];
+              let info: any = { key: k, type: typeof v };
+              if (v && (v.length || v.byteLength)) info.length = v.length || v.byteLength;
+              if (v && v.constructor && v.constructor.name) info.constructor = v.constructor.name;
+              return info;
+            });
+            const summary: any = {
+              constructor: imgObj?.constructor?.name || typeof imgObj,
+              keys: keySummary,
+              widthPresent: !!(imgObj && (imgObj.width || imgObj.w)),
+              dataPresent: !!(imgObj && imgObj.data),
+              dataLength: imgObj && (imgObj.data?.length || imgObj.data?.byteLength || null),
+            };
+            // eslint-disable-next-line no-console
+            // imgObj summary logged for debugging
+          } catch (e) {
+            // ignore logging errors
+          }
+
+        // skip tiny decorative images (reduced threshold to 2px to avoid false negatives during debugging)
+        if (width != null && height != null && (width < 2 || height < 2)) {
+          // eslint-disable-next-line no-console
+          // skipping tiny image ${width}x${height}
+          continue;
+        }
+
+        try {
+          const canvas = document.createElement("canvas");
+          if (width && height) {
+            canvas.width = width;
+            canvas.height = height;
+          } else if (imgObj instanceof HTMLImageElement) {
+            canvas.width = imgObj.naturalWidth || imgObj.width;
+            canvas.height = imgObj.naturalHeight || imgObj.height;
+          } else if (imgObj.data && imgObj.data.length && imgObj.width && imgObj.height) {
+            canvas.width = imgObj.width;
+            canvas.height = imgObj.height;
+          } else {
+            // fallback: skip if we can't determine size — log for debugging
+            // eslint-disable-next-line no-console
+            // cannot determine size for imgObj on page ${pageIndex} op ${i}, skipping
+            continue;
+          }
+
+          const ctx = canvas.getContext("2d");
+          if (!ctx) continue;
+
+          if (imgObj instanceof HTMLImageElement) {
+            ctx.drawImage(imgObj, 0, 0);
+          } else if (imgObj.data && (imgObj.data instanceof ImageData || imgObj.data instanceof Uint8ClampedArray || Array.isArray(imgObj.data))) {
+            try {
+              // if ImageData
+              if (imgObj.data instanceof ImageData) {
+                ctx.putImageData(imgObj.data, 0, 0);
+              } else {
+                // try create ImageData from raw buffer
+                const clamped = imgObj.data instanceof Uint8ClampedArray ? imgObj.data : new Uint8ClampedArray(imgObj.data);
+                const imageData = new ImageData(clamped, canvas.width, canvas.height);
+                ctx.putImageData(imageData, 0, 0);
+              }
+            } catch (e) {
+              // fallback: try to draw via createImageBitmap
+              try {
+                const blobTemp = new Blob([imgObj.data], { type: "image/png" });
+                // eslint-disable-next-line no-await-in-loop
+                const bitmap = await createImageBitmap(blobTemp);
+                ctx.drawImage(bitmap, 0, 0);
+              } catch (err) {
+                continue;
+              }
+            }
+          } else if (imgObj.src && typeof imgObj.src === 'string') {
+            // some pdfjs builds provide a data URL or src
+            try {
+              // eslint-disable-next-line no-await-in-loop
+              const img = new Image();
+              img.crossOrigin = 'anonymous';
+              await new Promise((res, rej) => {
+                img.onload = () => res(null);
+                img.onerror = rej;
+                img.src = imgObj.src;
+              });
+              ctx.drawImage(img, 0, 0);
+            } catch (e) {
+              // continue to other fallbacks
+            }
+          } else if (imgObj.image) {
+            const candidate = imgObj.image;
+            try {
+              if (candidate instanceof ImageData) {
+                ctx.putImageData(candidate, 0, 0);
+              } else if (candidate instanceof HTMLCanvasElement) {
+                ctx.drawImage(candidate, 0, 0);
+              } else if (candidate instanceof ImageBitmap) {
+                ctx.drawImage(candidate, 0, 0);
+              } else if (candidate instanceof Uint8Array || candidate instanceof Uint8ClampedArray || Array.isArray(candidate)) {
+                const clamped = candidate instanceof Uint8ClampedArray ? candidate : new Uint8ClampedArray(candidate);
+                const imageData = new ImageData(clamped, canvas.width, canvas.height);
+                ctx.putImageData(imageData, 0, 0);
+              } else {
+                // try createImageBitmap on the candidate
+                // eslint-disable-next-line no-await-in-loop
+                const bitmap = await createImageBitmap(candidate);
+                ctx.drawImage(bitmap, 0, 0);
+              }
+            } catch (e) {
+              // fallback
+            }
+          } else if (imgObj.src) {
+            ctx.drawImage(imgObj, 0, 0);
+          } else {
+            continue;
+          }
+
+          // determine y position from transform if available
+          let yPos = 0;
+          if (Array.isArray(transform) && transform.length >= 6) {
+            // transform is [a b c d e f] where e,f are translation
+            yPos = transform[5] || 0;
+          }
+
+          // create blob from canvas (use PNG for lossless)
+          // eslint-disable-next-line no-await-in-loop
+          const blob: Blob | null = await new Promise((resolve) => canvas.toBlob((b) => resolve(b), "image/png"));
+          if (!blob) {
+            // eslint-disable-next-line no-console
+            // canvas.toBlob returned null for page ${pageIndex} op ${i}
+            continue;
+          }
+
+          // debug blob size
+          // eslint-disable-next-line no-console
+          // extracted blob size=${blob.size} bytes for page ${pageIndex} op ${i}
+
+          // dedupe by size + first bytes
+          const keyPrefix = `${canvas.width}x${canvas.height}`;
+          const peek = await blob.slice(0, 128).arrayBuffer();
+          const peekHex = Array.from(new Uint8Array(peek)).slice(0, 32).map((b) => b.toString(16).padStart(2, "0")).join("");
+          const uniqueKey = `${keyPrefix}-${peekHex}`;
+          if (seenImageKeys.has(uniqueKey)) {
+            // eslint-disable-next-line no-console
+            // dedupe skip for key ${uniqueKey}
+            continue;
+          }
+          seenImageKeys.add(uniqueKey);
+
+          imgCounter += 1;
+          const filename = `page-${pageIndex}-img-${imgCounter}.png`;
+          pageImages.push({ filename, blob, y: yPos });
+        } catch (e) {
+          // don't let one image failure break the whole extraction
+          // eslint-disable-next-line no-console
+          console.warn("image extraction failed on page", pageIndex, e);
+          continue;
+        }
+      }
+
+      // debug: report how many images found on this page
+      // eslint-disable-next-line no-console
+      // page ${pageIndex} images found: ${pageImages.length}
+
+      // If image operators were present but we couldn't extract individual XObjects,
+      // fall back to rendering the full page as an image so the visual content is preserved.
+      if (imageOpsFound && pageImages.length === 0) {
+        try {
+          // render page at higher scale for better quality
+          const viewport = page.getViewport({ scale: 2 });
+          const canvas = document.createElement('canvas');
+          canvas.width = Math.round(viewport.width);
+          canvas.height = Math.round(viewport.height);
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            // eslint-disable-next-line no-await-in-loop
+            await page.render({ canvasContext: ctx, viewport }).promise;
+            // eslint-disable-next-line no-await-in-loop
+            const blob = await new Promise((res) => canvas.toBlob((b) => res(b), 'image/png'));
+            if (blob) {
+              const filename = `page-${pageIndex}-full.png`;
+              pageImages.push({ filename, blob, y: 0 });
+              // eslint-disable-next-line no-console
+              // fallback full-page image created for page ${pageIndex}, size=${blob.size}
+            }
+          }
+        } catch (e) {
+          // ignore fallback failures
+          // eslint-disable-next-line no-console
+          console.warn('pdf->md: full-page render fallback failed for page', pageIndex, e);
+        }
+        // report again after fallback
+        // eslint-disable-next-line no-console
+      // page ${pageIndex} images found (after fallback): ${pageImages.length}
+      }
+
+      // merge text and images by y position (approximate). text y is already bucketed
+      const pieces: Array<{ y: number; type: "text" | "image"; content: string }> = [];
+      for (const ln of lineObjs) pieces.push({ y: ln.y, type: "text", content: ln.text });
+      for (const img of pageImages) pieces.push({ y: img.y, type: "image", content: img.filename });
+
+      pieces.sort((a, b) => b.y - a.y);
+
+      const normalizedParts: string[] = [];
+      for (const p of pieces) {
+        if (p.type === "text") {
+          const nm = normalizeMarkdownLine(p.content);
+          if (nm) normalizedParts.push(nm);
+        } else {
+          normalizedParts.push(`![Page ${pageIndex} image](${"images/" + p.content})`);
+        }
+      }
+
+      // append page header if multi-page
       if (pageCount > 1) {
-        pages.push(`## Page ${pageIndex}\n\n${normalizedLines.join("\n\n")}`);
+        pages.push(`## Page ${pageIndex}\n\n${normalizedParts.join("\n\n")}`);
       } else {
-        pages.push(normalizedLines.join("\n\n"));
+        pages.push(normalizedParts.join("\n\n"));
+      }
+
+      // collect page images to top-level list
+      for (const img of pageImages) {
+        collectedImages.push({ filename: img.filename, blob: img.blob });
       }
     }
 
-    return pages.filter(Boolean).join("\n\n");
+    const markdown = pages.filter(Boolean).join("\n\n");
+    // debug: total images
+    // eslint-disable-next-line no-console
+    // total images extracted: ${collectedImages.length}
+    return { markdown, images: collectedImages };
   };
 
   const toolUrl = `${SITE_URL}/tools/${tool?.slug || ''}`;
@@ -1330,13 +1637,14 @@ export function ToolDetail(props?: any) {
     setFiles(prev => {
       const updated = [...prev];
       updated.splice(index, 1);
-      if (updated.length === 0) {
-        setStatus("idle");
-        setPdfPages([]);
-        resetImagePreviewState();
-        setDownloadUrl(null);
-        setMarkdownResult("");
-        setImageBatchItems([]);
+        if (updated.length === 0) {
+          setStatus("idle");
+          setPdfPages([]);
+          resetImagePreviewState();
+          setDownloadUrl(null);
+          setMarkdownResult("");
+          setImageBatchItems([]);
+          setDownloadShortName(null);
       } else if (tool?.slug === "image-converter") {
         if (updated.length === 1) {
           void prepareSingleImagePreview(updated[0]);
@@ -1369,7 +1677,9 @@ export function ToolDetail(props?: any) {
     setStatus("processing");
     setProgress(0);
     setDownloadUrl(null);
+    setDownloadShortName(null);
     setPassword("");
+    setExtractedImageCount(0);
 
     const interval = setInterval(() => {
       setProgress((prev) => {
@@ -1514,11 +1824,32 @@ export function ToolDetail(props?: any) {
         blob = await convertPdfToWordOnServer(files[0]);
         outputName = stripExtension(files[0].name) + ".docx";
       } else if (tool.slug === "pdf-to-markdown") {
-        const markdown = await extractMarkdownFromPdf(files[0], setProgressStage);
+        const result = await extractMarkdownFromPdf(files[0], setProgressStage) as any;
+        const markdown = result.markdown as string;
+        const images: Array<{ filename: string; blob: Blob }> = result.images || [];
         const baseName = stripExtension(files[0].name);
-        blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
-        outputName = `${baseName}.md`;
+        // derive a short download name from the first word of the file name
+        const firstWordRaw = (baseName || "").split(/[^A-Za-z0-9]+/)[0] || baseName;
+        const firstWord = (firstWordRaw || baseName).replace(/[^A-Za-z0-9]/g, "") || baseName;
         setMarkdownResult(markdown);
+
+        if (!images || images.length === 0) {
+          blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
+          outputName = `${firstWord}.md`;
+          setExtractedImageCount(0);
+        } else {
+          // package markdown + images into a zip
+          const zip = new JSZip();
+          zip.file("document.md", markdown);
+          const imgFolder = zip.folder("images");
+          images.forEach((img) => imgFolder?.file(img.filename, img.blob));
+          const zipBlob = await zip.generateAsync({ type: "blob" });
+          blob = zipBlob;
+          outputName = `${firstWord}.zip`;
+          setExtractedImageCount(images.length);
+        }
+        // remember a short display name for the download button
+        setDownloadShortName(firstWord);
       } else if (tool.slug === "word-to-pdf") {
         blob = await convertWordToPdfOnServer(files[0]);
         outputName = stripExtension(files[0].name) + ".pdf";
@@ -2260,6 +2591,7 @@ export function ToolDetail(props?: any) {
                           setImageHeight(null);
                           setStatus('idle');
                           setDownloadUrl(null);
+                          setDownloadShortName(null);
                         }} className="rounded-xl h-12">
                           Reset
                         </Button>
@@ -2636,7 +2968,7 @@ export function ToolDetail(props?: any) {
                           a.click();
                           URL.revokeObjectURL(url);
                         }}>Download DOCX</Button>
-                        <Button variant="outline" onClick={() => { setOcrText(""); setFiles([]); setStatus('idle'); setDownloadUrl(null); }}>Clear</Button>
+                        <Button variant="outline" onClick={() => { setOcrText(""); setFiles([]); setStatus('idle'); setDownloadUrl(null); setDownloadShortName(null); }}>Clear</Button>
                       </div>
                     </div>
                   </div>
@@ -2675,7 +3007,7 @@ export function ToolDetail(props?: any) {
                           </div>
                         ))}
                       </div>
-                      <Button variant="ghost" onClick={() => { setStatus("idle"); setFiles([]); setDownloadUrl(null); setImageBatchItems([]); }} className="mt-6 text-muted-foreground">
+                      <Button variant="ghost" onClick={() => { setStatus("idle"); setFiles([]); setDownloadUrl(null); setImageBatchItems([]); setDownloadShortName(null); }} className="mt-6 text-muted-foreground">
                         Start Over
                       </Button>
                     </div>
@@ -2728,7 +3060,7 @@ export function ToolDetail(props?: any) {
                           Download Compressed File
                         </a>
                       </Button>
-                      <Button variant="ghost" onClick={() => { setStatus("idle"); setFiles([]); setDownloadUrl(null); setDownloadSizeBytes(null); setProcessingTimeMs(null); }} className="mt-4 text-muted-foreground">
+                      <Button variant="ghost" onClick={() => { setStatus("idle"); setFiles([]); setDownloadUrl(null); setDownloadSizeBytes(null); setProcessingTimeMs(null); setDownloadShortName(null); }} className="mt-4 text-muted-foreground">
                         Start Over
                       </Button>
                     </div>
@@ -2746,7 +3078,11 @@ export function ToolDetail(props?: any) {
                         </div>
                       </div>
                       <h3 className="text-2xl font-bold mb-4 text-center">Markdown conversion complete</h3>
-                      <p className="text-center text-muted-foreground mb-6">Your PDF has been converted to Markdown and is ready to download or copy.</p>
+                      <p className="text-center text-muted-foreground mb-6">
+                        {extractedImageCount > 0
+                          ? `Markdown + ${extractedImageCount} image${extractedImageCount === 1 ? "" : "s"} ready. The download contains a document.md and an images/ folder.`
+                          : "Your PDF has been converted to Markdown and is ready to download or copy."}
+                      </p>
 
                       <div className="mb-6 rounded-3xl border border-border/70 bg-card/80 p-4">
                         <textarea
@@ -2757,13 +3093,12 @@ export function ToolDetail(props?: any) {
                       </div>
 
                       <div className="grid gap-3 sm:grid-cols-3">
-                        <Button size="lg" className="w-full rounded-2xl h-14 text-lg shadow-xl shadow-primary/20 hover:-translate-y-1 transition-transform" asChild disabled={!downloadUrl}>
-                          <a href={downloadUrl ?? "#"} download={downloadFileName}>Download Markdown</a>
-                        </Button>
-                        <Button size="lg" className="w-full rounded-2xl h-14 text-lg" onClick={async () => { await navigator.clipboard.writeText(markdownResult || ""); }}>
-                          Copy to Clipboard
-                        </Button>
-                        <Button variant="outline" size="lg" className="w-full rounded-2xl h-14 text-lg" onClick={() => { setStatus("idle"); setFiles([]); setDownloadUrl(null); setMarkdownResult(""); }}>
+                          <Button size="lg" className="w-full rounded-2xl h-14 text-lg shadow-xl shadow-primary/20 hover:-translate-y-1 transition-transform" asChild disabled={!downloadUrl}>
+                            <a href={downloadUrl ?? "#"} download={downloadFileName}>
+                              {extractedImageCount > 0 ? "Download ZIP" : "Download Markdown"}
+                            </a>
+                          </Button>
+                          <Button variant="outline" size="lg" className="w-full rounded-2xl h-14 text-lg" onClick={() => { setStatus("idle"); setFiles([]); setDownloadUrl(null); setMarkdownResult(""); setDownloadShortName(null); }}>
                           Start Over
                         </Button>
                       </div>
@@ -2792,7 +3127,7 @@ export function ToolDetail(props?: any) {
                       </a>
                     </Button>
 
-                    <Button variant="ghost" onClick={() => { setStatus("idle"); setFiles([]); setDownloadUrl(null); }} className="text-muted-foreground">
+                    <Button variant="ghost" onClick={() => { setStatus("idle"); setFiles([]); setDownloadUrl(null); setDownloadShortName(null); }} className="text-muted-foreground">
                       Start Over
                     </Button>
                   </div>
