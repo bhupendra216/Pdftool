@@ -1,49 +1,44 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
   <url>
-    <loc>https://pdfkira.vercel.app/</loc>
+    <loc>https://pdfkira.com/</loc>
   </url>
   <url>
-    <loc>https://pdfkira.vercel.app/tools</loc>
+    <loc>https://pdfkira.com/tools</loc>
   </url>
-  <url><loc>https://pdfkira.vercel.app/merge-pdf</loc></url>
-  <url><loc>https://pdfkira.vercel.app/split-pdf</loc></url>
-  <url><loc>https://pdfkira.vercel.app/compress-pdf</loc></url>
-  <url><loc>https://pdfkira.vercel.app/convert-pdf</loc></url>
-  <url><loc>https://pdfkira.vercel.app/pdf-ocr</loc></url>
-  <url><loc>https://pdfkira.vercel.app/organize-pdf</loc></url>
-  <url><loc>https://pdfkira.vercel.app/tools/merge-pdf</loc></url>
-  <url><loc>https://pdfkira.vercel.app/tools/split-pdf</loc></url>
-  <url><loc>https://pdfkira.vercel.app/tools/compress-pdf</loc></url>
-  <url><loc>https://pdfkira.vercel.app/tools/image-converter</loc></url>
-  <url><loc>https://pdfkira.vercel.app/tools/pdf-to-word</loc></url>
-  <url><loc>https://pdfkira.vercel.app/tools/pdf-to-markdown</loc></url>
-  <url><loc>https://pdfkira.vercel.app/tools/word-to-pdf</loc></url>
-  <url><loc>https://pdfkira.vercel.app/tools/jpg-to-pdf</loc></url>
-  <url><loc>https://pdfkira.vercel.app/tools/pdf-to-jpg</loc></url>
-  <url><loc>https://pdfkira.vercel.app/tools/image-resize</loc></url>
-  <url><loc>https://pdfkira.vercel.app/tools/image-compress</loc></url>
-  <url><loc>https://pdfkira.vercel.app/tools/image-upscale</loc></url>
-  <url><loc>https://pdfkira.vercel.app/tools/rotate-pdf</loc></url>
-  <url><loc>https://pdfkira.vercel.app/tools/organize-pdf</loc></url>
-  <url><loc>https://pdfkira.vercel.app/tools/delete-pages</loc></url>
-  <url><loc>https://pdfkira.vercel.app/tools/extract-pages</loc></url>
-  <url><loc>https://pdfkira.vercel.app/tools/unlock-pdf</loc></url>
-  <url><loc>https://pdfkira.vercel.app/tools/protect-pdf</loc></url>
-  <url><loc>https://pdfkira.vercel.app/tools/watermark-pdf</loc></url>
-  <url><loc>https://pdfkira.vercel.app/tools/add-page-numbers</loc></url>
-  <url><loc>https://pdfkira.vercel.app/tools/ocr-image-to-text</loc></url>
-  <url><loc>https://pdfkira.vercel.app/tools/qr-code-generator</loc></url>
-  <url><loc>https://pdfkira.vercel.app/tools/sign-pdf</loc></url>
-  <url><loc>https://pdfkira.vercel.app/blog</loc></url>
-  <url><loc>https://pdfkira.vercel.app/about</loc></url>
-  <url><loc>https://pdfkira.vercel.app/privacy</loc></url>
-  <url><loc>https://pdfkira.vercel.app/terms</loc></url>
-  <url><loc>https://pdfkira.vercel.app/contact</loc></url>
-  <url><loc>https://pdfkira.vercel.app/ai-jobs</loc></url>
-  <url><loc>https://pdfkira.vercel.app/admin/login</loc></url>
-  <url><loc>https://pdfkira.vercel.app/admin/dashboard</loc></url>
+  <!-- Standalone routes like /merge-pdf, /split-pdf, /compress-pdf, /convert-pdf, /pdf-ocr, /organize-pdf are canonicalized to /tools/:slug and therefore not listed here -->
+  <url><loc>https://pdfkira.com/tools/merge-pdf</loc></url>
+  <url><loc>https://pdfkira.com/tools/split-pdf</loc></url>
+  <url><loc>https://pdfkira.com/tools/compress-pdf</loc></url>
+  <url><loc>https://pdfkira.com/tools/image-converter</loc></url>
+  <url><loc>https://pdfkira.com/tools/pdf-to-word</loc></url>
+  <url><loc>https://pdfkira.com/tools/pdf-to-markdown</loc></url>
+  <url><loc>https://pdfkira.com/tools/word-to-pdf</loc></url>
+  <url><loc>https://pdfkira.com/tools/jpg-to-pdf</loc></url>
+  <url><loc>https://pdfkira.com/tools/pdf-to-jpg</loc></url>
+  <url><loc>https://pdfkira.com/tools/image-resize</loc></url>
+  <url><loc>https://pdfkira.com/tools/image-compress</loc></url>
+  <url><loc>https://pdfkira.com/tools/image-upscale</loc></url>
+  <url><loc>https://pdfkira.com/tools/rotate-pdf</loc></url>
+  <url><loc>https://pdfkira.com/tools/organize-pdf</loc></url>
+  <url><loc>https://pdfkira.com/tools/delete-pages</loc></url>
+  <url><loc>https://pdfkira.com/tools/extract-pages</loc></url>
+  <url><loc>https://pdfkira.com/tools/unlock-pdf</loc></url>
+  <url><loc>https://pdfkira.com/tools/protect-pdf</loc></url>
+  <url><loc>https://pdfkira.com/tools/watermark-pdf</loc></url>
+  <url><loc>https://pdfkira.com/tools/add-page-numbers</loc></url>
+  <url><loc>https://pdfkira.com/tools/ocr-image-to-text</loc></url>
+  <url><loc>https://pdfkira.com/tools/qr-code-generator</loc></url>
+  <url><loc>https://pdfkira.com/tools/sign-pdf</loc></url>
+  <url><loc>https://pdfkira.com/blog</loc></url>
+  <url><loc>https://pdfkira.com/about</loc></url>
+  <url><loc>https://pdfkira.com/privacy</loc></url>
+  <url><loc>https://pdfkira.com/terms</loc></url>
+  <url><loc>https://pdfkira.com/contact</loc></url>
+  <url><loc>https://pdfkira.com/ai-jobs</loc></url>
+  <url><loc>https://pdfkira.com/admin/login</loc></url>
+  <url><loc>https://pdfkira.com/admin/dashboard</loc></url>
     <url>
-    <loc>https://pdfkira.vercel.app/download-pdf</loc>
+    <loc>https://pdfkira.com/download-pdf</loc>
   </url>
 </urlset>

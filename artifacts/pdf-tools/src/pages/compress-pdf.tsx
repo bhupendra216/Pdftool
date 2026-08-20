@@ -9,7 +9,7 @@ export default function CompressPdfPage() {
   useSEOAdvanced({
     title,
     description,
-    canonical: `${SITE_URL}/compress-pdf`,
+    canonical: `${SITE_URL}/tools/compress-pdf`,
     jsonLd: {
       '@context': 'https://schema.org',
       '@type': 'SoftwareApplication',

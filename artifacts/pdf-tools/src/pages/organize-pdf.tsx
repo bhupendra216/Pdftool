@@ -9,7 +9,7 @@ export default function OrganizePdfPage() {
   useSEOAdvanced({
     title,
     description,
-    canonical: `${SITE_URL}/organize-pdf`,
+    canonical: `${SITE_URL}/tools/organize-pdf`,
     jsonLd: {
       '@context': 'https://schema.org',
       '@type': 'SoftwareApplication',

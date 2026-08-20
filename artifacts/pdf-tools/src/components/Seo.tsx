@@ -1,5 +1,6 @@
 import React from 'react';
 import { Helmet } from 'react-helmet-async';
+import { SITE_URL } from '../lib/site-config';
 
 type Props = {
   title: string;
@@ -8,7 +9,7 @@ type Props = {
 };
 
 const Seo: React.FC<Props> = ({ title, description, path }) => {
-  const canonical = `https://pdfkira.vercel.app${path}`;
+  const canonical = `${SITE_URL}${path}`;
 
   return (
     <Helmet>

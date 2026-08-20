@@ -10,7 +10,7 @@ export default function SplitPdfPage() {
   useSEOAdvanced({
     title,
     description,
-    canonical: `${SITE_URL}/split-pdf`,
+    canonical: `${SITE_URL}/tools/split-pdf`,
     jsonLd: {
       '@context': 'https://schema.org',
       '@type': 'SoftwareApplication',

@@ -6,7 +6,7 @@ import { tools } from '../artifacts/api-server/src/lib/content.ts';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const siteUrl = (process.env.VITE_SITE_URL || 'https://pdfkira.vercel.app').replace(/\/+$/, '');
+const siteUrl = (process.env.VITE_SITE_URL || 'https://pdfkira.com').replace(/\/+$/, '');
 const outDir = path.resolve(__dirname, '../artifacts/pdf-tools/public');
 
 const sitemapItems = [

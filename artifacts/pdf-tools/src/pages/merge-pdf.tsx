@@ -10,7 +10,7 @@ export default function MergePdfPage() {
   useSEOAdvanced({
     title,
     description,
-    canonical: `${SITE_URL}/merge-pdf`,
+    canonical: `${SITE_URL}/tools/merge-pdf`,
     jsonLd: {
       '@context': 'https://schema.org',
       '@type': 'SoftwareApplication',

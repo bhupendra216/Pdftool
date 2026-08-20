@@ -9,7 +9,7 @@ export default function PdfOcrPage() {
   useSEOAdvanced({
     title,
     description,
-    canonical: `${SITE_URL}/pdf-ocr`,
+    canonical: `${SITE_URL}/tools/ocr-image-to-text`,
     jsonLd: {
       '@context': 'https://schema.org',
       '@type': 'SoftwareApplication',

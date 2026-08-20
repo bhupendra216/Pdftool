@@ -9,7 +9,7 @@ export default function ConvertPdfPage() {
   useSEOAdvanced({
     title,
     description,
-    canonical: `${SITE_URL}/convert-pdf`,
+    canonical: `${SITE_URL}/tools/pdf-to-jpg`,
     jsonLd: {
       '@context': 'https://schema.org',
       '@type': 'SoftwareApplication',
