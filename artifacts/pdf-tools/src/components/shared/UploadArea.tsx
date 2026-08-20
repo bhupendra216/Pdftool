@@ -105,7 +105,7 @@ export function UploadArea({
 
   return (
     <div
-      className={`relative rounded-[28px] border-2 border-dashed transition-all duration-300 ease-out p-8 md:p-14 flex flex-col items-center justify-center text-center bg-card/90 shadow-sm backdrop-blur-sm
+      className={`relative rounded-[28px] border-2 border-dashed transition-all duration-300 ease-out p-6 md:p-14 flex flex-col items-center justify-center text-center bg-card/90 shadow-sm backdrop-blur-sm
         ${isDragging ? 'border-primary bg-primary/5 shadow-[0_24px_80px_-40px_rgba(59,130,246,0.45)] scale-[1.01]' : 'border-border/80 hover:border-primary/50 hover:bg-secondary/20'}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -120,7 +120,7 @@ export function UploadArea({
         accept={accept}
       />
       
-      <div className={`p-5 rounded-full mb-6 transition-all duration-300 ${isDragging ? 'bg-primary text-primary-foreground scale-110' : 'bg-primary/10 text-primary'}`}>
+      <div className={`p-3 md:p-5 rounded-full mb-6 transition-all duration-300 ${isDragging ? 'bg-primary text-primary-foreground scale-110' : 'bg-primary/10 text-primary'}`}>
         <UploadCloud className="w-10 h-10" />
       </div>
       

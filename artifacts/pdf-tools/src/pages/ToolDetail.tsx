@@ -1944,7 +1944,7 @@ export function ToolDetail(props?: any) {
   return (
     <div className="flex flex-col min-h-screen bg-background">
       {/* Breadcrumb & Header */}
-      <div className="bg-card border-b border-border pt-8 pb-12">
+      <div className="bg-card border-b border-border pt-6 pb-8 md:pt-8 md:pb-12">
         <div className="container mx-auto px-4 md:px-6 max-w-5xl">
           <nav className="flex items-center text-sm font-medium text-muted-foreground mb-8">
             <Link href="/tools" className="hover:text-primary transition-colors">Tools</Link>
@@ -1953,7 +1953,7 @@ export function ToolDetail(props?: any) {
           </nav>
           
           <div className="flex items-center gap-5 mb-4">
-            <div className="p-4 bg-primary text-primary-foreground rounded-2xl shadow-sm">
+            <div className="p-3 md:p-4 bg-primary text-primary-foreground rounded-2xl shadow-sm">
               <Icon name={tool.icon} className="w-8 h-8" />
             </div>
             <div>
@@ -1967,11 +1967,18 @@ export function ToolDetail(props?: any) {
               </h1>
             </div>
           </div>
-          <p className="text-lg md:text-xl text-muted-foreground max-w-3xl ml-[72px]">
-            {pageIntro}
-          </p>
+          {/* pageIntro intentionally moved below the interactive workspace on mobile to prioritize the upload area */}
         </div>
       </div>
+
+      {/* Short SEO / intro moved below the interactive area on mobile so the upload area appears first */}
+      <section className="py-6 lg:py-12">
+        <div className="container mx-auto max-w-5xl px-4 md:px-6">
+          <div className="prose prose-sm max-w-none text-muted-foreground">
+            {pageIntro}
+          </div>
+        </div>
+      </section>
 
       {/* Main Workspace Area */}
       <div className="container mx-auto px-4 md:px-6 py-12 max-w-5xl flex-1">
@@ -1993,7 +2000,7 @@ export function ToolDetail(props?: any) {
                 <SearchFreePdfsPage />
 
                 <div className="mt-8">
-                  <Badge variant="secondary" className="rounded-full border border-border/60 bg-background/80 px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                  <Badge variant="secondary" className="rounded-full border border-border/60 bg-background/80 px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground whitespace-normal max-w-full">
                     Secure processing · Fast · Free · No registration
                   </Badge>
 
@@ -2025,8 +2032,8 @@ export function ToolDetail(props?: any) {
             <div className="relative overflow-hidden rounded-3xl border border-border/70 bg-card/90 p-6 md:p-10 shadow-sm">
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,theme(colors.primary/12),transparent_32%),radial-gradient(circle_at_bottom_left,theme(colors.accent/10),transparent_28%)] opacity-80" />
               <div className="relative grid gap-8 lg:grid-cols-[minmax(0,1.25fr)_360px] lg:items-start">
-                <div className="space-y-8">
-                  <Badge variant="secondary" className="rounded-full border border-border/60 bg-background/80 px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                <div className="space-y-8 order-2 lg:order-1 min-w-0">
+                  <Badge variant="secondary" className="rounded-full border border-border/60 bg-background/80 px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground whitespace-normal max-w-full">
                     Secure processing · Fast · Free · No registration
                   </Badge>
 
@@ -2075,7 +2082,7 @@ export function ToolDetail(props?: any) {
                   </div>
                 </div>
 
-                <div className="space-y-4 rounded-[28px] border border-border/70 bg-background/90 p-5 shadow-sm backdrop-blur-sm">
+                <div className="space-y-4 rounded-[28px] border border-border/70 bg-background/90 p-5 shadow-sm backdrop-blur-sm order-1 lg:order-2 min-w-0">
                   {tool?.slug === 'download-pdf' ? (
                     <DownloadPdfPage />
                   ) : (
