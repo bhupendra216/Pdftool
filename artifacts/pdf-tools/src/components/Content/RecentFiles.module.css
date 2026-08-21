@@ -1,0 +1,105 @@
+.section {
+  width: 100%;
+  padding: 3rem 0;
+}
+
+.container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.container h2 {
+  margin: 0;
+  font-size: clamp(2rem, 2.8vw, 2.5rem);
+  color: #0f172a;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.clearButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.55rem 0.8rem;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  border-radius: 999px;
+  background: transparent;
+  color: #334155;
+  cursor: pointer;
+}
+
+.list {
+  display: grid;
+  gap: 0.8rem;
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 1rem;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 0.9rem;
+  background: #fff;
+}
+
+.nameWrap {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+  min-width: 0;
+}
+
+.fileIcon {
+  color: #2563eb;
+}
+
+.name {
+  font-weight: 700;
+  color: #0f172a;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.meta {
+  color: #64748b;
+  font-size: 0.8rem;
+}
+
+.downloadButton {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 0;
+  border-radius: 0.75rem;
+  background: rgba(37, 99, 235, 0.08);
+  color: #1d4ed8;
+  cursor: pointer;
+}
+
+.empty {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px dashed rgba(148, 163, 184, 0.4);
+  border-radius: 0.8rem;
+  color: #64748b;
+  background: rgba(248, 250, 252, 0.8);
+}
+
+@media (max-width: 576px) {
+  .header {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

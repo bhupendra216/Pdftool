@@ -1,12 +1,39 @@
 {
   "version": 2,
-  "routes": [
-    { "src": "^/assets/(.*)$", "dest": "/artifacts/pdf-tools/dist/public/assets/$1" },
-    { "src": "^/(favicon\.svg|favicon\.ico|manifest\.webmanifest|robots\.txt|sitemap\.xml|404\.html)$", "dest": "/artifacts/pdf-tools/dist/public/$1" },
-    { "src": "^/tools$", "dest": "/artifacts/pdf-tools/dist/public/tools/index.html" },
-    { "src": "^/tools/(.*)$", "dest": "/artifacts/pdf-tools/dist/public/tools/$1/index.html" },
-    { "src": "^/(merge|split|compress|image-converter|pdf-to-word|pdf-to-markdown|word-to-pdf|jpg-to-pdf|pdf-to-jpg|image-resize|image-compress|image-upscale|rotate-pdf|organize-pdf|delete-pages|extract-pages|unlock-pdf|protect-pdf|watermark-pdf|add-page-numbers|ocr-image-to-text|qr-code-generator)(?:/)?$", "dest": "/artifacts/pdf-tools/dist/public/$1/index.html" },
-    { "src": "^/api/(.*)$", "dest": "/api/[[...path]].js" },
-    { "src": "(.*)", "dest": "/artifacts/pdf-tools/dist/public/index.html" }
+  "rewrites": [
+    {
+      "source": "/sitemap.xml",
+      "destination": "/sitemap.xml"
+    },
+    {
+      "source": "/robots.txt",
+      "destination": "/robots.txt"
+    },
+    {
+      "source": "/((?!api|_next|static|favicon.ico|sitemap.xml|robots.txt|og-images).*)",
+      "destination": "/index.html"
+    }
+  ],
+  "headers": [
+    {
+      "source": "/sitemap.xml",
+      "headers": [
+        { "key": "Content-Type", "value": "application/xml" },
+        { "key": "Cache-Control", "value": "public, max-age=3600, stale-while-revalidate=86400" }
+      ]
+    },
+    {
+      "source": "/robots.txt",
+      "headers": [
+        { "key": "Content-Type", "value": "text/plain" },
+        { "key": "Cache-Control", "value": "public, max-age=86400" }
+      ]
+    },
+    {
+      "source": "/og-images/(.*)",
+      "headers": [
+        { "key": "Cache-Control", "value": "public, max-age=31536000, immutable" }
+      ]
+    }
   ]
 }

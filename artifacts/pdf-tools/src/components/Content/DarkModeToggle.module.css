@@ -1,0 +1,22 @@
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.5rem;
+  height: 2.5rem;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.08);
+  color: #0f172a;
+  cursor: pointer;
+  transition: transform 0.2s ease, background 0.2s ease;
+}
+
+.toggle:hover {
+  transform: rotate(12deg);
+}
+
+:global(html[data-theme='dark']) .toggle {
+  background: rgba(148, 163, 184, 0.18);
+  color: #f8fafc;
+}

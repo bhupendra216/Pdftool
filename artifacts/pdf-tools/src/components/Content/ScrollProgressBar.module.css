@@ -1,0 +1,9 @@
+.bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  height: 3px;
+  background: linear-gradient(90deg, #2563eb, #0ea5e9);
+  z-index: 9999;
+  transition: width 0.12s ease-out;
+}

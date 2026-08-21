@@ -1,0 +1,47 @@
+.seofallback {
+  margin: 2rem auto 0;
+  max-width: 1100px;
+  padding: 1.5rem;
+  border: 1px solid rgba(148, 163, 184, 0.25);
+  background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(248,250,252,0.9));
+  border-radius: 1rem;
+  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.05);
+}
+
+.wrapper {
+  display: grid;
+  gap: 1rem;
+}
+
+.seofallback h2,
+.seofallback h3 {
+  margin: 0;
+  color: #0f172a;
+}
+
+.seofallback p,
+.seofallback li,
+.seofallback dt,
+.seofallback dd {
+  color: #334155;
+  line-height: 1.75;
+}
+
+.seofallback ol {
+  margin-left: 1.25rem;
+}
+
+.faqItem {
+  margin-top: 0.75rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+.faqItem dt {
+  font-weight: 700;
+}
+
+.faqItem dd {
+  margin-left: 0;
+  margin-top: 0.35rem;
+}
