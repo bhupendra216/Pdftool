@@ -1,7 +1,6 @@
 import { Link } from "wouter";
 import type { BlogPost } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { format } from "date-fns";
 import { BookOpen, Sparkles, ShieldCheck, Megaphone, Newspaper } from "lucide-react";
 
 const categoryStyles: Record<
@@ -77,11 +76,6 @@ export function BlogCard({ post }: { post: BlogPost }) {
           </div>
         </div>
         <CardContent className="p-6 flex flex-col h-full">
-          <div className="mb-4">
-            <span className="text-xs uppercase tracking-[0.18em] text-muted-foreground">
-              {format(new Date(post.publishedAt), "MMM d, yyyy")}
-            </span>
-          </div>
           <h3 className="font-bold text-xl md:text-2xl mb-3 text-foreground group-hover:text-primary transition-colors line-clamp-2">
             {post.title}
           </h3>

@@ -93,7 +93,7 @@ router.get('/search-pdfs', async (req, res) => {
 
         const url = `https://archive.org/advancedsearch.php?${iaParams.toString()}`;
         const resp = await fetchWithRetries(url, { method: 'GET' }, 3, 8000);
-        const body = await resp.json();
+        const body = (await resp.json()) as any;
         const response = body.response || {};
         const docs = Array.isArray(response.docs) ? response.docs : [];
 
@@ -176,7 +176,7 @@ router.get('/search-pdfs', async (req, res) => {
         const gutUrl = `https://gutendex.com/books?search=${encodeURIComponent(q)}`;
         // Give Gutendex a bit more time; avoid very short timeouts causing spurious failures
         const gResp = await fetchWithRetries(gutUrl, { method: 'GET' }, 3, 12000);
-        const gBody = await gResp.json();
+        const gBody = (await gResp.json()) as any;
         const items = Array.isArray(gBody.results) ? gBody.results : [];
         
         const results: any[] = [];

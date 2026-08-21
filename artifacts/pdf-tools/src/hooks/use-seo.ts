@@ -58,11 +58,13 @@ export function useSEOAdvanced({
   description,
   canonical,
   jsonLd,
+  robots,
 }: {
   title: string;
   description?: string;
   canonical?: string;
   jsonLd?: Record<string, unknown> | Array<Record<string, unknown>> | string;
+  robots?: string;
 }) {
   useSEO({ title, description });
 
@@ -81,6 +83,16 @@ export function useSEOAdvanced({
     updateMeta('meta[property="og:url"]', resolvedCanonical);
     updateMeta('meta[name="twitter:url"]', resolvedCanonical);
 
+    if (robots) {
+      let robotsMeta = document.querySelector('meta[name="robots"]') as HTMLMetaElement | null;
+      if (!robotsMeta) {
+        robotsMeta = document.createElement('meta');
+        robotsMeta.setAttribute('name', 'robots');
+        document.head.appendChild(robotsMeta);
+      }
+      robotsMeta.setAttribute('content', robots);
+    }
+
     if (jsonLd) {
       const id = 'structured-data-jsonld';
       let script = document.getElementById(id) as HTMLScriptElement | null;
@@ -92,5 +104,5 @@ export function useSEOAdvanced({
       }
       script.textContent = typeof jsonLd === 'string' ? jsonLd : JSON.stringify(jsonLd);
     }
-  }, [canonical, jsonLd, title, description]);
+  }, [canonical, jsonLd, title, description, robots]);
 }

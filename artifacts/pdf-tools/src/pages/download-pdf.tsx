@@ -18,6 +18,7 @@ export default function DownloadPdfPage() {
     title,
     description,
     canonical: `${SITE_URL}/download-pdf`,
+    robots: 'noindex, nofollow',
     jsonLd: {
       '@context': 'https://schema.org',
       '@type': 'SoftwareApplication',

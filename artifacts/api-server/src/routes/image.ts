@@ -54,12 +54,12 @@ function extForFormat(format: string) {
 
 const traceSvg = (buffer: Buffer) => {
   return new Promise<string>((resolve, reject) => {
-    potrace.trace(buffer, { threshold: 128 }, (err, svg) => {
+    (potrace as any).trace(buffer, { threshold: 128 }, (err: Error | null, svg?: string) => {
       if (err) {
         reject(err);
         return;
       }
-      resolve(svg);
+      resolve(svg ?? "");
     });
   });
 };
@@ -114,7 +114,7 @@ router.post("/convert-image", upload.array("files"), async (req, res) => {
     } else if (resolvedFormat === "jpg" || resolvedFormat === "jpeg") {
       transformed = image.jpeg({ quality: 90 });
     } else if (resolvedFormat === "bmp") {
-      transformed = image.bmp();
+      transformed = (image as any).bmp();
     } else if (resolvedFormat === "tiff") {
       transformed = image.tiff();
     } else if (resolvedFormat === "gif") {

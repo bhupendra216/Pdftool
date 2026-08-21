@@ -30,7 +30,7 @@ export function Contact() {
               </div>
               <div>
                 <p className="text-sm font-medium uppercase tracking-[0.18em] text-muted-foreground">Email</p>
-                <p className="mt-1 text-lg font-semibold text-foreground">pdfkiraa@gmail.com</p>
+                <p className="mt-1 text-lg font-semibold text-foreground">contact@pdfkira.com</p>
               </div>
             </div>
 
@@ -40,7 +40,7 @@ export function Contact() {
               </div>
               <div>
                 <p className="text-sm font-medium uppercase tracking-[0.18em] text-muted-foreground">Support</p>
-                <p className="mt-1 text-lg font-semibold text-foreground">pdfkiraa@gmail.com</p>
+                <p className="mt-1 text-lg font-semibold text-foreground">support@pdfkira.com</p>
               </div>
             </div>
 
@@ -65,10 +65,10 @@ export function Contact() {
             <div className="mt-8 rounded-2xl bg-secondary/40 p-5">
               <p className="text-sm font-medium text-foreground">Quick contact</p>
               <p className="mt-2 text-sm text-muted-foreground">
-                Email: <a className="text-primary hover:underline" href="mailto:pdfkiraa@gmail.com">pdfkiraa@gmail.com</a>
+                Email: <a className="text-primary hover:underline" href="mailto:contact@pdfkira.com">contact@pdfkira.com</a>
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                Support: <a className="text-primary hover:underline" href="mailto:pdfkiraa@gmail.com">pdfkiraa@gmail.com</a>
+                Support: <a className="text-primary hover:underline" href="mailto:support@pdfkira.com">support@pdfkira.com</a>
               </p>
             </div>
           </div>

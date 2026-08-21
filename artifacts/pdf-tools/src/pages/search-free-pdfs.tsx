@@ -28,6 +28,7 @@ export default function SearchFreePdfsPage() {
     title: 'Search Free PDFs — PDFKira',
     description: 'Discover public-domain and openly-licensed PDFs from the Internet Archive.',
     canonical: `${SITE_URL}/search-free-pdfs`,
+    robots: 'noindex, nofollow',
   });
 
   const fetchResults = useCallback(async (search: string, pageNum = 1, append = false) => {

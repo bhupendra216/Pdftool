@@ -227,12 +227,40 @@ const getUploadConfig = (slug?: string): UploadConfig => {
   }
 };
 
+function resolveToolSlug(rawSlug: string | undefined, catalogTools?: Array<{ slug: string; name: string }>) {
+  const input = (rawSlug || '').trim().toLowerCase();
+  if (!input) return undefined;
+
+  if (!catalogTools || catalogTools.length === 0) {
+    return input;
+  }
+
+  const exact = catalogTools.find((tool) => tool.slug.toLowerCase() === input);
+  if (exact) return exact.slug;
+
+  const baseInput = input.replace(/-pdf$/, '');
+  const aliasMatch = catalogTools.find((tool) => tool.slug.toLowerCase() === `${baseInput}-pdf` || tool.slug.toLowerCase() === `${input}-pdf`);
+  if (aliasMatch) return aliasMatch.slug;
+
+  const nameMatch = catalogTools.find((tool) => {
+    const nameSlug = tool.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+    return nameSlug === input || nameSlug === baseInput;
+  });
+
+  if (nameMatch) return nameMatch.slug;
+
+  return input;
+}
+
 export function ToolDetail(props?: any) {
   const params = useParams<{ slug: string }>();
   const forcedSlug = props?.forcedSlug;
-  const slug = forcedSlug ?? params.slug ?? props?.params?.slug;
-  const { data: tool, isLoading, isError } = useGetTool(slug);
-  const { data: catalogTools } = useListTools();
+  const rawSlug = forcedSlug ?? params.slug ?? props?.params?.slug;
+  const { data: catalogTools = [] } = useListTools();
+  const slug = resolveToolSlug(rawSlug, catalogTools);
+  const { data: tool, isLoading, isError } = useGetTool(slug ?? "", {
+    query: { enabled: !!slug, queryKey: ["getTool", slug ?? ""] },
+  });
   const { data: siteFaqs } = useListFaqs();
   const { data: blogPost } = useGetBlogPost(tool?.blogSlug || "", {
     query: { enabled: !!tool?.blogSlug, queryKey: ["getBlogPost", tool?.blogSlug] } as any,
@@ -1003,7 +1031,6 @@ export function ToolDetail(props?: any) {
       const pageImages: Array<{ filename: string; blob: Blob; y: number }> = [];
       let imgCounter = 0;
       const seenImageKeys = new Set<string>();
-
       // debug: report operator list sizes
       // eslint-disable-next-line no-console
       // debug: operator list length (removed verbose logging)
@@ -1033,24 +1060,30 @@ export function ToolDetail(props?: any) {
             imgObj = null;
           }
           if (!imgObj && page.objs && Object.prototype.hasOwnProperty.call(page.objs, name)) {
-            imgObj = page.objs[name];
+            imgObj = (page.objs as Record<string, any>)[name];
             // found imgObj via page.objs[name] for ${name}
           }
-          if (!imgObj && page.objs && page.objs._objs && page.objs._objs[name]) {
-            imgObj = page.objs._objs[name];
-            // found imgObj via page.objs._objs for ${name}
+          if (!imgObj && page.objs && (page.objs as any)._objs) {
+            const objs = (page.objs as any)._objs as Record<string, any>;
+            if (objs && objs[name]) {
+              imgObj = objs[name];
+              // found imgObj via page.objs._objs for ${name}
+            }
           }
-          if (!imgObj && page.commonObjs && typeof page.commonObjs.get === 'function') {
+          if (!imgObj && page.commonObjs && typeof (page.commonObjs as any).get === 'function') {
             try {
-              imgObj = page.commonObjs.get(name);
+              imgObj = (page.commonObjs as any).get(name);
               // found imgObj via page.commonObjs.get for ${name}
             } catch (e) {
               imgObj = null;
             }
           }
-          if (!imgObj && page.commonObjs && Object.prototype.hasOwnProperty.call(page.commonObjs, name)) {
-            imgObj = page.commonObjs[name];
-            // found imgObj via page.commonObjs[name] for ${name}
+          if (!imgObj && page.commonObjs) {
+            const commonObjs = page.commonObjs as Record<string, any>;
+            if (Object.prototype.hasOwnProperty.call(commonObjs, name)) {
+              imgObj = commonObjs[name];
+              // found imgObj via page.commonObjs[name] for ${name}
+            }
           }
         } else if (fn === OPS.paintInlineImageXObject) {
           // inline image data may be in args[0]
@@ -1129,8 +1162,10 @@ export function ToolDetail(props?: any) {
                 ctx.putImageData(imgObj.data, 0, 0);
               } else {
                 // try create ImageData from raw buffer
-                const clamped = imgObj.data instanceof Uint8ClampedArray ? imgObj.data : new Uint8ClampedArray(imgObj.data);
-                const imageData = new ImageData(clamped, canvas.width, canvas.height);
+                const sourceData = imgObj.data instanceof Uint8ClampedArray ? imgObj.data : new Uint8ClampedArray(Array.from(imgObj.data as ArrayLike<number>));
+                const materialized = new Uint8ClampedArray(sourceData.length);
+                materialized.set(sourceData);
+                const imageData = new ImageData(materialized, canvas.width, canvas.height);
                 ctx.putImageData(imageData, 0, 0);
               }
             } catch (e) {
@@ -1169,8 +1204,10 @@ export function ToolDetail(props?: any) {
               } else if (candidate instanceof ImageBitmap) {
                 ctx.drawImage(candidate, 0, 0);
               } else if (candidate instanceof Uint8Array || candidate instanceof Uint8ClampedArray || Array.isArray(candidate)) {
-                const clamped = candidate instanceof Uint8ClampedArray ? candidate : new Uint8ClampedArray(candidate);
-                const imageData = new ImageData(clamped, canvas.width, canvas.height);
+                const clamped = candidate instanceof Uint8ClampedArray ? candidate : new Uint8ClampedArray(Array.from(candidate as ArrayLike<number>));
+                const materialized = new Uint8ClampedArray(clamped.length);
+                materialized.set(clamped);
+                const imageData = new ImageData(materialized, canvas.width, canvas.height);
                 ctx.putImageData(imageData, 0, 0);
               } else {
                 // try createImageBitmap on the candidate
@@ -1246,9 +1283,9 @@ export function ToolDetail(props?: any) {
           const ctx = canvas.getContext('2d');
           if (ctx) {
             // eslint-disable-next-line no-await-in-loop
-            await page.render({ canvasContext: ctx, viewport }).promise;
+            await (page.render({ canvasContext: ctx, viewport } as any).promise as Promise<void>);
             // eslint-disable-next-line no-await-in-loop
-            const blob = await new Promise((res) => canvas.toBlob((b) => res(b), 'image/png'));
+            const blob = await new Promise<Blob | null>((res) => canvas.toBlob((b) => res(b), 'image/png'));
             if (blob) {
               const filename = `page-${pageIndex}-full.png`;
               pageImages.push({ filename, blob, y: 0 });

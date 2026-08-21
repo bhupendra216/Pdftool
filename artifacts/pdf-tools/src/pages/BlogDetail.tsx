@@ -1,13 +1,12 @@
 import { useParams, Link } from "wouter";
 import { useGetBlogPost, useGetTool } from "@workspace/api-client-react";
 import { useSEO } from "@/hooks/use-seo";
-import { format } from "date-fns";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, ArrowRight, Clock, Calendar } from "lucide-react";
+import { ArrowLeft, ArrowRight, Clock } from "lucide-react";
 import { BrandMark } from "@/components/brand/BrandMark";
 
 export function BlogDetail() {
@@ -63,10 +62,6 @@ export function BlogDetail() {
             <Badge variant="secondary" className="bg-secondary text-secondary-foreground">
               {post.category}
             </Badge>
-            <span className="flex items-center text-sm text-muted-foreground">
-              <Calendar className="w-4 h-4 mr-1.5 opacity-70" />
-              {format(new Date(post.publishedAt), "MMMM d, yyyy")}
-            </span>
             <span className="flex items-center text-sm text-muted-foreground">
               <Clock className="w-4 h-4 mr-1.5 opacity-70" />
               {post.readingMinutes} min read
