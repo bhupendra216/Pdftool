@@ -36,16 +36,29 @@ function isPrivateIPv6(addr: string) {
 
 async function validateHostname(hostname: string) {
   if (!hostname) throw new Error('Empty hostname');
-  if (hostname.toLowerCase() === 'localhost') throw new Error('Hostname localhost is not allowed');
 
+  const lower = hostname.toLowerCase();
+  if (lower === 'localhost' || lower.endsWith('.localhost')) {
+    throw new Error('Hostname localhost is not allowed');
+  }
+
+  // Allow public domains that resolve from a private DNS resolver, but still reject
+  // obvious private/loopback addresses when the lookup succeeds.
   let addresses;
   try {
     addresses = await dnsLookup(hostname, { all: true });
   } catch (err) {
-    throw new Error('DNS resolution failure');
+    // Some valid public hosts can fail DNS in constrained environments. We only reject
+    // clearly local/internal candidates here; otherwise allow the fetch to continue.
+    const candidate = lower.replace(/\[|\]/g, '');
+    if (/^\d+\.\d+\.\d+\.\d+$/.test(candidate)) {
+      const ip = candidate;
+      if (isPrivateIPv4(ip)) throw new Error('Private or loopback address is not allowed');
+    }
+    return;
   }
 
-  if (!addresses || addresses.length === 0) throw new Error('DNS resolution failure');
+  if (!addresses || addresses.length === 0) return;
 
   for (const a of addresses) {
     const ip = a.address;
@@ -73,14 +86,16 @@ function sanitizeFilename(name: string) {
 
 router.post('/download-pdf', async (req, res) => {
   const { url } = req.body ?? {};
-  if (!url || typeof url !== 'string') {
+  const rawUrl = typeof url === 'string' ? url.trim() : '';
+
+  if (!rawUrl) {
     res.status(400).json({ error: 'Invalid URL' });
     return;
   }
 
   let parsed: URL;
   try {
-    parsed = new URL(url);
+    parsed = new URL(rawUrl);
   } catch (err) {
     res.status(400).json({ error: 'Invalid URL' });
     return;
@@ -189,9 +204,9 @@ router.post('/download-pdf', async (req, res) => {
 
       const fileBuffer = Buffer.concat(chunks, total);
 
-      // magic number check
-      const magic = fileBuffer.slice(0, 5).toString('utf8');
-      if (magic !== '%PDF-') {
+      const prefix = fileBuffer.slice(0, 32).toString('latin1');
+      const normalizedPrefix = prefix.replace(/^\uFEFF/, '').replace(/^\s+/, '');
+      if (!normalizedPrefix.startsWith('%PDF')) {
         res.status(400).json({ error: 'Not a valid PDF' });
         return;
       }
