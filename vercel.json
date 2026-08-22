@@ -10,7 +10,7 @@
       "destination": "/robots.txt"
     },
     {
-      "source": "/((?!api|_next|static|favicon.ico|sitemap.xml|robots.txt|og-images).*)",
+      "source": "/((?!api|_next|static|assets|favicon.ico|manifest.json|sitemap.xml|robots.txt|og-images).*)",
       "destination": "/index.html"
     }
   ],
