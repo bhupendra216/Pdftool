@@ -7,9 +7,10 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const siteUrl = (process.env.VITE_SITE_URL || 'https://pdfkira.com').replace(/\/+$/, '');
+// Prefer the built `dist/public` (hashed assets) first, then the legacy `public`.
 const outDirs = [
-  path.resolve(__dirname, '../artifacts/pdf-tools/public'),
   path.resolve(__dirname, '../artifacts/pdf-tools/dist/public'),
+  path.resolve(__dirname, '../artifacts/pdf-tools/public'),
 ].filter((dir, index, list) => list.indexOf(dir) === index);
 
 const escapeHtml = (value: string) =>
@@ -257,12 +258,17 @@ function renderToolsIndexHtml(assets: { jsPath: string; cssPath: string }) {
 }
 
 function writeStaticFiles() {
+  // Prefer extracting asset paths from the built `dist/public` (first outDir).
+  const preferredOut = outDirs[0];
+  const preferredAssets = getAssetPaths(preferredOut);
+
   for (const outDir of outDirs) {
     ensureDir(outDir);
     ensureDir(path.join(outDir, 'tools'));
 
-    // Get asset paths from built index.html
-    const assets = getAssetPaths(outDir);
+    // Use the preferred assets (hashed) for all generated pages so we don't
+    // accidentally write fallback /assets/index.js/css into any output dir.
+    const assets = preferredAssets;
 
     // Write robots.txt
     fs.writeFileSync(
