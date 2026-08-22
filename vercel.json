@@ -1,16 +1,16 @@
 {
   "version": 2,
   "routes": [
-    { "src": "^/assets/(.*)$", "dest": "/artifacts/pdf-tools/dist/public/assets/$1" },
-    { "src": "^/static/(.*)$", "dest": "/artifacts/pdf-tools/dist/public/static/$1" },
-    { "src": "^/og-images/(.*)$", "dest": "/artifacts/pdf-tools/dist/public/og-images/$1" },
-    { "src": "^/(favicon\\.png|favicon\\.ico|favicon\\.svg|manifest\\.json)$", "dest": "/artifacts/pdf-tools/dist/public/$1" },
-    { "src": "^/sitemap\\.xml$", "dest": "/artifacts/pdf-tools/dist/public/sitemap.xml" },
-    { "src": "^/robots\\.txt$", "dest": "/artifacts/pdf-tools/dist/public/robots.txt" },
-    { "src": "^/tools$", "dest": "/artifacts/pdf-tools/dist/public/tools/index.html" },
-    { "src": "^/tools/(.*)$", "dest": "/artifacts/pdf-tools/dist/public/tools/$1/index.html" },
+    { "src": "^/assets/(.*)$", "dest": "/assets/$1" },
+    { "src": "^/static/(.*)$", "dest": "/static/$1" },
+    { "src": "^/og-images/(.*)$", "dest": "/og-images/$1" },
+    { "src": "^/(favicon\\.png|favicon\\.ico|favicon\\.svg|manifest\\.json)$", "dest": "/$1" },
+    { "src": "^/sitemap\\.xml$", "dest": "/sitemap.xml" },
+    { "src": "^/robots\\.txt$", "dest": "/robots.txt" },
+    { "src": "^/tools/(.*)$", "dest": "/index.html" },
+    { "src": "^/tools$", "dest": "/index.html" },
     { "src": "^/api/(.*)$", "dest": "/api/[[...path]].js" },
-    { "src": "^(?!/api|/assets|/static|/og-images|/favicon\\.(png|ico|svg)|/manifest\\.json|/sitemap\\.xml|/robots\\.txt).*$", "dest": "/artifacts/pdf-tools/dist/public/index.html" }
+    { "src": "^(?!/api|/assets|/static|/og-images|/favicon\\.(png|ico|svg)|/manifest\\.json|/sitemap\\.xml|/robots\\.txt).*$", "dest": "/index.html" }
   ],
   "headers": [
     {
