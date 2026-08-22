@@ -14,17 +14,156 @@ const outDirs = [
 
 const escapeHtml = (value: string) =>
   value
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
+    .replace(/&amp;/g, '&amp;amp;')
+    .replace(/&lt;/g, '&amp;lt;')
+    .replace(/&gt;/g, '&amp;gt;')
+    .replace(/"/g, '&amp;quot;')
+    .replace(/'/g, '&amp;#39;');
 
 function ensureDir(dir: string) {
   fs.mkdirSync(dir, { recursive: true });
 }
 
-function renderToolsIndexHtml() {
+// Read asset paths from the built index.html
+function getAssetPaths(outDir: string): { jsPath: string; cssPath: string } {
+  const indexPath = path.join(outDir, 'index.html');
+  
+  if (!fs.existsSync(indexPath)) {
+    console.warn(`index.html not found at ${indexPath}, using fallback asset paths`);
+    return { jsPath: '/assets/index.js', cssPath: '/assets/index.css' };
+  }
+  
+  const indexContent = fs.readFileSync(indexPath, 'utf-8');
+  
+  // Extract JS path
+  const jsMatch = indexContent.match(/src="(\/assets\/[^"]+\.js)"/);
+  const jsPath = jsMatch ? jsMatch[1] : '/assets/index.js';
+  
+  // Extract CSS path
+  const cssMatch = indexContent.match(/href="(\/assets\/[^"]+\.css)"/);
+  const cssPath = cssMatch ? cssMatch[1] : '/assets/index.css';
+  
+  console.log(`Found assets: JS=${jsPath}, CSS=${cssPath}`);
+  return { jsPath, cssPath };
+}
+
+function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath: string }) {
+  const steps = tool.steps
+    .map((step) => `<li>${escapeHtml(step)}</li>`)
+    .join('');
+
+  const faqs = tool.faqs
+    .map(
+      (item) => `
+        <li>
+          <h3>${escapeHtml(item.question)}</h3>
+          <p>${escapeHtml(item.answer)}</p>
+        </li>`,
+    )
+    .join('');
+
+  const toolUrl = `${siteUrl}/tools/${tool.slug}`;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <title>${escapeHtml(tool.seoTitle)}</title>
+    <meta name="description" content="${escapeHtml(tool.seoDescription)}" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="${toolUrl}" />
+    <meta property="og:title" content="${escapeHtml(tool.seoTitle)}" />
+    <meta property="og:description" content="${escapeHtml(tool.seoDescription)}" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="${toolUrl}" />
+    <meta property="og:image" content="${siteUrl}/favicon.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${escapeHtml(tool.seoTitle)}" />
+    <meta name="twitter:description" content="${escapeHtml(tool.seoDescription)}" />
+    
+    <!-- React SPA CSS -->
+    <link rel="stylesheet" href="${assets.cssPath}" />
+    
+    <script type="application/ld+json">
+      ${JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'SoftwareApplication',
+        name: tool.name,
+        description: tool.seoDescription,
+        operatingSystem: 'Web',
+        applicationCategory: 'Utility',
+        url: toolUrl,
+        offers: {
+          '@type': 'Offer',
+          price: 0,
+          priceCurrency: 'USD',
+        },
+      })}
+    </script>
+  </head>
+  <body>
+    <!-- SEO Fallback Content (visible to bots, hidden after React hydration) -->
+    <div id="seo-fallback" style="display: none;">
+      <main>
+        <header>
+          <p>PDFKira</p>
+          <h1>${escapeHtml(tool.name)}</h1>
+          <p>${escapeHtml(tool.shortDescription)}</p>
+        </header>
+
+        <section>
+          <h2>How it works</h2>
+          <ol>${steps}</ol>
+        </section>
+
+        <section>
+          <h2>Frequently asked questions</h2>
+          <ul>${faqs}</ul>
+        </section>
+
+        <p><a href="/tools">Browse all PDF tools</a></p>
+      </main>
+    </div>
+    
+    <!-- React Mount Point -->
+    <div id="root"></div>
+    
+    <!-- React SPA Bundle -->
+    <script type="module" src="${assets.jsPath}"></script>
+    
+    <!-- Hide SEO fallback after React hydration -->
+    <script>
+      (function() {
+        // If React hydrates successfully, it will render into #root
+        // This script ensures SEO fallback is hidden once React takes over
+        var checkInterval = setInterval(function() {
+          var root = document.getElementById('root');
+          if (root && root.childNodes.length > 0) {
+            var fallback = document.getElementById('seo-fallback');
+            if (fallback) fallback.style.display = 'none';
+            clearInterval(checkInterval);
+          }
+        }, 100);
+        
+        // Fallback: hide after 5 seconds regardless
+        setTimeout(function() {
+          var fallback = document.getElementById('seo-fallback');
+          if (fallback) fallback.style.display = 'none';
+          clearInterval(checkInterval);
+        }, 5000);
+      })();
+    </script>
+    
+    <!-- No-JS fallback: show SEO content if JavaScript is disabled -->
+    <noscript>
+      <style>#seo-fallback { display: block !important; }</style>
+    </noscript>
+  </body>
+</html>`;
+}
+
+function renderToolsIndexHtml(assets: { jsPath: string; cssPath: string }) {
   const cards = tools
     .map(
       (tool) => `
@@ -52,8 +191,10 @@ function renderToolsIndexHtml() {
     <meta property="og:url" content="${siteUrl}/tools" />
     <meta property="og:image" content="${siteUrl}/favicon.png" />
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="PDF Tools | PDFKira" />
-    <meta name="twitter:description" content="Free online PDF tools from PDFKira: merge, split, compress, convert, organize, and edit PDFs in your browser." />
+    
+    <!-- React SPA CSS -->
+    <link rel="stylesheet" href="${assets.cssPath}" />
+    
     <script type="application/ld+json">
       ${JSON.stringify({
         '@context': 'https://schema.org',
@@ -74,86 +215,43 @@ function renderToolsIndexHtml() {
     </script>
   </head>
   <body>
-    <main>
-      <h1>PDFKira Tools</h1>
-      <p>Free online PDF tools for merging, splitting, compressing, converting, organizing, and editing PDF files.</p>
-      <ul>${cards}</ul>
-    </main>
-  </body>
-</html>`;
-}
-
-function renderToolPageHtml(tool: ToolRecord) {
-  const steps = tool.steps
-    .map((step) => `<li>${escapeHtml(step)}</li>`)
-    .join('');
-
-  const faqs = tool.faqs
-    .map(
-      (item) => `
-        <li>
-          <h3>${escapeHtml(item.question)}</h3>
-          <p>${escapeHtml(item.answer)}</p>
-        </li>`,
-    )
-    .join('');
-
-  const toolUrl = `${siteUrl}/tools/${tool.slug}`;
-
-  return `<!DOCTYPE html>
-<html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>${escapeHtml(tool.seoTitle)}</title>
-    <meta name="description" content="${escapeHtml(tool.seoDescription)}" />
-    <meta name="robots" content="index, follow" />
-    <link rel="canonical" href="${toolUrl}" />
-    <meta property="og:title" content="${escapeHtml(tool.seoTitle)}" />
-    <meta property="og:description" content="${escapeHtml(tool.seoDescription)}" />
-    <meta property="og:type" content="website" />
-    <meta property="og:url" content="${toolUrl}" />
-    <meta property="og:image" content="${siteUrl}/favicon.png" />
-    <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="${escapeHtml(tool.seoTitle)}" />
-    <meta name="twitter:description" content="${escapeHtml(tool.seoDescription)}" />
-    <script type="application/ld+json">
-      ${JSON.stringify({
-        '@context': 'https://schema.org',
-        '@type': 'SoftwareApplication',
-        name: tool.name,
-        description: tool.seoDescription,
-        operatingSystem: 'Web',
-        applicationCategory: 'Utility',
-        url: toolUrl,
-        offers: {
-          '@type': 'Offer',
-          price: 0,
-          priceCurrency: 'USD',
-        },
-      })}
+    <!-- SEO Fallback -->
+    <div id="seo-fallback" style="display: none;">
+      <main>
+        <h1>PDFKira Tools</h1>
+        <p>Free online PDF tools for merging, splitting, compressing, converting, organizing, and editing PDF files.</p>
+        <ul>${cards}</ul>
+      </main>
+    </div>
+    
+    <!-- React Mount Point -->
+    <div id="root"></div>
+    
+    <!-- React SPA Bundle -->
+    <script type="module" src="${assets.jsPath}"></script>
+    
+    <!-- Hide SEO fallback after hydration -->
+    <script>
+      (function() {
+        var checkInterval = setInterval(function() {
+          var root = document.getElementById('root');
+          if (root && root.childNodes.length > 0) {
+            var fallback = document.getElementById('seo-fallback');
+            if (fallback) fallback.style.display = 'none';
+            clearInterval(checkInterval);
+          }
+        }, 100);
+        setTimeout(function() {
+          var fallback = document.getElementById('seo-fallback');
+          if (fallback) fallback.style.display = 'none';
+          clearInterval(checkInterval);
+        }, 5000);
+      })();
     </script>
-  </head>
-  <body>
-    <main>
-      <header>
-        <p>PDFKira</p>
-        <h1>${escapeHtml(tool.name)}</h1>
-        <p>${escapeHtml(tool.shortDescription)}</p>
-      </header>
-
-      <section>
-        <h2>How it works</h2>
-        <ol>${steps}</ol>
-      </section>
-
-      <section>
-        <h2>Frequently asked questions</h2>
-        <ul>${faqs}</ul>
-      </section>
-
-      <p><a href="/tools">Browse all PDF tools</a></p>
-    </main>
+    
+    <noscript>
+      <style>#seo-fallback { display: block !important; }</style>
+    </noscript>
   </body>
 </html>`;
 }
@@ -163,8 +261,17 @@ function writeStaticFiles() {
     ensureDir(outDir);
     ensureDir(path.join(outDir, 'tools'));
 
-    fs.writeFileSync(path.join(outDir, 'robots.txt'), `User-agent: *\nAllow: /\nSitemap: ${siteUrl}/sitemap.xml\n`, 'utf-8');
+    // Get asset paths from built index.html
+    const assets = getAssetPaths(outDir);
 
+    // Write robots.txt
+    fs.writeFileSync(
+      path.join(outDir, 'robots.txt'),
+      `User-agent: *\nAllow: /\nSitemap: ${siteUrl}/sitemap.xml\n`,
+      'utf-8'
+    );
+
+    // Write sitemap.xml
     const sitemapItems = [
       { loc: `${siteUrl}/`, changefreq: 'weekly' },
       { loc: `${siteUrl}/tools`, changefreq: 'weekly' },
@@ -182,8 +289,17 @@ function writeStaticFiles() {
       .join('\n')}\n</urlset>`;
 
     fs.writeFileSync(path.join(outDir, 'sitemap.xml'), sitemapXml, 'utf-8');
-    fs.writeFileSync(path.join(outDir, 'tools', 'index.html'), renderToolsIndexHtml(), 'utf-8');
+    // Write tools index page
+    fs.writeFileSync(path.join(outDir, 'tools', 'index.html'), renderToolsIndexHtml(assets), 'utf-8');
 
+    // Write individual tool pages
+    for (const tool of tools) {
+      const toolDir = path.join(outDir, 'tools', tool.slug);
+      ensureDir(toolDir);
+      fs.writeFileSync(path.join(toolDir, 'index.html'), renderToolPageHtml(tool, assets), 'utf-8');
+    }
+
+    // Write root aliases (e.g., /merge-pdf -> /tools/merge-pdf)
     const rootAliasSet = new Set<string>();
     for (const tool of tools) {
       rootAliasSet.add(tool.slug);
@@ -191,21 +307,22 @@ function writeStaticFiles() {
       if (alias && alias !== tool.slug) rootAliasSet.add(alias);
     }
 
-    for (const tool of tools) {
-      const toolDir = path.join(outDir, 'tools', tool.slug);
-      ensureDir(toolDir);
-      fs.writeFileSync(path.join(toolDir, 'index.html'), renderToolPageHtml(tool), 'utf-8');
-    }
-
     for (const alias of rootAliasSet) {
       const aliasDir = path.join(outDir, alias);
       ensureDir(aliasDir);
       const targetTool = tools.find((tool) => tool.slug === alias || tool.slug.replace(/-pdf$/, '') === alias);
       if (!targetTool) continue;
-      fs.writeFileSync(path.join(aliasDir, 'index.html'), renderToolPageHtml(targetTool), 'utf-8');
+      fs.writeFileSync(path.join(aliasDir, 'index.html'), renderToolPageHtml(targetTool, assets), 'utf-8');
     }
+
+    console.log(`Generated static files in ${outDir}:`);
+    console.log(`  - robots.txt`);
+    console.log(`  - sitemap.xml (${sitemapItems.length} URLs)`);
+    console.log(`  - tools/index.html`);
+    console.log(`  - ${tools.length} tool pages`);
+    console.log(`  - ${rootAliasSet.size} root aliases`);
   }
 }
 
 writeStaticFiles();
-console.log('Generated canonical tool pages, root tool aliases, sitemap.xml and robots.txt using site URL:', siteUrl);
+console.log('Done! Static files generated with React SPA bundles.');

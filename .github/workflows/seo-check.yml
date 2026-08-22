@@ -18,6 +18,25 @@ jobs:
 
       - name: Install dependencies
         run: npm install
+      - name: Build frontend
+        run: cd artifacts/pdf-tools && npm run build
+        # This creates dist/public/index.html with asset hashes
+
+      - name: Generate SEO files
+        run: npx tsx scripts/generate-seo.ts
+        # This reads dist/public/index.html and generates static pages WITH React bundles
 
       - name: Validate SEO files
         run: node scripts/validate-seo.js
+
+      - name: Check asset paths in generated files
+        run: |
+          echo "Checking generated tool pages for React bundles..."
+          for file in artifacts/pdf-tools/dist/public/tools/*/index.html; do
+            if grep -q 'id="root"' "$file" && grep -q 'src="/assets/' "$file"; then
+              echo "✅ $file has React bundle"
+            else
+              echo "❌ $file missing React bundle"
+              exit 1
+            fi
+          done

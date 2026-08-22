@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
     "generate:seo": "tsx ../../scripts/generate-seo.ts",
-    "build": "pnpm exec vite build --config vite.config.ts && pnpm exec tsx ../../scripts/generate-seo.ts",
-    "vercel-build": "pnpm exec vite build --config vite.config.ts && pnpm exec tsx ../../scripts/generate-seo.ts",
+    "build": "vite build --config vite.config.ts && tsx ../../scripts/generate-seo.ts",
+    "vercel-build": "vite build --config vite.config.ts && tsx ../../scripts/generate-seo.ts",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
