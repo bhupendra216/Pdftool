@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
     <title>Unlock PDF Online Free | PDF Tools</title>
     <meta name="description" content="Remove password protection from a PDF you own the password to." />
     <meta name="robots" content="index, follow" />
@@ -15,29 +15,70 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Unlock PDF Online Free | PDF Tools" />
     <meta name="twitter:description" content="Remove password protection from a PDF you own the password to." />
+    
+    <!-- React SPA CSS -->
+    <link rel="stylesheet" href="/assets/index.css" />
+    
     <script type="application/ld+json">
       {"@context":"https://schema.org","@type":"SoftwareApplication","name":"Unlock PDF","description":"Remove password protection from a PDF you own the password to.","operatingSystem":"Web","applicationCategory":"Utility","url":"https://pdfkira.com/tools/unlock-pdf","offers":{"@type":"Offer","price":0,"priceCurrency":"USD"}}
     </script>
   </head>
   <body>
-    <main>
-      <header>
-        <p>PDFKira</p>
-        <h1>Unlock PDF</h1>
-        <p>Remove a known password from a protected PDF.</p>
-      </header>
+    <!-- SEO Fallback Content (visible to bots, hidden after React hydration) -->
+    <div id="seo-fallback" style="display: none;">
+      <main>
+        <header>
+          <p>PDFKira</p>
+          <h1>Unlock PDF</h1>
+          <p>Remove a known password from a protected PDF.</p>
+        </header>
 
-      <section>
-        <h2>How it works</h2>
-        <ol><li>Upload the protected PDF.</li><li>Enter the current password.</li><li>Click Unlock and download the unprotected PDF.</li></ol>
-      </section>
+        <section>
+          <h2>How it works</h2>
+          <ol><li>Upload the protected PDF.</li><li>Enter the current password.</li><li>Click Unlock and download the unprotected PDF.</li></ol>
+        </section>
 
-      <section>
-        <h2>Frequently asked questions</h2>
-        <ul></ul>
-      </section>
+        <section>
+          <h2>Frequently asked questions</h2>
+          <ul></ul>
+        </section>
 
-      <p><a href="/tools">Browse all PDF tools</a></p>
-    </main>
+        <p><a href="/tools">Browse all PDF tools</a></p>
+      </main>
+    </div>
+    
+    <!-- React Mount Point -->
+    <div id="root"></div>
+    
+    <!-- React SPA Bundle -->
+    <script type="module" src="/assets/index.js"></script>
+    
+    <!-- Hide SEO fallback after React hydration -->
+    <script>
+      (function() {
+        // If React hydrates successfully, it will render into #root
+        // This script ensures SEO fallback is hidden once React takes over
+        var checkInterval = setInterval(function() {
+          var root = document.getElementById('root');
+          if (root && root.childNodes.length > 0) {
+            var fallback = document.getElementById('seo-fallback');
+            if (fallback) fallback.style.display = 'none';
+            clearInterval(checkInterval);
+          }
+        }, 100);
+        
+        // Fallback: hide after 5 seconds regardless
+        setTimeout(function() {
+          var fallback = document.getElementById('seo-fallback');
+          if (fallback) fallback.style.display = 'none';
+          clearInterval(checkInterval);
+        }, 5000);
+      })();
+    </script>
+    
+    <!-- No-JS fallback: show SEO content if JavaScript is disabled -->
+    <noscript>
+      <style>#seo-fallback { display: block !important; }</style>
+    </noscript>
   </body>
 </html>

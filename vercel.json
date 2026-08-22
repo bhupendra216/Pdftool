@@ -3,27 +3,35 @@
   "routes": [
     {
       "src": "^/assets/(.*)$",
-      "dest": "/assets/$1"
+      "dest": "/artifacts/pdf-tools/dist/public/assets/$1"
     },
     {
       "src": "^/static/(.*)$",
-      "dest": "/static/$1"
+      "dest": "/artifacts/pdf-tools/dist/public/static/$1"
     },
     {
       "src": "^/og-images/(.*)$",
-      "dest": "/og-images/$1"
+      "dest": "/artifacts/pdf-tools/dist/public/og-images/$1"
     },
     {
       "src": "^/(favicon\\.png|favicon\\.ico|favicon\\.svg|manifest\\.json)$",
-      "dest": "/$1"
+      "dest": "/artifacts/pdf-tools/dist/public/$1"
     },
     {
       "src": "^/sitemap\\.xml$",
-      "dest": "/sitemap.xml"
+      "dest": "/artifacts/pdf-tools/dist/public/sitemap.xml"
     },
     {
       "src": "^/robots\\.txt$",
-      "dest": "/robots.txt"
+      "dest": "/artifacts/pdf-tools/dist/public/robots.txt"
+    },
+    {
+      "src": "^/tools$",
+      "dest": "/artifacts/pdf-tools/dist/public/tools/index.html"
+    },
+    {
+      "src": "^/tools/(.*)$",
+      "dest": "/artifacts/pdf-tools/dist/public/tools/$1/index.html"
     },
     {
       "src": "^/api/(.*)$",
@@ -31,7 +39,7 @@
     },
     {
       "src": ".*",
-      "dest": "/index.html"
+      "dest": "/artifacts/pdf-tools/dist/public/index.html"
     }
   ],
   "headers": [

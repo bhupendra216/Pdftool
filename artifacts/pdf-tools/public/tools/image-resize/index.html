@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
     <title>Resize Images Online Free | PDF Tools</title>
     <meta name="description" content="Resize images to new dimensions while keeping them sharp and ready for web or print." />
     <meta name="robots" content="index, follow" />
@@ -15,29 +15,70 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Resize Images Online Free | PDF Tools" />
     <meta name="twitter:description" content="Resize images to new dimensions while keeping them sharp and ready for web or print." />
+    
+    <!-- React SPA CSS -->
+    <link rel="stylesheet" href="/assets/index.css" />
+    
     <script type="application/ld+json">
       {"@context":"https://schema.org","@type":"SoftwareApplication","name":"Image Resize","description":"Resize images to new dimensions while keeping them sharp and ready for web or print.","operatingSystem":"Web","applicationCategory":"Utility","url":"https://pdfkira.com/tools/image-resize","offers":{"@type":"Offer","price":0,"priceCurrency":"USD"}}
     </script>
   </head>
   <body>
-    <main>
-      <header>
-        <p>PDFKira</p>
-        <h1>Image Resize</h1>
-        <p>Resize image dimensions while preserving quality.</p>
-      </header>
+    <!-- SEO Fallback Content (visible to bots, hidden after React hydration) -->
+    <div id="seo-fallback" style="display: none;">
+      <main>
+        <header>
+          <p>PDFKira</p>
+          <h1>Image Resize</h1>
+          <p>Resize image dimensions while preserving quality.</p>
+        </header>
 
-      <section>
-        <h2>How it works</h2>
-        <ol><li>Upload the image you want to resize.</li><li>Enter a width, height, or both.</li><li>Download the resized image.</li></ol>
-      </section>
+        <section>
+          <h2>How it works</h2>
+          <ol><li>Upload the image you want to resize.</li><li>Enter a width, height, or both.</li><li>Download the resized image.</li></ol>
+        </section>
 
-      <section>
-        <h2>Frequently asked questions</h2>
-        <ul></ul>
-      </section>
+        <section>
+          <h2>Frequently asked questions</h2>
+          <ul></ul>
+        </section>
 
-      <p><a href="/tools">Browse all PDF tools</a></p>
-    </main>
+        <p><a href="/tools">Browse all PDF tools</a></p>
+      </main>
+    </div>
+    
+    <!-- React Mount Point -->
+    <div id="root"></div>
+    
+    <!-- React SPA Bundle -->
+    <script type="module" src="/assets/index.js"></script>
+    
+    <!-- Hide SEO fallback after React hydration -->
+    <script>
+      (function() {
+        // If React hydrates successfully, it will render into #root
+        // This script ensures SEO fallback is hidden once React takes over
+        var checkInterval = setInterval(function() {
+          var root = document.getElementById('root');
+          if (root && root.childNodes.length > 0) {
+            var fallback = document.getElementById('seo-fallback');
+            if (fallback) fallback.style.display = 'none';
+            clearInterval(checkInterval);
+          }
+        }, 100);
+        
+        // Fallback: hide after 5 seconds regardless
+        setTimeout(function() {
+          var fallback = document.getElementById('seo-fallback');
+          if (fallback) fallback.style.display = 'none';
+          clearInterval(checkInterval);
+        }, 5000);
+      })();
+    </script>
+    
+    <!-- No-JS fallback: show SEO content if JavaScript is disabled -->
+    <noscript>
+      <style>#seo-fallback { display: block !important; }</style>
+    </noscript>
   </body>
 </html>
