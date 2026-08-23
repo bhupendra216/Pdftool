@@ -328,6 +328,91 @@ function writeStaticFiles() {
     console.log(`  - ${tools.length} tool pages`);
     console.log(`  - ${rootAliasSet.size} root aliases`);
   }
+
+  // After writing, verify every generated HTML references real asset files.
+  const missingReferences: Array<{ html: string; asset: string }> = [];
+
+  // Ensure secondary outDirs have the preferred assets available so their
+  // generated HTML can reference the hashed files. Copy only missing files.
+  const preferredAssetsDir = path.join(preferredOut, 'assets');
+  if (fs.existsSync(preferredAssetsDir)) {
+    for (const outDir of outDirs) {
+      if (outDir === preferredOut) continue;
+      const targetAssetsDir = path.join(outDir, 'assets');
+      ensureDir(targetAssetsDir);
+      try {
+        const files = fs.readdirSync(preferredAssetsDir);
+        for (const file of files) {
+          const src = path.join(preferredAssetsDir, file);
+          const dst = path.join(targetAssetsDir, file);
+          if (!fs.existsSync(dst)) {
+            fs.copyFileSync(src, dst);
+          }
+        }
+      } catch (err) {
+        console.warn(`Warning: failed to copy preferred assets to ${outDir}: ${String(err)}`);
+      }
+    }
+  }
+
+  function collectHtmlFiles(dir: string) {
+    const results: string[] = [];
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isDirectory()) {
+        results.push(...collectHtmlFiles(full));
+      } else if (entry.isFile() && full.endsWith('.html')) {
+        results.push(full);
+      }
+    }
+    return results;
+  }
+
+  for (const outDir of outDirs) {
+    const htmlFiles = collectHtmlFiles(outDir);
+    for (const htmlFile of htmlFiles) {
+      const content = fs.readFileSync(htmlFile, 'utf-8');
+      const assetRegex = /\/(assets\/[^"'\s>]+\.(?:js|css))/g;
+      let m: RegExpExecArray | null;
+      while ((m = assetRegex.exec(content))) {
+        const assetPath = '/' + m[1];
+        const assetOnDisk = path.join(outDir, assetPath.replace(/^\//, ''));
+        if (!fs.existsSync(assetOnDisk)) {
+          missingReferences.push({ html: htmlFile, asset: assetPath });
+        }
+      }
+    }
+  }
+
+  if (missingReferences.length > 0) {
+    console.error('ERROR: Missing asset files referenced by generated HTML:');
+    for (const miss of missingReferences) {
+      console.error(`  - HTML: ${miss.html} references missing asset: ${miss.asset}`);
+    }
+    console.error('\nBuild failed: missing assets referenced from generated static HTML.');
+    process.exit(1);
+  }
+
+  // If multiple outDirs exist, warn if their asset filename sets differ.
+  if (outDirs.length >= 2) {
+    const [preferred, other] = outDirs;
+    const preferredAssetsDir = path.join(preferred, 'assets');
+    const otherAssetsDir = path.join(other, 'assets');
+    if (fs.existsSync(preferredAssetsDir) && fs.existsSync(otherAssetsDir)) {
+      const preferredFiles = new Set(fs.readdirSync(preferredAssetsDir));
+      const otherFiles = new Set(fs.readdirSync(otherAssetsDir));
+      const diffA = [...preferredFiles].filter((f) => !otherFiles.has(f));
+      const diffB = [...otherFiles].filter((f) => !preferredFiles.has(f));
+      if (diffA.length > 0 || diffB.length > 0) {
+        console.warn('WARNING: Asset filename mismatch between outDirs:');
+        if (diffA.length > 0) console.warn(`  - In ${preferred} only: ${diffA.join(', ')}`);
+        if (diffB.length > 0) console.warn(`  - In ${other} only: ${diffB.join(', ')}`);
+        console.warn('This may indicate inconsistent builds or stale assets; please investigate.');
+      }
+    }
+  }
+
 }
 
 writeStaticFiles();
