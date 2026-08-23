@@ -112,6 +112,9 @@ export function SignPdfTool() {
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
   const [previewBoxSize, setPreviewBoxSize] = useState({ width: 560, height: 760 });
   const [renderedPageSize, setRenderedPageSize] = useState({ width: 560, height: 760 });
+  const [zoomMode, setZoomMode] = useState<"fitWidth" | "fitPage" | "custom">("fitWidth");
+  const [zoomPercent, setZoomPercent] = useState(100);
+  const [isPageRendering, setIsPageRendering] = useState(false);
   const [signatureTarget, setSignatureTarget] = useState<SignatureTarget>("current");
   const [signatureTargetText, setSignatureTargetText] = useState("1");
   const previewContainerRef = useRef<HTMLDivElement | null>(null);
@@ -201,51 +204,53 @@ export function SignPdfTool() {
 
     const renderCurrentPage = async () => {
       setError(null);
+      setIsPageRendering(true);
       const pdf = pdfDocRef.current;
-      if (!pdf) return;
       const page = await pdf.getPage(currentPage);
       const baseViewport = page.getViewport({ scale: 1 });
       const availableWidth = Math.max(280, previewBoxSize.width - 24);
       const availableHeight = Math.max(320, previewBoxSize.height - 24);
-      const scale = Math.min(availableWidth / baseViewport.width, availableHeight / baseViewport.height, 2.4);
-      const viewport = page.getViewport({ scale: Math.max(0.65, scale) });
+
+      const fitWidthScale = availableWidth / baseViewport.width;
+      const fitPageScale = Math.min(fitWidthScale, availableHeight / baseViewport.height);
+      const effectiveScale = zoomMode === "fitPage" ? fitPageScale : zoomMode === "fitWidth" ? fitWidthScale : Math.max(0.1, zoomPercent / 100);
+      const normalizedScale = Math.min(Math.max(effectiveScale, 0.25), 4);
+      const viewport = page.getViewport({ scale: normalizedScale });
       const context = canvas.getContext("2d");
       if (!context || !isActive) return;
 
-      canvas.width = viewport.width;
-      canvas.height = viewport.height;
-      // Make the canvas fill an inner wrapper exactly so overlays can be
-      // positioned relative to the canvas' displayed box rather than the
-      // outer preview container (which may include centering gaps).
-      canvas.style.width = "100%";
-      canvas.style.height = "100%";
-      canvas.style.maxWidth = "100%";
-
-      await page.render({ canvas, canvasContext: context, viewport }).promise;
-      if (!isActive) return;
-      setRenderedPageSize({ width: viewport.width, height: viewport.height });
-
-      // Ensure the wrapper that holds the canvas and overlay layer matches
-      // the canvas' displayed pixel dimensions so absolutely-positioned
-      // overlays align correctly.
+      const ratio = window.devicePixelRatio || 1;
+      canvas.width = Math.round(viewport.width * ratio);
+      canvas.height = Math.round(viewport.height * ratio);
+      canvas.style.width = `${Math.round(viewport.width)}px`;
+      canvas.style.height = `${Math.round(viewport.height)}px`;
       const wrapper = canvasWrapperRef.current;
       if (wrapper) {
-        // Use the canvas intrinsic pixel size as the wrapper pixel size.
-        wrapper.style.width = `${canvas.width}px`;
-        wrapper.style.height = `${canvas.height}px`;
+        wrapper.style.width = `${Math.round(viewport.width)}px`;
+        wrapper.style.height = `${Math.round(viewport.height)}px`;
       }
+
+      context.setTransform(ratio, 0, 0, ratio, 0, 0);
+      context.clearRect(0, 0, canvas.width, canvas.height);
+      await page.render({ canvasContext: context, viewport }).promise;
+      if (!isActive) return;
+
+      setRenderedPageSize({ width: viewport.width, height: viewport.height });
+      setZoomPercent(Math.round(normalizedScale * 100));
+      setIsPageRendering(false);
     };
 
     renderCurrentPage().catch(() => {
       if (isActive) {
         setError("Unable to preview the selected PDF page.");
+        setIsPageRendering(false);
       }
     });
 
     return () => {
       isActive = false;
     };
-  }, [currentPage, file, pdfBytes, isPdfDocumentReady, previewBoxSize.height, previewBoxSize.width]);
+  }, [currentPage, file, pdfBytes, isPdfDocumentReady, previewBoxSize.height, previewBoxSize.width, zoomMode, zoomPercent]);
 
   useEffect(() => {
     const canvas = activeSignature && activeSignature.type === "draw" ? drawCanvasRefs.current[activeSignature.id] : null;

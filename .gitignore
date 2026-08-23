@@ -56,3 +56,4 @@ tmp_*.log
 .tmp
 artifacts/api-server/data/*.sqlite3-shm
 artifacts/api-server/data/*.sqlite3-wal
+.env*
