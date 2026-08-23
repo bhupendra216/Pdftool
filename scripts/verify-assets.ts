@@ -47,4 +47,4 @@ function run() {
   process.exit(2);
 }
 
-if (require.main === module) run();
+if (process.argv[1] && process.argv[1].endsWith('verify-assets.ts')) run();
