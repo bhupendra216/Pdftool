@@ -41,6 +41,7 @@ export default defineConfig(async ({ mode }) => {
 
   return {
     base: '/',
+    publicDir: 'public',
     plugins,
     resolve: {
       alias: {
