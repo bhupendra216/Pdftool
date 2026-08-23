@@ -1,6 +1,5 @@
 {
   "version": 2,
-  "outputDirectory": "artifacts/pdf-tools/dist/public",
   "routes": [
     {
       "handle": "filesystem"

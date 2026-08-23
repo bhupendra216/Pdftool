@@ -206,6 +206,11 @@ export function SignPdfTool() {
       setError(null);
       setIsPageRendering(true);
       const pdf = pdfDocRef.current;
+      if (!pdf) {
+        setIsPageRendering(false);
+        return;
+      }
+
       const page = await pdf.getPage(currentPage);
       const baseViewport = page.getViewport({ scale: 1 });
       const availableWidth = Math.max(280, previewBoxSize.width - 24);
@@ -232,7 +237,7 @@ export function SignPdfTool() {
 
       context.setTransform(ratio, 0, 0, ratio, 0, 0);
       context.clearRect(0, 0, canvas.width, canvas.height);
-      await page.render({ canvasContext: context, viewport }).promise;
+      await page.render({ canvas, canvasContext: context, viewport }).promise;
       if (!isActive) return;
 
       setRenderedPageSize({ width: viewport.width, height: viewport.height });
