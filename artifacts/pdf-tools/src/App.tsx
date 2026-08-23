@@ -17,6 +17,7 @@ import CompressPdfPage from '@/pages/compress-pdf';
 import ConvertPdfPage from '@/pages/convert-pdf';
 import PdfOcrPage from '@/pages/pdf-ocr';
 import OrganizePdfPage from '@/pages/organize-pdf';
+import SearchFreePdfsPage from '@/pages/search-free-pdfs';
 import { BlogIndex } from '@/pages/BlogIndex';
 import { BlogDetail } from '@/pages/BlogDetail';
 import { About } from '@/pages/About';
@@ -73,7 +74,17 @@ function Router() {
       <Switch>
         <Route path="/" component={Home} />
         <Route path="/tools" component={ToolsIndex} />
+        {/* Explicit tool routes placed before the dynamic catch-all */}
+        <Route path="/tools/merge-pdf" component={MergePdfPage} />
+        <Route path="/tools/split-pdf" component={SplitPdfPage} />
+        <Route path="/tools/compress-pdf" component={CompressPdfPage} />
+        <Route path="/tools/convert-pdf" component={ConvertPdfPage} />
+        <Route path="/tools/pdf-ocr" component={PdfOcrPage} />
+        <Route path="/tools/organize-pdf" component={OrganizePdfPage} />
+        <Route path="/tools/download-pdf" component={DownloadPdfPage} />
+        <Route path="/tools/search-free-pdfs" component={SearchFreePdfsPage} />
         <Route path="/tools/:slug" component={ToolDetail} />
+        {/* Root-level legacy aliases for backward compatibility */}
         <Route path="/merge-pdf" component={MergePdfPage} />
         <Route path="/split-pdf" component={SplitPdfPage} />
         <Route path="/compress-pdf" component={CompressPdfPage} />

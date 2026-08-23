@@ -6,18 +6,6 @@
       "handle": "filesystem"
     },
     {
-      "src": "^/tools$",
-      "dest": "/tools/index.html"
-    },
-    {
-      "src": "^/tools/(.*)$",
-      "dest": "/tools/$1/index.html"
-    },
-    {
-      "src": "^/(merge|split|compress|image-converter|pdf-to-word|pdf-to-markdown|word-to-pdf|jpg-to-pdf|jpg-to|pdf-to-jpg|image-resize|image-compress|image-upscale|rotate-pdf|rotate|organize-pdf|organize|delete-pages|extract-pages|unlock-pdf|unlock|protect-pdf|protect|watermark-pdf|watermark|add-page-numbers|ocr-image-to-text|qr-code-generator)(?:/)?$",
-      "dest": "/$1/index.html"
-    },
-    {
       "src": ".*",
       "dest": "/index.html"
     }
