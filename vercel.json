@@ -4,7 +4,7 @@
   "rewrites": [
     {
       "source": "/api/:path*",
-      "destination": "/api/handler?vercelPath=/api/:path*"
+      "destination": "/api/handler/:path*"
     },
     {
       "source": "(.*)",

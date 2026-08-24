@@ -2,23 +2,14 @@
 // The built Express bundle is copied into artifacts/pdf-tools/api-server-dist/index.mjs.
 
 export default async function handler(req, res) {
-  // Preserve and apply Vercel-passed original path (via ?vercelPath=)
-  // so the function can be mapped to a fixed filename while still honoring
-  // the true requested path. If present, rewrite `req.url` to the original
-  // path (minus the vercelPath query param) so Express sees the correct route.
+  // Recover the original request path when the function is mounted at
+  // "/api/handler" by rewriting the incoming req.url back to the real
+  // API path (e.g. "/api/tools" or "/api/tools/merge-pdf").
   const rawUrl = req.url || '';
-  let vercelPath = null;
-  try {
-    const probe = new URL(rawUrl, `http://${req.headers.host || 'example.com'}`);
-    vercelPath = probe.searchParams.get('vercelPath');
-    if (vercelPath) {
-      probe.searchParams.delete('vercelPath');
-      const rest = probe.searchParams.toString();
-      req.url = rest ? `${vercelPath}?${rest}` : vercelPath;
-    }
-  } catch (e) {
-    // ignore
-  }
+  const realPath = rawUrl.replace(/^\/api\/handler/, '/api');
+  // Overwrite req.url so all internal routing (and our manual checks)
+  // operate against the true path.
+  req.url = realPath;
 
   // Minimal built-in handlers for admin endpoints to ensure login works even if
   // the full api-server dist is not available in the deployment bundle.
@@ -121,18 +112,8 @@ export default async function handler(req, res) {
   try {
     const mod = await import('../api-server-dist/index.mjs');
     const app = mod.default || mod;
-    // Ensure Express sees the original path when handling the request.
-    if (vercelPath) {
-      // rebuild any remaining querystring (we already wrote req.url above),
-      // but be defensive and set it explicitly again before delegating.
-      try {
-        const orig = new URL(rawUrl, `http://${req.headers.host || 'example.com'}`);
-        orig.searchParams.delete('vercelPath');
-        const rest = orig.searchParams.toString();
-        req.url = rest ? `${vercelPath}?${rest}` : vercelPath;
-      } catch (e) {}
-    }
-
+    // Ensure Express sees the reconstructed original path.
+    req.url = realPath;
     if (app && typeof app.handler === 'function') return app.handler(req, res);
     if (typeof app === 'function') return app(req, res);
   } catch (err) {
