@@ -3,4 +3,4 @@
 const rawSiteUrl = import.meta.env.VITE_SITE_URL || "https://pdfkira.com";
 export const SITE_URL = rawSiteUrl.replace(/\/+$/, "");
 export const SITE_NAME = "PDFKira";
-export const SITE_IMAGE = `${SITE_URL}/favicon.jpeg`;
+export const SITE_IMAGE = `${SITE_URL}/logo.png`;

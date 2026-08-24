@@ -44,7 +44,7 @@ export default function SchemaManager({ pageType, pageData = {} }) {
           <OrganizationSchema
             name="PDFKira"
             url="https://pdfkira.com"
-            logoUrl="https://pdfkira.com/favicon.jpeg"
+            logoUrl="https://pdfkira.com/logo.png"
             sameAs={['https://www.linkedin.com', 'https://x.com', 'https://facebook.com']}
           />
           <WebSiteSchema siteUrl="https://pdfkira.com" searchUrl="https://pdfkira.com/tools?q={search_term_string}" />
