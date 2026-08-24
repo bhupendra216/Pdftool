@@ -56,4 +56,5 @@ tmp_*.log
 .tmp
 artifacts/api-server/data/*.sqlite3-shm
 artifacts/api-server/data/*.sqlite3-wal
+artifacts/pdf-tools/api-server-dist/
 .env*

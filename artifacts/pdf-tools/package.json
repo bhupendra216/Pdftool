@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite --config vite.config.ts --host 0.0.0.0",
     "generate:seo": "tsx ../../scripts/generate-seo.ts",
-    "build": "vite build --config vite.config.ts && tsx ../../scripts/generate-seo.ts",
+    "build:api-server-dist": "sh -c 'set -e; pdf_tools_dir=$(pwd); rm -rf api-server-dist && mkdir -p api-server-dist; cd \"$pdf_tools_dir/../..\" && pnpm --filter @workspace/api-server run build; cd \"$pdf_tools_dir\" && (cd ../api-server/dist && tar -cf - --exclude=\"*.map\" .) | (cd \"$pdf_tools_dir/api-server-dist\" && tar -xf -)'",
+    "build": "vite build --config vite.config.ts && tsx ../../scripts/generate-seo.ts && pnpm run build:api-server-dist",
     "vercel-build": "pnpm run build",
     "serve": "vite preview --config vite.config.ts --host 0.0.0.0",
     "typecheck": "tsc -p tsconfig.json --noEmit"
@@ -79,11 +80,25 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "cookie-parser": "^1.4.7",
+    "cors": "^2.8.6",
+    "docx": "^9.7.1",
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "catalog:",
+    "express": "^5.2.1",
+    "heic-convert": "2.1.0",
+    "jimp": "^1.6.1",
     "jszip": "^3.10.0",
+    "multer": "^1.4.5-lts.1",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.1.200",
+    "pino": "^9.14.0",
+    "pino-http": "^10.5.0",
+    "potrace": "^2.1.8",
     "qrcode": "^1.5.4",
     "react-markdown": "^10.1.0",
-    "remark-gfm": "^4.0.1"
+    "remark-gfm": "^4.0.1",
+    "sharp": "^0.32.0",
+    "tesseract.js": "^4.1.1"
   }
 }
