@@ -20,6 +20,9 @@ export function BrandMark({
           src="/favicon.jpeg"
           alt="PDFKira"
           className="block h-full w-full object-cover object-center"
+          onError={(e: any) => {
+            try { e.currentTarget.src = '/favicon.png'; } catch (err) {}
+          }}
         />
       </span>
       {showWordmark ? (
