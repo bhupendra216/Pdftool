@@ -17,7 +17,11 @@ function collectHtmlFiles(dir: string) {
 }
 
 function run() {
-  const publicDir = path.resolve(process.cwd(), 'public');
+  // Prefer the repository root `public/` if present (used by some CI flows),
+  // otherwise point to the Vite output directory inside artifacts/pdf-tools.
+  const candidate1 = path.resolve(process.cwd(), 'public');
+  const candidate2 = path.resolve(process.cwd(), 'artifacts/pdf-tools/dist/public');
+  const publicDir = fs.existsSync(candidate1) ? candidate1 : candidate2;
   const assetsDir = path.join(publicDir, 'assets');
   const htmlFiles = collectHtmlFiles(publicDir);
 
