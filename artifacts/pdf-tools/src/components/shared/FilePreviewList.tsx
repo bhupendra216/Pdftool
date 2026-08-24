@@ -27,7 +27,7 @@ export function FilePreviewList({ files, onRemove, status }: FileListProps) {
                 src="/favicon.jpeg"
                 alt="PDFKira"
                 className="w-10 h-10 object-cover rounded-lg"
-                onError={(e: any) => { try { e.currentTarget.src = '/favicon.png'; } catch (err) {} }}
+                
               />
             </div>
             

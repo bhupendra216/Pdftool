@@ -2159,7 +2159,7 @@ export function ToolDetail(props?: any) {
                         Smooth drag-and-drop upload
                       </div>
                       <div className="flex items-center gap-2">
-                        <img src="/favicon.jpeg" alt="PDFKira" className="h-4 w-4 object-cover rounded-sm" onError={(e: any) => { try { e.currentTarget.src = '/favicon.png'; } catch (err) {} }} />
+                        <img src="/favicon.jpeg" alt="PDFKira" className="h-4 w-4 object-cover rounded-sm" />
                         Friendly preview before processing
                       </div>
                       <div className="flex items-center gap-2">
@@ -2335,7 +2335,7 @@ export function ToolDetail(props?: any) {
                           ) : (
                             <div className="rounded-[28px] border border-dashed border-border/70 bg-background/70 p-10 text-center shadow-sm">
                               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary overflow-hidden">
-                                <img src="/favicon.jpeg" alt="PDFKira" className="h-10 w-10 object-cover rounded-lg" onError={(e: any) => { try { e.currentTarget.src = '/favicon.png'; } catch (err) {} }} />
+                                <img src="/favicon.jpeg" alt="PDFKira" className="h-10 w-10 object-cover rounded-lg" />
                               </div>
                               <h3 className="mt-4 text-xl font-semibold text-foreground">Upload a PDF to start rotating</h3>
                               <p className="mt-2 text-sm text-muted-foreground">Use the full-document controls to rotate everything in one step.</p>
@@ -2415,7 +2415,7 @@ export function ToolDetail(props?: any) {
                         <div className="overflow-hidden rounded-2xl border border-border/70 bg-card/70 p-3">
                           {tool.slug === "compress-pdf" ? (
                               <div className="flex h-[260px] flex-col items-center justify-center gap-3 rounded-2xl bg-muted/50 px-4 text-center">
-                              <img src="/favicon.jpeg" alt="PDFKira" className="h-12 w-12 object-cover" onError={(e: any) => { try { e.currentTarget.src = '/favicon.png'; } catch (err) {} }} />
+                              <img src="/favicon.jpeg" alt="PDFKira" className="h-12 w-12 object-cover" />
                               <div>
                                 <p className="font-semibold text-foreground">{files[0].name}</p>
                                 <p className="mt-1 text-sm text-muted-foreground">PDF preview will be generated after compression.</p>
