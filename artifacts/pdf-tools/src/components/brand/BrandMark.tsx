@@ -15,7 +15,7 @@ export function BrandMark({
 }: BrandMarkProps) {
   return (
     <div className={cn("inline-flex items-center gap-2.5", className)}>
-      <span className={cn("inline-flex items-center justify-center overflow-hidden rounded-xl bg-background dark:bg-white", logoClassName)}>
+      <span className={cn("inline-flex items-center justify-center overflow-hidden rounded-xl bg-white dark:bg-background", logoClassName)}>
           <img
             src="/logo.png"
             alt="PDFKira"
