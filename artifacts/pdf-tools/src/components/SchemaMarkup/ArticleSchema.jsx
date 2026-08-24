@@ -27,9 +27,9 @@ export default function ArticleSchema({
     publisher: {
       '@type': 'Organization',
       name: 'PDFKira',
-      logo: {
+        logo: {
         '@type': 'ImageObject',
-        url: 'https://pdfkira.com/favicon.png',
+        url: 'https://pdfkira.com/favicon.jpeg',
       },
     },
   };

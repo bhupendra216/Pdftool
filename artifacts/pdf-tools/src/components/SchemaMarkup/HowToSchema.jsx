@@ -15,7 +15,7 @@ export default function HowToSchema({ toolName, description, steps = [] }) {
       position: index + 1,
       name: step.name || `Step ${index + 1}`,
       text: step.text,
-      image: step.imageUrl || 'https://pdfkira.com/favicon.png',
+      image: step.imageUrl || 'https://pdfkira.com/favicon.jpeg',
     })),
   };
 

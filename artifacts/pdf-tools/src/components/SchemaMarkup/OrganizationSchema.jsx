@@ -7,7 +7,7 @@ import { Helmet } from 'react-helmet-async';
 export default function OrganizationSchema({
   name = 'PDFKira',
   url = 'https://pdfkira.com',
-  logoUrl = 'https://pdfkira.com/favicon.png',
+  logoUrl = 'https://pdfkira.com/favicon.jpeg',
   sameAs = [],
 }) {
   const schema = {

@@ -23,7 +23,7 @@ export function FilePreviewList({ files, onRemove, status }: FileListProps) {
             className="group relative flex items-center gap-4 rounded-2xl border border-border/70 bg-card/90 p-4 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
           >
             <div className="shrink-0 rounded-xl bg-primary/10 p-0 overflow-hidden transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
-              <img src="/favicon.png" alt="PDFKira" className="w-10 h-10 object-cover rounded-lg" />
+              <img src="/favicon.jpeg" alt="PDFKira" className="w-10 h-10 object-cover rounded-lg" />
             </div>
             
             <div className="flex-1 min-w-0">

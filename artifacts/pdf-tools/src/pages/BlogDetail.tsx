@@ -89,7 +89,7 @@ export function BlogDetail() {
         {relatedTool && (
           <div className="mt-16 p-8 md:p-10 bg-primary/5 border border-primary/20 rounded-3xl text-center">
             <div className="w-16 h-16 bg-background rounded-full flex items-center justify-center mx-auto mb-6 shadow-sm overflow-hidden">
-              <img src="/favicon.png" alt="PDFKira" className="w-10 h-10 object-cover rounded-full" />
+              <img src="/favicon.jpeg" alt="PDFKira" className="w-10 h-10 object-cover rounded-full" />
             </div>
             <h3 className="text-2xl font-bold mb-4">Try it yourself</h3>
             <p className="text-muted-foreground mb-8 max-w-lg mx-auto">

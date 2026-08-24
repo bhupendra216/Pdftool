@@ -78,7 +78,7 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
     <meta property="og:description" content="${escapeHtml(tool.seoDescription)}" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="${toolUrl}" />
-    <meta property="og:image" content="${siteUrl}/favicon.png" />
+    <meta property="og:image" content="${siteUrl}/favicon.jpeg" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${escapeHtml(tool.seoTitle)}" />
     <meta name="twitter:description" content="${escapeHtml(tool.seoDescription)}" />
@@ -190,7 +190,7 @@ function renderToolsIndexHtml(assets: { jsPath: string; cssPath: string }) {
     <meta property="og:description" content="Free online PDF tools from PDFKira: merge, split, compress, convert, organize, and edit PDFs in your browser." />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="${siteUrl}/tools" />
-    <meta property="og:image" content="${siteUrl}/favicon.png" />
+    <meta property="og:image" content="${siteUrl}/favicon.jpeg" />
     <meta name="twitter:card" content="summary_large_image" />
     
     <!-- React SPA CSS -->
