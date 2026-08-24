@@ -9,6 +9,8 @@
     "verify-assets": "tsx ./scripts/verify-assets.ts",
     "typecheck:libs": "tsc --build",
     "typecheck": "pnpm run typecheck:libs && pnpm -r --filter \"./artifacts/**\" --filter \"./scripts\" --if-present run typecheck"
+    ,
+    "check-redirects": "node -e \"const cp=require('child_process');const fs=require('fs');const out=cp.execSync('node ./scripts/generate-seo.ts --emit-redirects',{stdio:['pipe','pipe','inherit']}).toString(); const gen=JSON.parse(out); const v=JSON.parse(fs.readFileSync('vercel.json','utf8')); const cur=v.redirects||[]; if (JSON.stringify(gen)!==JSON.stringify(cur)) { console.error('Redirects out of sync'); process.exit(2);} console.log('Redirects in sync');\""
   },
   "private": true,
   "engines": {

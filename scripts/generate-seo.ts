@@ -13,6 +13,14 @@ const outDirs = [
   path.resolve(__dirname, '../artifacts/pdf-tools/public'),
 ].filter((dir, index, list) => list.indexOf(dir) === index);
 
+// Global root alias set used for both generation logging and redirects.
+const rootAliasSet = new Set<string>();
+for (const tool of tools) {
+  rootAliasSet.add(tool.slug);
+  const alias = tool.slug.replace(/-pdf$/, '');
+  if (alias && alias !== tool.slug) rootAliasSet.add(alias);
+}
+
 const escapeHtml = (value: string) =>
   value
     .replace(/&amp;/g, '&amp;amp;')
@@ -305,20 +313,22 @@ function writeStaticFiles() {
       fs.writeFileSync(path.join(toolDir, 'index.html'), renderToolPageHtml(tool, assets), 'utf-8');
     }
 
-    // Write root aliases (e.g., /merge-pdf -> /tools/merge-pdf)
-    const rootAliasSet = new Set<string>();
-    for (const tool of tools) {
-      rootAliasSet.add(tool.slug);
-      const alias = tool.slug.replace(/-pdf$/, '');
-      if (alias && alias !== tool.slug) rootAliasSet.add(alias);
-    }
+    // NOTE: We intentionally do NOT write root alias HTML files anymore.
+    // Alias pages should be redirected to the canonical /tools/<slug> URLs
+    // at the routing layer to avoid duplicate-content SEO issues and stale
+    // alias artifacts. A `redirects` entry will be generated below.
 
-    for (const alias of rootAliasSet) {
+    // Remove any previously-generated alias directories to avoid shipping
+    // stale alias HTML files.
+    for (const alias of Array.from(rootAliasSet)) {
       const aliasDir = path.join(outDir, alias);
-      ensureDir(aliasDir);
-      const targetTool = tools.find((tool) => tool.slug === alias || tool.slug.replace(/-pdf$/, '') === alias);
-      if (!targetTool) continue;
-      fs.writeFileSync(path.join(aliasDir, 'index.html'), renderToolPageHtml(targetTool, assets), 'utf-8');
+      try {
+        if (fs.existsSync(aliasDir)) {
+          fs.rmSync(aliasDir, { recursive: true, force: true });
+        }
+      } catch (err) {
+        console.warn(`Warning: failed to remove old alias dir ${aliasDir}: ${String(err)}`);
+      }
     }
 
     console.log(`Generated static files in ${outDir}:`);
@@ -415,5 +425,41 @@ function writeStaticFiles() {
 
 }
 
+// Helper to compute redirects array from the current tools list and aliases.
+function computeRedirects() {
+  const redirects: Array<{ source: string; destination: string; permanent: boolean }> = [];
+  for (const alias of Array.from(rootAliasSet)) {
+    const target = tools.find((t) => t.slug === alias || t.slug.replace(/-pdf$/, '') === alias);
+    if (!target) continue;
+    redirects.push({ source: `/${alias}`, destination: `/tools/${target.slug}`, permanent: true });
+    redirects.push({ source: `/${alias}/`, destination: `/tools/${target.slug}`, permanent: true });
+  }
+  return redirects;
+}
+
+// Mode switch: emit-only mode prints the redirects JSON to stdout and writes
+// a temp file for convenience. This is intended to be run locally by a
+// developer to generate the static `redirects` array to be copied into the
+// committed `vercel.json` (Hobby tier compatibility).
+if (process.argv.includes('--emit-redirects')) {
+  const redirects = computeRedirects();
+  // Print pure JSON to stdout so callers can capture it easily.
+  process.stdout.write(JSON.stringify(redirects, null, 2) + '\n');
+
+  // Also write a temporary copy for convenience.
+  try {
+    const tmpDir = path.resolve(__dirname, '../tmp');
+    ensureDir(tmpDir);
+    const tmpPath = path.join(tmpDir, 'vercel-redirects.json');
+    fs.writeFileSync(tmpPath, JSON.stringify(redirects, null, 2) + '\n', 'utf-8');
+    console.error(`Wrote temporary redirects file to ${tmpPath}`);
+  } catch (err) {
+    console.error('Warning: could not write temp redirects file:', String(err));
+  }
+  process.exit(0);
+}
+
+// Default mode: generate static files (no longer mutating vercel.json or
+// writing any build-time redirects file).
 writeStaticFiles();
 console.log('Done! Static files generated with React SPA bundles.');
