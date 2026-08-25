@@ -47,6 +47,7 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
   const [zoomedPageId, setZoomedPageId] = useState<string | null>(null);
   const [isScrolling, setIsScrolling] = useState(false);
   const scrollTimerRef = useRef<number | null>(null);
+  const scrollFrameRef = useRef<number | null>(null);
   const isRotateMode = mode === "rotate";
 
   useEffect(() => {
@@ -60,6 +61,18 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+    const updateRenderRange = () => {
+      const scrollTop = el.scrollTop;
+      const itemHeight = 300 * (zoom / 100);
+      const cols = Math.max(1, Math.floor(el.clientWidth / (220 * (zoom / 100))));
+      const rowHeight = itemHeight + 24;
+      const startRow = Math.floor(scrollTop / rowHeight);
+      const visibleRows = Math.ceil(el.clientHeight / rowHeight) + 2;
+      const start = Math.max(0, startRow * cols - cols * 2);
+      const end = Math.min(pages.length, (startRow + visibleRows) * cols + cols * 2);
+      setRenderRange([start, end]);
+    };
+
     const onScroll = () => {
       setIsScrolling(true);
       if (scrollTimerRef.current) {
@@ -69,22 +82,21 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
         setIsScrolling(false);
       }, 150);
 
-      const scrollTop = el.scrollTop;
-      const itemHeight = 280 * (zoom / 100);
-      const cols = Math.max(1, Math.floor(el.clientWidth / (220 * (zoom / 100))));
-      const rowHeight = itemHeight + 24;
-      const startRow = Math.floor(scrollTop / rowHeight);
-      const visibleRows = Math.ceil(el.clientHeight / rowHeight) + 2;
-      const start = Math.max(0, startRow * cols - cols * 2);
-      const end = Math.min(pages.length, (startRow + visibleRows) * cols + cols * 2);
-      setRenderRange([start, end]);
+      if (scrollFrameRef.current) {
+        window.cancelAnimationFrame(scrollFrameRef.current);
+      }
+      scrollFrameRef.current = window.requestAnimationFrame(updateRenderRange);
     };
-    onScroll();
-    el.addEventListener("scroll", onScroll);
+
+    updateRenderRange();
+    el.addEventListener("scroll", onScroll, { passive: true });
     window.addEventListener("resize", onScroll);
     return () => {
       if (scrollTimerRef.current) {
         window.clearTimeout(scrollTimerRef.current);
+      }
+      if (scrollFrameRef.current) {
+        window.cancelAnimationFrame(scrollFrameRef.current);
       }
       el.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onScroll);
@@ -239,7 +251,7 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
                 onDrop={(e) => !isRotateMode && onDrop(effectiveIndex, e)}
                 onClick={(e) => (isRotateMode ? undefined : toggleSelect(effectiveIndex, e as any))}
                 className={`group relative rounded-[24px] border p-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${!isRotateMode && page.selected ? "border-primary/60 bg-primary/10 shadow-[0_18px_60px_-35px_rgba(59,130,246,0.55)]" : "border-border/70 bg-card/95"} ${dragIndex !== null && overIndex === effectiveIndex ? "border-primary/70 ring-2 ring-primary-20" : ""}`} 
-                style={{ minHeight: 300 * (zoom / 100), overflow: "visible", opacity: shouldHide ? 0 : 1, visibility: shouldHide ? "hidden" : "visible", pointerEvents: shouldHide ? "none" : "auto", transition: "opacity 180ms ease-out, visibility 180ms ease-out, box-shadow 180ms ease-out, transform 180ms ease-out" }}
+                style={{ minHeight: 300 * (zoom / 100), overflow: "visible", opacity: shouldHide ? 0 : 1, visibility: shouldHide ? "hidden" : "visible", pointerEvents: shouldHide ? "none" : "auto", contain: "layout paint", transition: "opacity 180ms ease-out, visibility 180ms ease-out, box-shadow 180ms ease-out, transform 180ms ease-out" }}
                 role="listitem"
                 aria-selected={page.selected}
               >
@@ -262,7 +274,7 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
                 </div>
 
                 <div className="flex h-full flex-col justify-between pt-8">
-                  <div className="relative flex h-full min-h-[220px] items-center justify-center overflow-visible rounded-[20px] border border-border/70 bg-gradient-to-b from-background to-muted/30 p-2 shadow-inner">
+                  <div className="relative flex h-full min-h-[220px] items-center justify-center overflow-hidden rounded-[20px] border border-border/70 bg-gradient-to-b from-background to-muted/30 p-2 shadow-inner" style={{ aspectRatio: "3 / 4", width: "100%" }}>
                     {dragIndex === index && <div className="absolute inset-0 bg-primary/10" />}
                     {thumbnailUrl ? (
                       <div
@@ -271,7 +283,7 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
                           setZoomedPageId(page.id);
                         }}
                         onMouseLeave={() => setZoomedPageId((current) => (current === page.id ? null : current))}
-                        className="relative"
+                        className="relative flex h-full w-full items-center justify-center"
                         style={{
                           transform: `rotate(${page.rotation}deg)`,
                           transformOrigin: "center center",
@@ -285,6 +297,7 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
                           src={thumbnailUrl}
                           alt={`Page ${page.pageNumber}`}
                           className="max-h-full max-w-full rounded-xl border border-border/60 bg-white object-contain shadow-sm dark:bg-slate-950"
+                          style={{ width: "100%", height: "100%", objectFit: "contain" }}
                         />
                       </div>
                     ) : (
