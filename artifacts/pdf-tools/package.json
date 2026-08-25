@@ -79,6 +79,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "@tanstack/react-virtual": "^3.14.10",
     "jszip": "^3.10.0",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.1.200",

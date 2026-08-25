@@ -1,7 +1,8 @@
-import React, { useEffect, useRef, useState, useCallback } from "react";
-import { Check, RotateCcw, RotateCw, Trash2, GripVertical } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useVirtualizer } from "@tanstack/react-virtual";
+import { Check, GripVertical, RotateCcw, RotateCw, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 
 type Page = {
@@ -42,12 +43,11 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
   const [selectionAnchor, setSelectionAnchor] = useState<number | null>(null);
-  const [renderRange, setRenderRange] = useState([0, Math.min(100, pages.length)]);
   const [supportsHover, setSupportsHover] = useState(false);
   const [zoomedPageId, setZoomedPageId] = useState<string | null>(null);
   const [isScrolling, setIsScrolling] = useState(false);
+  const [containerWidth, setContainerWidth] = useState(0);
   const scrollTimerRef = useRef<number | null>(null);
-  const scrollFrameRef = useRef<number | null>(null);
   const isRotateMode = mode === "rotate";
 
   useEffect(() => {
@@ -58,50 +58,52 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
     return () => mediaQuery?.removeEventListener?.("change", updateSupportsHover);
   }, []);
 
+  useLayoutEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const updateWidth = () => setContainerWidth(el.clientWidth);
+    updateWidth();
+
+    const resizeObserver = new ResizeObserver(updateWidth);
+    resizeObserver.observe(el);
+    return () => resizeObserver.disconnect();
+  }, []);
+
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
-    const updateRenderRange = () => {
-      const scrollTop = el.scrollTop;
-      const itemHeight = 300 * (zoom / 100);
-      const cols = Math.max(1, Math.floor(el.clientWidth / (220 * (zoom / 100))));
-      const rowHeight = itemHeight + 24;
-      const startRow = Math.floor(scrollTop / rowHeight);
-      const visibleRows = Math.ceil(el.clientHeight / rowHeight) + 2;
-      const start = Math.max(0, startRow * cols - cols * 2);
-      const end = Math.min(pages.length, (startRow + visibleRows) * cols + cols * 2);
-      setRenderRange([start, end]);
-    };
 
     const onScroll = () => {
       setIsScrolling(true);
       if (scrollTimerRef.current) {
         window.clearTimeout(scrollTimerRef.current);
       }
-      scrollTimerRef.current = window.setTimeout(() => {
-        setIsScrolling(false);
-      }, 150);
-
-      if (scrollFrameRef.current) {
-        window.cancelAnimationFrame(scrollFrameRef.current);
-      }
-      scrollFrameRef.current = window.requestAnimationFrame(updateRenderRange);
+      scrollTimerRef.current = window.setTimeout(() => setIsScrolling(false), 150);
     };
 
-    updateRenderRange();
     el.addEventListener("scroll", onScroll, { passive: true });
-    window.addEventListener("resize", onScroll);
     return () => {
       if (scrollTimerRef.current) {
         window.clearTimeout(scrollTimerRef.current);
       }
-      if (scrollFrameRef.current) {
-        window.cancelAnimationFrame(scrollFrameRef.current);
-      }
       el.removeEventListener("scroll", onScroll);
-      window.removeEventListener("resize", onScroll);
     };
-  }, [pages.length, zoom]);
+  }, []);
+
+  const gap = 16;
+  const minCardWidth = Math.max(140, 180 * (zoom / 100));
+  const computedColumns = Math.max(1, Math.min(10, Math.floor((Math.max(containerWidth, 1) + gap) / (minCardWidth + gap))));
+  const columns = computedColumns || 1;
+  const cardHeight = Math.max(220, Math.round(300 * (zoom / 100)));
+  const rowHeight = cardHeight + 54;
+  const rowCount = Math.max(1, Math.ceil(pages.length / columns));
+  const virtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => containerRef.current,
+    estimateSize: () => rowHeight,
+    overscan: 2,
+  });
 
   const toggleSelect = useCallback((index: number, e?: React.MouseEvent) => {
     if (e && (e.ctrlKey || e.metaKey)) {
@@ -129,7 +131,9 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
   const onDragStart = (index: number, e: React.DragEvent) => {
     setZoomedPageId(null);
     setDragIndex(index);
-    try { e.dataTransfer!.setData("text/plain", String(index)); } catch {}
+    try {
+      e.dataTransfer?.setData("text/plain", String(index));
+    } catch {}
     e.dataTransfer!.effectAllowed = "move";
   };
 
@@ -140,7 +144,7 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
 
   const onDrop = (index: number, e: React.DragEvent) => {
     e.preventDefault();
-    const rawFrom = dragIndex !== null ? dragIndex : Number(e.dataTransfer!.getData("text/plain"));
+    const rawFrom = dragIndex !== null ? dragIndex : Number(e.dataTransfer?.getData("text/plain"));
     const from = Number.isFinite(rawFrom) ? rawFrom : index;
     const to = index;
     if (from === to) {
@@ -210,7 +214,7 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
         )}
       </div>
 
-      <div ref={containerRef} style={{ maxHeight: 640 }} className="overflow-auto rounded-[24px] border border-border/60 bg-background/60 p-3" role="list">
+      <div ref={containerRef} style={{ maxHeight: 640, overflow: "auto" }} className="rounded-[24px] border border-border/60 bg-background/60 p-3" role="list">
         {zoomedPageId && (() => {
           const zoomPage = pages.find((page) => page.id === zoomedPageId);
           const zoomUrl = zoomPage?.thumbnailUrl ?? thumbnailUrls[pages.findIndex((page) => page.id === zoomedPageId)] ?? null;
@@ -234,100 +238,130 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
           );
         })()}
 
-        <div className="grid" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${Math.max(180, 200 * (zoom / 100))}px, 1fr))`, gap: 16 }}>
-          {pages.slice(renderRange[0], renderRange[1]).map((page, idx) => {
-            const index = renderRange[0] + idx;
-            const actualIndex = pages.findIndex((candidate) => candidate.id === page.id);
-            const effectiveIndex = actualIndex >= 0 ? actualIndex : index;
-            const thumbnailUrl = page.thumbnailUrl ?? thumbnailUrls[effectiveIndex] ?? null;
-            const isPreviewZoomed = supportsHover && zoomedPageId === page.id;
-            const shouldHide = Boolean(zoomedPageId) && !isPreviewZoomed;
+        <div className="relative" style={{ height: `${virtualizer.getTotalSize()}px`, width: "100%" }}>
+          {virtualizer.getVirtualItems().map((virtualRow) => {
+            const startIndex = virtualRow.index * columns;
+            const visiblePages = pages.slice(startIndex, startIndex + columns);
+
             return (
               <div
-                key={page.id}
-                draggable={!isRotateMode}
-                onDragStart={(e) => !isRotateMode && onDragStart(effectiveIndex, e)}
-                onDragOver={(e) => !isRotateMode && onDragOver(effectiveIndex, e)}
-                onDrop={(e) => !isRotateMode && onDrop(effectiveIndex, e)}
-                onClick={(e) => (isRotateMode ? undefined : toggleSelect(effectiveIndex, e as any))}
-                className={`group relative rounded-[24px] border p-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${!isRotateMode && page.selected ? "border-primary/60 bg-primary/10 shadow-[0_18px_60px_-35px_rgba(59,130,246,0.55)]" : "border-border/70 bg-card/95"} ${dragIndex !== null && overIndex === effectiveIndex ? "border-primary/70 ring-2 ring-primary-20" : ""}`} 
-                style={{ minHeight: 300 * (zoom / 100), overflow: "visible", opacity: shouldHide ? 0 : 1, visibility: shouldHide ? "hidden" : "visible", pointerEvents: shouldHide ? "none" : "auto", contain: "layout paint", transition: "opacity 180ms ease-out, visibility 180ms ease-out, box-shadow 180ms ease-out, transform 180ms ease-out" }}
-                role="listitem"
-                aria-selected={page.selected}
+                key={virtualRow.key}
+                data-index={virtualRow.index}
+                style={{
+                  position: "absolute",
+                  top: 0,
+                  left: 0,
+                  width: "100%",
+                  transform: `translateY(${virtualRow.start}px)`,
+                }}
               >
-                {!isRotateMode && (
-                  <div className="absolute left-3 top-3 z-10">
-                    <input type="checkbox" checked={page.selected} onChange={() => toggleSelect(effectiveIndex)} className="h-4 w-4 rounded border-border accent-primary" />
-                  </div>
-                )}
+                <div className="grid" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: `${gap}px` }}>
+                  {visiblePages.map((page, offset) => {
+                    const index = startIndex + offset;
+                    const actualIndex = pages.findIndex((candidate) => candidate.id === page.id);
+                    const effectiveIndex = actualIndex >= 0 ? actualIndex : index;
+                    const thumbnailUrl = page.thumbnailUrl ?? thumbnailUrls[effectiveIndex] ?? null;
+                    const isPreviewZoomed = supportsHover && zoomedPageId === page.id;
+                    const shouldHide = Boolean(zoomedPageId) && !isPreviewZoomed;
 
-                <div className={`absolute right-3 top-3 z-10 flex gap-1.5 transition-opacity ${alwaysShowActions || isRotateMode ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
-                  {enableRotateControls && (
-                    <>
-                      <button type="button" onClick={(e) => { e.stopPropagation(); onRotate([effectiveIndex], -90); }} title="Rotate left" className="rounded-full border border-border/70 bg-background/95 p-2 text-foreground shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-primary hover:bg-primary hover:text-primary-foreground active:scale-95"> <RotateCcw size={16} /> </button>
-                      <button type="button" onClick={(e) => { e.stopPropagation(); onRotate([effectiveIndex], 90); }} title="Rotate right" className="rounded-full border border-border/70 bg-background/95 p-2 text-foreground shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-primary hover:bg-primary hover:text-primary-foreground active:scale-95"> <RotateCw size={16} /> </button>
-                    </>
-                  )}
-                  {!isRotateMode && allowPerCardDelete && (
-                    <button type="button" onClick={(e) => { e.stopPropagation(); onDelete([page.id]); }} title="Delete" className="rounded-full border border-border/70 bg-background/95 p-2 text-foreground shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-destructive hover:bg-destructive hover:text-destructive-foreground active:scale-95"> <Trash2 size={16} /> </button>
-                  )}
-                </div>
-
-                <div className="flex h-full flex-col justify-between pt-8">
-                  <div className="relative flex h-full min-h-[220px] items-center justify-center overflow-hidden rounded-[20px] border border-border/70 bg-gradient-to-b from-background to-muted/30 p-2 shadow-inner" style={{ aspectRatio: "3 / 4", width: "100%" }}>
-                    {dragIndex === index && <div className="absolute inset-0 bg-primary/10" />}
-                    {thumbnailUrl ? (
+                    return (
                       <div
-                        onMouseEnter={() => {
-                          if (!supportsHover || isScrolling) return;
-                          setZoomedPageId(page.id);
-                        }}
-                        onMouseLeave={() => setZoomedPageId((current) => (current === page.id ? null : current))}
-                        className="relative flex h-full w-full items-center justify-center"
+                        key={page.id}
+                        draggable={!isRotateMode}
+                        onDragStart={(e) => !isRotateMode && onDragStart(effectiveIndex, e)}
+                        onDragOver={(e) => !isRotateMode && onDragOver(effectiveIndex, e)}
+                        onDrop={(e) => !isRotateMode && onDrop(effectiveIndex, e)}
+                        onClick={(e) => (isRotateMode ? undefined : toggleSelect(effectiveIndex, e as any))}
+                        className={`group relative rounded-[24px] border p-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${!isRotateMode && page.selected ? "border-primary/60 bg-primary/10 shadow-[0_18px_60px_-35px_rgba(59,130,246,0.55)]" : "border-border/70 bg-card/95"} ${dragIndex !== null && overIndex === effectiveIndex ? "border-primary/70 ring-2 ring-primary-20" : ""}`}
                         style={{
-                          transform: `rotate(${page.rotation}deg)`,
-                          transformOrigin: "center center",
-                          zIndex: isPreviewZoomed ? 30 : 1,
-                          willChange: "transform",
-                          transition: "transform 180ms ease-out",
-                          cursor: "grab",
+                          minHeight: `${cardHeight}px`,
+                          overflow: "visible",
+                          opacity: shouldHide ? 0 : 1,
+                          visibility: shouldHide ? "hidden" : "visible",
+                          pointerEvents: shouldHide ? "none" : "auto",
+                          contain: "layout paint",
+                          transition: "opacity 180ms ease-out, visibility 180ms ease-out, box-shadow 180ms ease-out, transform 180ms ease-out",
                         }}
+                        role="listitem"
+                        aria-selected={page.selected}
                       >
-                        <img
-                          src={thumbnailUrl}
-                          alt={`Page ${page.pageNumber}`}
-                          className="max-h-full max-w-full rounded-xl border border-border/60 bg-white object-contain shadow-sm dark:bg-slate-950"
-                          style={{ width: "100%", height: "100%", objectFit: "contain" }}
-                        />
-                      </div>
-                    ) : (
-                      <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-[20px] border border-dashed border-border/60 bg-background/70 p-4 text-center">
-                        <div className="w-full space-y-2">
-                          <Skeleton className="h-24 w-full rounded-xl" />
-                          <div className="flex gap-2">
-                            <Skeleton className="h-3 w-3/4 rounded-full" />
-                            <Skeleton className="h-3 w-1/4 rounded-full" />
+                        {!isRotateMode && (
+                          <div className="absolute left-3 top-3 z-10">
+                            <input type="checkbox" checked={page.selected} onChange={() => toggleSelect(effectiveIndex)} className="h-4 w-4 rounded border-border accent-primary" />
+                          </div>
+                        )}
+
+                        <div className={`absolute right-3 top-3 z-10 flex gap-1.5 transition-opacity ${alwaysShowActions || isRotateMode ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
+                          {enableRotateControls && (
+                            <>
+                              <button type="button" onClick={(e) => { e.stopPropagation(); onRotate([effectiveIndex], -90); }} title="Rotate left" className="rounded-full border border-border/70 bg-background/95 p-2 text-foreground shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-primary hover:bg-primary hover:text-primary-foreground active:scale-95"><RotateCcw size={16} /></button>
+                              <button type="button" onClick={(e) => { e.stopPropagation(); onRotate([effectiveIndex], 90); }} title="Rotate right" className="rounded-full border border-border/70 bg-background/95 p-2 text-foreground shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-primary hover:bg-primary hover:text-primary-foreground active:scale-95"><RotateCw size={16} /></button>
+                            </>
+                          )}
+                          {!isRotateMode && allowPerCardDelete && (
+                            <button type="button" onClick={(e) => { e.stopPropagation(); onDelete([page.id]); }} title="Delete" className="rounded-full border border-border/70 bg-background/95 p-2 text-foreground shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-destructive hover:bg-destructive hover:text-destructive-foreground active:scale-95"><Trash2 size={16} /></button>
+                          )}
+                        </div>
+
+                        <div className="flex h-full flex-col justify-between pt-8">
+                          <div className="relative flex h-full items-center justify-center overflow-hidden rounded-[20px] border border-border/70 bg-gradient-to-b from-background to-muted/30 p-2 shadow-inner" style={{ aspectRatio: "3 / 4", width: "100%", minHeight: `${Math.max(200, cardHeight - 52)}px` }}>
+                            {dragIndex === index && <div className="absolute inset-0 bg-primary/10" />}
+                            {thumbnailUrl ? (
+                              <div
+                                onMouseEnter={() => {
+                                  if (!supportsHover || isScrolling) return;
+                                  setZoomedPageId(page.id);
+                                }}
+                                onMouseLeave={() => setZoomedPageId((current) => (current === page.id ? null : current))}
+                                className="relative flex h-full w-full items-center justify-center"
+                                style={{
+                                  transform: `rotate(${page.rotation}deg)`,
+                                  transformOrigin: "center center",
+                                  zIndex: isPreviewZoomed ? 30 : 1,
+                                  willChange: "transform",
+                                  transition: "transform 180ms ease-out",
+                                  cursor: "grab",
+                                }}
+                              >
+                                <img
+                                  src={thumbnailUrl}
+                                  alt={`Page ${page.pageNumber}`}
+                                  className="max-h-full max-w-full rounded-xl border border-border/60 bg-white object-contain shadow-sm dark:bg-slate-950"
+                                  style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                                />
+                              </div>
+                            ) : (
+                              <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-[20px] border border-dashed border-border/60 bg-background/70 p-4 text-center">
+                                <div className="w-full space-y-2">
+                                  <Skeleton className="h-24 w-full rounded-xl" />
+                                  <div className="flex gap-2">
+                                    <Skeleton className="h-3 w-3/4 rounded-full" />
+                                    <Skeleton className="h-3 w-1/4 rounded-full" />
+                                  </div>
+                                </div>
+                                <div className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Loading preview</div>
+                              </div>
+                            )}
+                            {enableRotateControls && (
+                              <Badge variant="secondary" className="absolute bottom-3 left-3 rounded-full bg-background/90 text-xs text-muted-foreground shadow-sm">
+                                {page.rotation}°
+                              </Badge>
+                            )}
+                          </div>
+
+                          <div className="mt-3 flex items-center justify-between gap-2">
+                            <div className="text-sm font-semibold text-foreground">Page {page.pageNumber}</div>
+                            {!isRotateMode ? (page.selected ? <Badge className="rounded-full bg-primary/10 text-primary">Selected</Badge> : <Badge variant="outline" className="rounded-full">Ready</Badge>) : <Badge variant="outline" className="rounded-full">Ready</Badge>}
                           </div>
                         </div>
-                        <div className="text-xs font-medium uppercase tracking-[0.2em] text-muted-foreground">Loading preview</div>
+
+                        {!isRotateMode && (
+                          <div className="absolute bottom-3 left-3 cursor-grab text-muted-foreground/80 transition-colors hover:text-foreground" title="Drag to reorder"><GripVertical size={18} /></div>
+                        )}
                       </div>
-                    )}
-                    {enableRotateControls && (
-                      <Badge variant="secondary" className="absolute bottom-3 left-3 rounded-full bg-background/90 text-xs text-muted-foreground shadow-sm">
-                        {page.rotation}°
-                      </Badge>
-                    )}
-                  </div>
-
-                    <div className="mt-3 flex items-center justify-between gap-2">
-                    <div className="text-sm font-semibold text-foreground">Page {page.pageNumber}</div>
-                    {!isRotateMode ? (page.selected ? <Badge className="rounded-full bg-primary/10 text-primary">Selected</Badge> : <Badge variant="outline" className="rounded-full">Ready</Badge>) : <Badge variant="outline" className="rounded-full">Ready</Badge>}
-                  </div>
+                    );
+                  })}
                 </div>
-
-                {!isRotateMode && (
-                  <div className="absolute bottom-3 left-3 cursor-grab text-muted-foreground/80 transition-colors hover:text-foreground" title="Drag to reorder"><GripVertical size={18} /></div>
-                )}
               </div>
             );
           })}
