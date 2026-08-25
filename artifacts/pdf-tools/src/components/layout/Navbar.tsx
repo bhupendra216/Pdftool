@@ -13,6 +13,8 @@ export function Navbar() {
 
   const links = [
     { href: "/tools", label: "All Tools" },
+    { href: "/tools/pdf-to-markdown", label: "PDF to Markdown" },
+    { href: "/tools/add-page-numbers", label: "Add Page Numbers" },
     { href: "/blog", label: "Blog" },
     { href: "/ai-jobs", label: "AI Jobs" },
   ];

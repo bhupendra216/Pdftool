@@ -19,6 +19,19 @@ export function Home() {
   const { data: posts } = useListBlogPosts();
   const { data: faqs, isLoading: loadingFaqs } = useListFaqs();
 
+  const featuredToolSlugs = [
+    "pdf-to-markdown",
+    "add-page-numbers",
+    "image-converter",
+    "qr-code-generator",
+  ];
+
+  const featuredTools = Array.isArray(tools)
+    ? featuredToolSlugs
+        .map((slug) => tools.find((tool) => tool.slug === slug))
+        .filter((tool): tool is NonNullable<typeof tool> => Boolean(tool))
+    : [];
+
   const popularTools = Array.isArray(tools)
     ? tools.filter((tool) => tool.popular).slice(0, 6)
     : [];
@@ -58,8 +71,8 @@ export function Home() {
         <div className="container mx-auto px-4 md:px-6">
           <div className="flex flex-col md:flex-row md:items-end justify-between mb-6 gap-4">
             <div>
-              <h2 className="text-3xl md:text-4xl font-bold mb-2">Most Popular Tools</h2>
-              <p className="text-muted-foreground text-base">The tools our community uses most.</p>
+              <h2 className="text-3xl md:text-4xl font-bold mb-2">Featured Tools</h2>
+              <p className="text-muted-foreground text-base">The tools we prioritize most for clear, useful document workflows.</p>
             </div>
             <Button variant="ghost" asChild className="group text-primary hover:text-primary hover:bg-primary/10">
               <Link href="/tools">
@@ -67,6 +80,31 @@ export function Home() {
                 <ArrowRight className="ml-2 w-4 h-4 transition-transform group-hover:translate-x-1" />
               </Link>
             </Button>
+          </div>
+
+          {loadingTools ? (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+              {[1, 2, 3, 4].map(i => (
+                <Skeleton key={i} className="h-48 w-full rounded-2xl" />
+              ))}
+            </div>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
+              {featuredTools.map((tool, index) => (
+                <ToolCard key={tool.slug} tool={tool} featured={index === 0} className={index === 0 ? 'xl:col-span-1' : ''} />
+              ))}
+            </div>
+          )}
+        </div>
+      </section>
+
+      <section className="py-10 md:py-12 bg-background">
+        <div className="container mx-auto px-4 md:px-6">
+          <div className="flex flex-col md:flex-row md:items-end justify-between mb-6 gap-4">
+            <div>
+              <h2 className="text-3xl md:text-4xl font-bold mb-2">Most Popular Tools</h2>
+              <p className="text-muted-foreground text-base">The tools our community uses most.</p>
+            </div>
           </div>
 
           {loadingTools ? (

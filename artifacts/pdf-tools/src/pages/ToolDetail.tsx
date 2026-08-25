@@ -1345,7 +1345,13 @@ export function ToolDetail(props?: any) {
   const pageHeading = useMemo(() => {
     switch (tool?.slug) {
       case "pdf-to-markdown":
-        return "Convert PDF to Markdown Online";
+        return "PDF to Markdown Converter";
+      case "add-page-numbers":
+        return "Add Page Numbers to PDF";
+      case "image-converter":
+        return "Image Converter";
+      case "qr-code-generator":
+        return "QR Code Generator";
       case "merge-pdf":
         return "Merge PDF Files Online";
       case "compress-pdf":
@@ -1370,7 +1376,19 @@ export function ToolDetail(props?: any) {
 
     switch (tool.slug) {
       case "pdf-to-markdown":
-        return "Convert PDF content into editable Markdown in the browser. PDFKira preserves headings, lists, and text blocks so you can move insights from reports, slides, and documentation into a format that works with editors, wikis, and developer workflows. This tool is designed for privacy-first use, letting you generate Markdown without unnecessary uploads or accounts. The result is a clean, reusable file that is easy to edit, publish, or version-control.";
+        return (
+          <>
+            <p>
+              PDF to Markdown conversion turns a document into a clean text format that is easy to edit, search, and reuse in documentation, notes, and AI workflows. It is especially useful when you want to move content from a PDF into a Markdown editor, wiki, changelog, or prompt-ready workflow without manual retyping.
+            </p>
+            <p>
+              PDFKira processes the file in your browser and preserves recognizable structure when it is available, including headings, paragraphs, lists, and image references. The result is a Markdown document you can download as a .md file or copy into tools like Obsidian, Notion, GitHub, or other Markdown-based editors.
+            </p>
+            <p>
+              For related document workflows, you can also <Link href="/tools/add-page-numbers">add page numbers to your PDF</Link> or <Link href="/tools/image-converter">convert image files</Link> before or after processing.
+            </p>
+          </>
+        );
       case "merge-pdf":
         return "Combine multiple PDFs into one polished document with a simple drag-and-drop workflow. Ideal for assembling invoices, contracts, presentations, and reports, this tool keeps your files private while letting you reorder content before download. PDFKira makes merging fast and reliable, so you can create a single, shareable PDF in seconds. If you want to continue refining output, related tools below help you split, compress, or organize the final file.";
       case "compress-pdf":

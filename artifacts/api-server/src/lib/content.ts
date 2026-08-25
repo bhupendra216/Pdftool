@@ -150,24 +150,24 @@ export const tools: ToolRecord[] = [
   {
     slug: "image-converter",
     name: "Image Converter",
-    shortDescription: "Convert images between popular formats while maintaining high quality.",
+    shortDescription: "Convert JPG, PNG, WEBP, and other image files in a fast browser-based workflow.",
     category: "Convert",
     icon: "Image",
     popular: true,
     status: "available",
-    seoTitle: "Convert Images Online Free | PDF Tools",
+    seoTitle: "Image Converter Online — JPG, PNG, WEBP & More | PDFKira",
     seoDescription:
-      "Quickly convert images between PNG, JPG, WEBP, BMP and more while preserving quality.",
+      "Convert images between common formats like JPG, PNG, WEBP, BMP, TIFF, and GIF with a fast browser-based workflow that keeps files private.",
     steps: [
-      "Upload an image using drag & drop or the Browse button.",
-      "Choose the desired output format and click Convert.",
-      "Download the converted image when ready.",
+      "Upload one or more images using drag & drop or the Browse button.",
+      "Choose the output format and adjust any conversion settings.",
+      "Download the converted image or batch-ready output when ready.",
     ],
     faqs: [
       {
         question: "Which formats are supported?",
         answer:
-          "We accept PNG, JPG, JPEG, WEBP, BMP, TIFF, and GIF for input, and can output PNG, JPG, JPEG, WEBP, and BMP.",
+          "We accept PNG, JPG, JPEG, WEBP, BMP, TIFF, GIF, SVG, HEIC, and HEIF for input, and can output PNG, JPG, JPEG, WEBP, BMP, TIFF, GIF, and SVG depending on the file type.",
       },
     ],
     blogSlug: null,
@@ -199,30 +199,35 @@ export const tools: ToolRecord[] = [
   },
   {
     slug: "pdf-to-markdown",
-    name: "PDF to Markdown",
-    shortDescription: "Turn a PDF into clean Markdown text in your browser.",
+    name: "PDF to Markdown Converter",
+    shortDescription: "Turn a PDF into clean Markdown for docs, notes, AI workflows, and developer-friendly editing.",
     category: "Convert",
     icon: "FileText",
-    popular: false,
+    popular: true,
     status: "available",
-    seoTitle: "Convert PDF to Markdown Online Free | PDF Tools",
+    seoTitle: "PDF to Markdown Converter Online — Free | PDFKira",
     seoDescription:
-      "Extract text from a PDF and export it as Markdown without uploading your document.",
+      "Convert PDF documents to Markdown in your browser with headings, paragraphs, lists, and image references preserved where detected. Download the result as a .md file or copy it for docs, AI prompts, and developer workflows.",
     steps: [
-      "Upload the PDF you want to convert.",
-      "Review the generated Markdown output.",
-      "Download the .md file or copy the text.",
+      "Upload a PDF document to convert.",
+      "Review the generated Markdown output and structure.",
+      "Download the .md file or copy the text for editing, publishing, or AI workflows.",
     ],
     faqs: [
       {
         question: "Does this upload my PDF to a server?",
         answer:
-          "No. The conversion runs entirely in your browser, and your PDF never leaves your device.",
+          "No. The conversion runs in your browser, so your PDF stays on your device while the Markdown is generated locally.",
       },
       {
-        question: "Can it preserve headings and lists?",
+        question: "What kinds of PDF content does it handle well?",
         answer:
-          "It preserves text layout as Markdown-friendly text, including basic headings and lists when detected.",
+          "It works best with text-heavy PDFs, headings, paragraphs, lists, and scanned pages with readable content. Headings, lists, and image references are represented in Markdown when they are detected.",
+      },
+      {
+        question: "How are tables and images handled?",
+        answer:
+          "Tables are represented as text where the source structure is readable, and images are included as Markdown image references when they are detected during extraction.",
       },
     ],
     blogSlug: null,
@@ -476,19 +481,19 @@ export const tools: ToolRecord[] = [
   },
   {
     slug: "add-page-numbers",
-    name: "Add Page Numbers",
-    shortDescription: "Number every page automatically.",
+    name: "Add Page Numbers to PDF",
+    shortDescription: "Insert page numbers into a PDF with a simple, browser-based workflow.",
     category: "Edit",
     icon: "Hash",
-    popular: false,
+    popular: true,
     status: "available",
-    seoTitle: "Add Page Numbers to PDF Online Free | PDF Tools",
+    seoTitle: "Add Page Numbers to PDF Online — Free | PDFKira",
     seoDescription:
-      "Automatically insert page numbers into a PDF with your choice of position and style.",
+      "Insert page numbers into a PDF in a few clicks with flexible placement and a secure browser-based workflow that keeps your document private.",
     steps: [
-      "Upload your PDF.",
-      "Choose a position and starting number.",
-      "Click Apply and download your numbered PDF.",
+      "Upload the PDF you want to number.",
+      "Choose the placement and starting page number.",
+      "Download the numbered PDF when the update is ready.",
     ],
     faqs: [],
     blogSlug: null,
@@ -541,12 +546,12 @@ export const tools: ToolRecord[] = [
     icon: "QrCode",
     popular: true,
     status: "available",
-    seoTitle: "QR Code Generator Online Free | PDFKira",
+    seoTitle: "QR Code Generator Online — Free | PDFKira",
     seoDescription:
-      "Generate high-quality QR codes from any URL with live preview, instant download, and print-ready PNG or PDF output.",
+      "Generate high-quality QR codes from any URL with a live preview and instant PNG or PDF download options.",
     steps: [
       "Enter the URL you want to turn into a QR code.",
-      "Add an optional project name for the download label.",
+      "Optionally add a project name for the download label.",
       "Preview, download, or share the generated QR code.",
     ],
     faqs: [

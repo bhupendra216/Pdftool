@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { pathToFileURL } from 'url';
 
 function collectHtmlFiles(dir: string) {
   const results: string[] = [];
@@ -47,4 +48,6 @@ function run() {
   process.exit(2);
 }
 
-if (require.main === module) run();
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  run();
+}
