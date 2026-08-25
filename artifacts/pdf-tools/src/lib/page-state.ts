@@ -2,12 +2,11 @@ export type PageState = {
   id: string;
   pageNumber: number;
   rotation: number;
-  selected: boolean;
-};
+  selected: boolean;  thumbnailUrl?: string | null;};
 
 export function removePagesById(pages: PageState[], pageIds: string[], thumbnails: Array<string | null> = []): { pages: PageState[]; thumbnails: Array<string | null> } {
   const idsToRemove = new Set(pageIds);
-  const nextPages = pages.filter((page) => !idsToRemove.has(page.id));
+  const nextPages = pages.filter((page) => !idsToRemove.has(page.id)).map((page, index) => ({ ...page, pageNumber: index + 1 }));
   const nextThumbnails = thumbnails.filter((_, index) => !idsToRemove.has(pages[index]?.id ?? ''));
   return { pages: nextPages, thumbnails: nextThumbnails };
 }

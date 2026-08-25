@@ -287,8 +287,7 @@ export function ToolDetail(props?: any) {
   const [totalPages, setTotalPages] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const [pdfPages, setPdfPages] = useState<Array<{ id: string; pageNumber: number; rotation: number; selected: boolean }>>([]);
-  const [pageThumbnails, setPageThumbnails] = useState<Array<string | null>>([]);
+  const [pdfPages, setPdfPages] = useState<Array<{ id: string; pageNumber: number; rotation: number; selected: boolean; thumbnailUrl?: string | null }>>([]);
   const thumbnailCacheRef = useRef<Map<string, Array<string | null>>>(new Map());
   const [thumbnailZoom, setThumbnailZoom] = useState<number>(100);
   const [documentRotation, setDocumentRotation] = useState<number>(0);
@@ -545,12 +544,12 @@ export function ToolDetail(props?: any) {
     const cacheKey = getThumbnailCacheKey(file);
     const cached = thumbnailCacheRef.current.get(cacheKey);
     if (cached) {
-      setPageThumbnails(cached);
+      setPdfPages((currentPages) => currentPages.map((page, index) => ({ ...page, thumbnailUrl: cached[index] ?? page.thumbnailUrl ?? null })));
       return;
     }
 
     const placeholders: Array<string | null> = Array.from({ length: pageCount }, () => null);
-    setPageThumbnails(placeholders);
+    setPdfPages((currentPages) => currentPages.map((page, index) => ({ ...page, thumbnailUrl: placeholders[index] ?? page.thumbnailUrl ?? null })));
 
     try {
       const bytes = await file.arrayBuffer();
@@ -559,26 +558,27 @@ export function ToolDetail(props?: any) {
 
       for (let index = 0; index < pageCount; index += 1) {
         const page = await pdf.getPage(index + 1);
-        const viewport = page.getViewport({ scale: 1.35 });
+        const viewport = page.getViewport({ scale: 1.8 });
         const canvas = document.createElement("canvas");
-        canvas.width = viewport.width;
-        canvas.height = viewport.height;
+        const targetScale = window.devicePixelRatio || 1;
+        canvas.width = Math.max(1, Math.floor(viewport.width * targetScale));
+        canvas.height = Math.max(1, Math.floor(viewport.height * targetScale));
         const context = canvas.getContext("2d");
         if (!context) {
           continue;
         }
         context.fillStyle = "#ffffff";
         context.fillRect(0, 0, canvas.width, canvas.height);
-        await page.render({ canvas, canvasContext: context, viewport }).promise;
+        await page.render({ canvas, canvasContext: context, viewport: page.getViewport({ scale: 1.8 * targetScale }) }).promise;
         thumbnails[index] = canvas.toDataURL("image/png");
-        setPageThumbnails([...thumbnails]);
+        setPdfPages((currentPages) => currentPages.map((pageItem, pageIndex) => pageIndex === index ? { ...pageItem, thumbnailUrl: thumbnails[pageIndex] ?? pageItem.thumbnailUrl ?? null } : pageItem));
       }
 
       thumbnailCacheRef.current.set(cacheKey, thumbnails);
-      setPageThumbnails(thumbnails);
+      setPdfPages((currentPages) => currentPages.map((page, index) => ({ ...page, thumbnailUrl: thumbnails[index] ?? page.thumbnailUrl ?? null })));
     } catch (error) {
       console.error("Unable to render page thumbnails", error);
-      setPageThumbnails(placeholders);
+      setPdfPages((currentPages) => currentPages.map((page, index) => ({ ...page, thumbnailUrl: placeholders[index] ?? page.thumbnailUrl ?? null })));
     }
   };
 
@@ -596,9 +596,9 @@ export function ToolDetail(props?: any) {
           pageNumber: index + 1,
           rotation: 0,
           selected: false,
+          thumbnailUrl: null,
         })),
       );
-      setPageThumbnails([]);
       if (["rotate-pdf", "organize-pdf", "delete-pages", "extract-pages"].includes(tool?.slug ?? "")) {
         void renderPdfThumbnails(file, pageCount);
       }
@@ -2347,7 +2347,7 @@ export function ToolDetail(props?: any) {
                                 alwaysShowActions
                                 mode="rotate"
                                   enableRotateControls={true}
-                                thumbnailUrls={pageThumbnails}
+                                thumbnailUrls={pdfPages.map((page) => page.thumbnailUrl ?? null)}
                               />
                             </>
                           ) : (
@@ -2378,11 +2378,7 @@ export function ToolDetail(props?: any) {
                               });
                             }}
                             onDelete={(pageIds) => {
-                              setPdfPages((pages) => {
-                                // update thumbnails based on the same pages -> thumbnails alignment
-                                setPageThumbnails((prev) => removePagesById(pages, pageIds, prev).thumbnails);
-                                return removePagesById(pages, pageIds).pages;
-                              });
+                              setPdfPages((pages) => removePagesById(pages, pageIds).pages);
                             }}
                             onExtract={(indexes) => {
                               setPdfPages((pages) => pages.map((p, i) => ({ ...p, selected: indexes.includes(i) || p.selected })));
@@ -2390,7 +2386,7 @@ export function ToolDetail(props?: any) {
                             onSaveChanges={handleProcess}
                             zoom={thumbnailZoom}
                             setZoom={setThumbnailZoom}
-                            thumbnailUrls={pageThumbnails}
+                            thumbnailUrls={pdfPages.map((page) => page.thumbnailUrl ?? null)}
                             enableRotateControls={tool.slug !== "delete-pages"}
                             allowPerCardDelete={tool.slug !== "delete-pages"}
                           />

@@ -9,6 +9,7 @@ type Page = {
   pageNumber: number;
   rotation: number;
   selected: boolean;
+  thumbnailUrl?: string | null;
 };
 
 type Props = {
@@ -42,12 +43,32 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
   const [overIndex, setOverIndex] = useState<number | null>(null);
   const [selectionAnchor, setSelectionAnchor] = useState<number | null>(null);
   const [renderRange, setRenderRange] = useState([0, Math.min(100, pages.length)]);
+  const [supportsHover, setSupportsHover] = useState(false);
+  const [zoomedPageId, setZoomedPageId] = useState<string | null>(null);
+  const [isScrolling, setIsScrolling] = useState(false);
+  const scrollTimerRef = useRef<number | null>(null);
   const isRotateMode = mode === "rotate";
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia ? window.matchMedia("(hover: hover) and (pointer: fine)") : null;
+    const updateSupportsHover = () => setSupportsHover(Boolean(mediaQuery?.matches));
+    updateSupportsHover();
+    mediaQuery?.addEventListener?.("change", updateSupportsHover);
+    return () => mediaQuery?.removeEventListener?.("change", updateSupportsHover);
+  }, []);
 
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
     const onScroll = () => {
+      setIsScrolling(true);
+      if (scrollTimerRef.current) {
+        window.clearTimeout(scrollTimerRef.current);
+      }
+      scrollTimerRef.current = window.setTimeout(() => {
+        setIsScrolling(false);
+      }, 150);
+
       const scrollTop = el.scrollTop;
       const itemHeight = 280 * (zoom / 100);
       const cols = Math.max(1, Math.floor(el.clientWidth / (220 * (zoom / 100))));
@@ -62,6 +83,9 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
     el.addEventListener("scroll", onScroll);
     window.addEventListener("resize", onScroll);
     return () => {
+      if (scrollTimerRef.current) {
+        window.clearTimeout(scrollTimerRef.current);
+      }
       el.removeEventListener("scroll", onScroll);
       window.removeEventListener("resize", onScroll);
     };
@@ -91,6 +115,7 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
   }, [pages, onUpdate, selectionAnchor]);
 
   const onDragStart = (index: number, e: React.DragEvent) => {
+    setZoomedPageId(null);
     setDragIndex(index);
     try { e.dataTransfer!.setData("text/plain", String(index)); } catch {}
     e.dataTransfer!.effectAllowed = "move";
@@ -103,17 +128,23 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
 
   const onDrop = (index: number, e: React.DragEvent) => {
     e.preventDefault();
-    const from = dragIndex !== null ? dragIndex : Number(e.dataTransfer!.getData("text/plain"));
+    const rawFrom = dragIndex !== null ? dragIndex : Number(e.dataTransfer!.getData("text/plain"));
+    const from = Number.isFinite(rawFrom) ? rawFrom : index;
     const to = index;
     if (from === to) {
       setDragIndex(null);
       setOverIndex(null);
       return;
     }
-    const next = [...pages];
+    const next = [...pages].map((page) => ({ ...page }));
     const [item] = next.splice(from, 1);
+    if (!item) {
+      setDragIndex(null);
+      setOverIndex(null);
+      return;
+    }
     next.splice(to, 0, item);
-    onUpdate(next.map((p) => ({ ...p })));
+    onUpdate(next.map((page, pageIndex) => ({ ...page, pageNumber: pageIndex + 1 })));
     setDragIndex(null);
     setOverIndex(null);
   };
@@ -168,12 +199,37 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
       </div>
 
       <div ref={containerRef} style={{ maxHeight: 640 }} className="overflow-auto rounded-[24px] border border-border/60 bg-background/60 p-3" role="list">
+        {zoomedPageId && (() => {
+          const zoomPage = pages.find((page) => page.id === zoomedPageId);
+          const zoomUrl = zoomPage?.thumbnailUrl ?? thumbnailUrls[pages.findIndex((page) => page.id === zoomedPageId)] ?? null;
+          if (!zoomPage || !zoomUrl) return null;
+
+          return (
+            <div
+              className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center bg-black/20 backdrop-blur-[2px] transition-opacity duration-200 ease-out"
+              style={{ opacity: 1 }}
+              aria-hidden="true"
+            >
+              <div className="flex h-[70vh] w-[min(82vw,920px)] items-center justify-center rounded-[28px] border border-border/70 bg-background/90 p-4 shadow-[0_30px_80px_rgba(15,23,42,0.42)]">
+                <img
+                  src={zoomUrl}
+                  alt={`Page ${zoomPage.pageNumber} preview`}
+                  className="max-h-full max-w-full rounded-xl border border-border/60 bg-white object-contain shadow-sm dark:bg-slate-950"
+                  style={{ transform: `rotate(${zoomPage.rotation}deg)`, transition: "transform 180ms ease-out" }}
+                />
+              </div>
+            </div>
+          );
+        })()}
+
         <div className="grid" style={{ gridTemplateColumns: `repeat(auto-fill, minmax(${Math.max(180, 200 * (zoom / 100))}px, 1fr))`, gap: 16 }}>
           {pages.slice(renderRange[0], renderRange[1]).map((page, idx) => {
             const index = renderRange[0] + idx;
             const actualIndex = pages.findIndex((candidate) => candidate.id === page.id);
             const effectiveIndex = actualIndex >= 0 ? actualIndex : index;
-            const thumbnailUrl = thumbnailUrls[effectiveIndex];
+            const thumbnailUrl = page.thumbnailUrl ?? thumbnailUrls[effectiveIndex] ?? null;
+            const isPreviewZoomed = supportsHover && zoomedPageId === page.id;
+            const shouldHide = Boolean(zoomedPageId) && !isPreviewZoomed;
             return (
               <div
                 key={page.id}
@@ -182,8 +238,8 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
                 onDragOver={(e) => !isRotateMode && onDragOver(effectiveIndex, e)}
                 onDrop={(e) => !isRotateMode && onDrop(effectiveIndex, e)}
                 onClick={(e) => (isRotateMode ? undefined : toggleSelect(effectiveIndex, e as any))}
-                className={`group relative rounded-[24px] border p-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${!isRotateMode && page.selected ? "border-primary/60 bg-primary/10 shadow-[0_18px_60px_-35px_rgba(59,130,246,0.55)]" : "border-border/70 bg-card/95"}`}
-                style={{ minHeight: 300 * (zoom / 100) }}
+                className={`group relative rounded-[24px] border p-3 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${!isRotateMode && page.selected ? "border-primary/60 bg-primary/10 shadow-[0_18px_60px_-35px_rgba(59,130,246,0.55)]" : "border-border/70 bg-card/95"} ${dragIndex !== null && overIndex === effectiveIndex ? "border-primary/70 ring-2 ring-primary-20" : ""}`} 
+                style={{ minHeight: 300 * (zoom / 100), overflow: "visible", opacity: shouldHide ? 0 : 1, visibility: shouldHide ? "hidden" : "visible", pointerEvents: shouldHide ? "none" : "auto", transition: "opacity 180ms ease-out, visibility 180ms ease-out, box-shadow 180ms ease-out, transform 180ms ease-out" }}
                 role="listitem"
                 aria-selected={page.selected}
               >
@@ -206,15 +262,31 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
                 </div>
 
                 <div className="flex h-full flex-col justify-between pt-8">
-                  <div className="relative flex h-full min-h-[220px] items-center justify-center overflow-hidden rounded-[20px] border border-border/70 bg-gradient-to-b from-background to-muted/30 p-2 shadow-inner">
+                  <div className="relative flex h-full min-h-[220px] items-center justify-center overflow-visible rounded-[20px] border border-border/70 bg-gradient-to-b from-background to-muted/30 p-2 shadow-inner">
                     {dragIndex === index && <div className="absolute inset-0 bg-primary/10" />}
                     {thumbnailUrl ? (
-                      <img
-                        src={thumbnailUrl}
-                        alt={`Page ${page.pageNumber}`}
-                        className="max-h-full max-w-full rounded-xl border border-border/60 bg-white object-contain shadow-sm dark:bg-slate-950"
-                        style={{ transform: `rotate(${page.rotation}deg)` }}
-                      />
+                      <div
+                        onMouseEnter={() => {
+                          if (!supportsHover || isScrolling) return;
+                          setZoomedPageId(page.id);
+                        }}
+                        onMouseLeave={() => setZoomedPageId((current) => (current === page.id ? null : current))}
+                        className="relative"
+                        style={{
+                          transform: `rotate(${page.rotation}deg)`,
+                          transformOrigin: "center center",
+                          zIndex: isPreviewZoomed ? 30 : 1,
+                          willChange: "transform",
+                          transition: "transform 180ms ease-out",
+                          cursor: "grab",
+                        }}
+                      >
+                        <img
+                          src={thumbnailUrl}
+                          alt={`Page ${page.pageNumber}`}
+                          className="max-h-full max-w-full rounded-xl border border-border/60 bg-white object-contain shadow-sm dark:bg-slate-950"
+                        />
+                      </div>
                     ) : (
                       <div className="flex h-full w-full flex-col items-center justify-center gap-3 rounded-[20px] border border-dashed border-border/60 bg-background/70 p-4 text-center">
                         <div className="w-full space-y-2">
