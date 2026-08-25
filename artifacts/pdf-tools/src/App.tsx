@@ -28,8 +28,8 @@ import { AiJobs } from '@/pages/AiJobs';
 import { AdminLogin } from '@/pages/admin/AdminLogin';
 import { AdminDashboard } from '@/pages/admin/AdminDashboard';
 import NotFound from '@/pages/not-found';
-// 👇 ADD THIS IMPORT:
 import DownloadPdfPage from '@/pages/download-pdf';
+import CompareIlovepdfVsSmallpdfVsPdfkiraPage from '@/pages/compare-ilovepdf-vs-smallpdf-vs-pdfkira';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -98,6 +98,7 @@ function Router() {
         <Route path="/privacy" component={Privacy} />
         <Route path="/terms" component={Terms} />
         <Route path="/contact" component={Contact} />
+        <Route path="/compare/ilovepdf-vs-smallpdf-vs-pdfkira" component={CompareIlovepdfVsSmallpdfVsPdfkiraPage} />
         <Route path="/ai-jobs" component={AiJobs} />
         <Route path="/admin/login" component={AdminLogin} />
         <Route path="/admin/dashboard" component={AdminDashboard} />

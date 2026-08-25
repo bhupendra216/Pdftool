@@ -281,6 +281,7 @@ function writeStaticFiles() {
     const sitemapItems = [
       { loc: `${siteUrl}/`, changefreq: 'weekly' },
       { loc: `${siteUrl}/tools`, changefreq: 'weekly' },
+      { loc: `${siteUrl}/compare/ilovepdf-vs-smallpdf-vs-pdfkira`, changefreq: 'weekly' },
       ...tools.map((tool) => ({
         loc: `${siteUrl}/tools/${tool.slug}`,
         changefreq: 'weekly' as const,
