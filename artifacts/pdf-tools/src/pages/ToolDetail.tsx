@@ -3248,22 +3248,6 @@ export function ToolDetail(props?: any) {
         <FaqSection faqs={faqsToShow} title={`${tool.name} FAQ`} />
       )}
 
-      <section className="border-t border-border/70 bg-background py-20">
-        <div className="container mx-auto max-w-5xl px-4 md:px-6">
-          <div className="mb-8">
-            <h2 className="text-2xl font-bold text-foreground">Related tools</h2>
-            <p className="mt-2 text-sm text-muted-foreground">Explore nearby PDF workflows on PDFKira.</p>
-            <div className="mt-4 flex flex-wrap gap-3">
-              {relatedTools.map((relatedTool) => (
-                <Link key={relatedTool.slug} href={`/tools/${relatedTool.slug}`} className="rounded-full border border-border/70 bg-background/90 px-4 py-2 text-sm font-medium text-primary transition hover:bg-primary/5">
-                  {relatedTool.name}
-                </Link>
-              ))}
-            </div>
-          </div>
-        </div>
-      </section>
-
       {relatedTools.length > 0 && (
         <section className="border-t border-border/70 bg-background py-20">
           <div className="container mx-auto px-4 md:px-6 max-w-6xl">
