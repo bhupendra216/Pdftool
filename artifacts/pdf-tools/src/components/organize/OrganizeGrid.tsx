@@ -319,7 +319,7 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
                     )}
                   </div>
 
-                  <div className="mt-3 flex items-center justify-between gap-2">
+                    <div className="mt-3 flex items-center justify-between gap-2">
                     <div className="text-sm font-semibold text-foreground">Page {page.pageNumber}</div>
                     {!isRotateMode ? (page.selected ? <Badge className="rounded-full bg-primary/10 text-primary">Selected</Badge> : <Badge variant="outline" className="rounded-full">Ready</Badge>) : <Badge variant="outline" className="rounded-full">Ready</Badge>}
                   </div>
