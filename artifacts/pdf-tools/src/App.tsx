@@ -6,6 +6,7 @@ import { Route, Switch, Router as WouterRouter, useParams } from 'wouter';
 import { useListTools } from '@workspace/api-client-react';
 import { Layout } from '@/components/layout/Layout';
 import { ScrollToTop } from '@/components/shared/ScrollToTop';
+import { Analytics } from '@vercel/analytics/react';
 
 // Pages
 import { Home } from '@/pages/Home';
@@ -118,6 +119,7 @@ function App() {
           <Router />
         </WouterRouter>
         <Toaster />
+        <Analytics />
       </TooltipProvider>
     </QueryClientProvider>
   );
