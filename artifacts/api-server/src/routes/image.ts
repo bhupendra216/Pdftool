@@ -4,6 +4,7 @@ import sharp, { type Sharp } from "sharp";
 import heicConvert from "heic-convert";
 import potrace from "potrace";
 import path from "path";
+import { getSingleUploadedFile, getUploadedFiles } from "./upload-shape";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } }); // 20MB limit
 const router = Router();
@@ -65,7 +66,7 @@ const traceSvg = (buffer: Buffer) => {
 };
 
 router.post("/convert-image", upload.array("files"), async (req, res) => {
-  const files = req.files as Express.Multer.File[] | undefined;
+  const files = getUploadedFiles(req);
   const outFormatRaw = (req.body && req.body.outputFormat) || "png";
   const outFormat = String(outFormatRaw).toLowerCase();
   const svgModeRaw = req.body && req.body.svgMode;
@@ -174,7 +175,7 @@ router.post("/image-resize", upload.single("files"), async (req, res) => {
   const width = parseInt(String(req.body.width || ""), 10);
   const height = parseInt(String(req.body.height || ""), 10);
 
-  let file = req.file as Express.Multer.File | undefined;
+  let file = getSingleUploadedFile(req);
   let wasHeic = false;
 
   if (!file) {
@@ -231,7 +232,7 @@ router.post("/image-resize", upload.single("files"), async (req, res) => {
 router.post("/image-compress", upload.single("files"), async (req, res) => {
   const quality = Math.min(100, Math.max(1, Number(req.body.quality ?? 80)));
 
-  let file = req.file as Express.Multer.File | undefined;
+  let file = getSingleUploadedFile(req);
   let wasHeic = false;
 
   if (!file) {
@@ -297,7 +298,7 @@ router.post("/image-upscale", upload.single("files"), async (req, res) => {
   const width = parseInt(String(req.body.width || ""), 10);
   const height = parseInt(String(req.body.height || ""), 10);
 
-  let file = req.file as Express.Multer.File | undefined;
+  let file = getSingleUploadedFile(req);
   let wasHeic = false;
 
   if (!file) {

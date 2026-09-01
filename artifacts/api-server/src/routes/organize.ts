@@ -2,6 +2,7 @@ import { Router } from "express";
 import multer from "multer";
 import { degrees, PDFDocument } from "pdf-lib";
 import { buildDefaultPageOrder, loadPdf, parsePageList, parseRotationValues, parseSingleRotationValue, preservePdfMetadata, isPdfFile } from "./pdf-utils";
+import { getSingleUploadedFile } from "./upload-shape";
 
 const upload = multer({ storage: multer.memoryStorage() });
 const router = Router();
@@ -28,7 +29,7 @@ async function rotatePdfPages(file: Express.Multer.File, rawRotation: unknown) {
 }
 
 router.post("/organize-pdf", upload.single("files"), async (req, res) => {
-  const file = req.file as Express.Multer.File | undefined;
+  const file = getSingleUploadedFile(req);
   const rawPageOrder = req.body?.pageOrder ?? req.body?.pageorder;
   const rawRotations = req.body?.rotations ?? req.body?.pageRotations;
 
@@ -70,7 +71,7 @@ router.post("/organize-pdf", upload.single("files"), async (req, res) => {
 });
 
 router.post("/rotate-pdf", upload.single("files"), async (req, res) => {
-  const file = req.file as Express.Multer.File | undefined;
+  const file = getSingleUploadedFile(req);
   const rawRotation = req.body?.rotation ?? req.body?.rotations ?? req.body?.pageRotations;
 
   if (!isPdfFile(file)) {

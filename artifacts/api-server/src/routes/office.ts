@@ -6,6 +6,7 @@ import os from "node:os";
 import path from "node:path";
 import { PDFDocument } from "pdf-lib";
 import { AlignmentType, Document, Packer, Paragraph, TextRun } from "docx";
+import { getSingleUploadedFile, getUploadedFiles } from "./upload-shape";
 
 type PdfToWordOptions = {
   outputFormat: "docx" | "doc";
@@ -672,7 +673,7 @@ async function unlockPdf(file: Express.Multer.File, password: string) {
 
 async function handlePdfToWordRequest(req: express.Request, res: express.Response) {
   // Start an asynchronous job so we can report per-page progress
-  const file = req.file as Express.Multer.File | undefined;
+  const file = getSingleUploadedFile(req);
   if (!file) {
     res.status(400).json({ error: "No file uploaded" });
     return;
@@ -829,7 +830,7 @@ router.get("/pdf-to-word/result/:jobId", async (req, res) => {
 });
 
 router.post("/convert-word-to-pdf", upload.single("files"), async (req, res) => {
-  const file = req.file as Express.Multer.File | undefined;
+  const file = getSingleUploadedFile(req);
   if (!file) {
     res.status(400).json({ error: "No file uploaded" });
     return;
@@ -853,7 +854,7 @@ router.post("/convert-word-to-pdf", upload.single("files"), async (req, res) => 
 });
 
 router.post("/convert-jpg-to-pdf", upload.array("files"), async (req, res) => {
-  const files = req.files as Express.Multer.File[] | undefined;
+  const files = getUploadedFiles(req);
   if (!files || files.length === 0) {
     res.status(400).json({ error: "No files uploaded" });
     return;
@@ -871,7 +872,7 @@ router.post("/convert-jpg-to-pdf", upload.array("files"), async (req, res) => {
 });
 
 router.post("/convert-pdf-to-jpg", upload.single("files"), async (req, res) => {
-  const file = req.file as Express.Multer.File | undefined;
+  const file = getSingleUploadedFile(req);
   if (!file) {
     res.status(400).json({ error: "No file uploaded" });
     return;
@@ -895,7 +896,7 @@ router.post("/convert-pdf-to-jpg", upload.single("files"), async (req, res) => {
 });
 
 router.post("/compress-pdf", upload.single("files"), async (req, res) => {
-  const file = req.file as Express.Multer.File | undefined;
+  const file = getSingleUploadedFile(req);
 
   if (!file) {
     res.status(400).json({ error: "No file uploaded" });
@@ -930,7 +931,7 @@ router.post("/compress-pdf", upload.single("files"), async (req, res) => {
 });
 
 router.post("/protect-pdf", upload.single("files"), async (req, res) => {
-  const file = req.file as Express.Multer.File | undefined;
+  const file = getSingleUploadedFile(req);
   const password = String(req.body.password || "").trim();
 
   if (!file) {
@@ -961,7 +962,7 @@ router.post("/protect-pdf", upload.single("files"), async (req, res) => {
 });
 
 router.post("/unlock-pdf", upload.single("files"), async (req, res) => {
-  const file = req.file as Express.Multer.File | undefined;
+  const file = getSingleUploadedFile(req);
   const password = String(req.body.password || "").trim();
 
   if (!file) {

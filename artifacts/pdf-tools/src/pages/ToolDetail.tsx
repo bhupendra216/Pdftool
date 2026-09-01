@@ -321,7 +321,7 @@ export function ToolDetail(props?: any) {
   const [pdfToWordOutputFormat, setPdfToWordOutputFormat] = useState<"docx" | "doc">("docx");
   const [pdfToWordPageCount, setPdfToWordPageCount] = useState<number | null>(null);
   const uploadConfig = useMemo(() => getUploadConfig(tool?.slug), [tool?.slug]);
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, "") ?? "";
+  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, "") || (import.meta.env.DEV ? "http://localhost:3000" : "");
   const apiUrl = (path: string) => `${apiBaseUrl}${path}`;
   const relatedTools = useMemo(() => {
     if (!Array.isArray(catalogTools) || !tool) return [];

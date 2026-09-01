@@ -2,12 +2,13 @@ import { Router } from "express";
 import multer from "multer";
 import { PDFDocument } from "pdf-lib";
 import { loadPdf, parsePageList, preservePdfMetadata, isPdfFile } from "./pdf-utils";
+import { getSingleUploadedFile } from "./upload-shape";
 
 const upload = multer({ storage: multer.memoryStorage() });
 const router = Router();
 
 router.post("/delete-pages", upload.single("files"), async (req, res) => {
-  const file = req.file as Express.Multer.File | undefined;
+  const file = getSingleUploadedFile(req);
   const rawPagesToDelete = req.body.pages || req.body.pagesToDelete;
 
   if (!isPdfFile(file)) {

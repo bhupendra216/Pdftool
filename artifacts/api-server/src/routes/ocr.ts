@@ -1,6 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import { mkdtemp, rm, writeFile, readdir } from "node:fs/promises";
+import { getSingleUploadedFile } from "./upload-shape";
 import path from "node:path";
 import os from "node:os";
 import { execFile } from "node:child_process";
@@ -54,7 +55,7 @@ async function preprocessImage(buffer: Buffer) {
 }
 
 router.post("/ocr-image-to-text", upload.single("files"), async (req, res) => {
-  const file = req.file as Express.Multer.File | undefined;
+  const file = getSingleUploadedFile(req);
   if (!file) {
     res.status(400).json({ error: "No file uploaded" });
     return;

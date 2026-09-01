@@ -1,6 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import { PDFDocument } from "pdf-lib";
+import { getUploadedFiles } from "./upload-shape";
 
 const upload = multer({ storage: multer.memoryStorage() });
 const router = Router();
@@ -9,7 +10,7 @@ router.post(
   "/merge-pdf",
   upload.array("files"),
   async (req, res) => {
-    const files = req.files as Express.Multer.File[] | undefined;
+    const files = getUploadedFiles(req);
 
     if (!files || files.length === 0) {
       res.status(400).json({ error: "No files uploaded" });

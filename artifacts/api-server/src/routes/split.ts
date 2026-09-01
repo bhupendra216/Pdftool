@@ -1,6 +1,7 @@
 import { Router } from "express";
 import multer from "multer";
 import { PDFDocument } from "pdf-lib";
+import { getUploadedFiles } from "./upload-shape";
 
 const upload = multer({ storage: multer.memoryStorage() });
 const router = Router();
@@ -44,7 +45,7 @@ router.post(
   "/split-pdf",
   upload.array("files"),
   async (req, res) => {
-    const files = req.files as Express.Multer.File[] | undefined;
+    const files = getUploadedFiles(req);
     const pageRange = (req.body && req.body.pageRange) || "";
 
     if (!files || files.length === 0) {

@@ -3,14 +3,15 @@ import multer from "multer";
 import { PDFDocument } from "pdf-lib";
 import { loadPdf, preservePdfMetadata, isPdfFile } from "./pdf-utils";
 import { applyImageWatermarkToPdf, applyPageNumbersToPdf, applyWatermarkToPdf } from "./pdf-annotations";
+import { getSingleUploadedFile } from "./upload-shape";
 
 const upload = multer({ storage: multer.memoryStorage() });
 const router = Router();
 
 router.post("/watermark-pdf", upload.fields([{ name: "files", maxCount: 1 }, { name: "logo", maxCount: 1 }, { name: "file", maxCount: 1 }]), async (req, res) => {
-  const files = (req.files as { files?: Express.Multer.File[]; logo?: Express.Multer.File[]; file?: Express.Multer.File[] } | undefined) || {};
-  const file = files.files?.[0] || files.file?.[0];
-  const logoFile = files.logo?.[0];
+  const fieldFiles = (req.files as Record<string, Express.Multer.File[] | undefined> | undefined) || {};
+  const file = fieldFiles.files?.[0] || fieldFiles.file?.[0] || getSingleUploadedFile(req);
+  const logoFile = fieldFiles.logo?.[0];
   const text = typeof req.body.text === "string" ? req.body.text.trim() : "";
   const position = typeof req.body.position === "string" ? req.body.position.trim() : "bottom-right";
 
@@ -43,7 +44,7 @@ router.post("/watermark-pdf", upload.fields([{ name: "files", maxCount: 1 }, { n
 });
 
 router.post("/add-page-numbers", upload.single("files"), async (req, res) => {
-  const file = req.file as Express.Multer.File | undefined;
+  const file = getSingleUploadedFile(req);
   const startNumber = Number(req.body.startNumber ?? 1);
   const position = String(req.body.position || "bottom-right").trim();
 

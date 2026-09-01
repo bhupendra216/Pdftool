@@ -38,7 +38,7 @@ export async function fetchAiJobsSnapshot(): Promise<AiJobsSnapshot> {
   }
 
   try {
-    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || (import.meta.env.DEV ? "http://localhost:3000" : "");
+    const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, "") || (import.meta.env.DEV ? "http://localhost:3000" : "");
     const response = await fetch(`${apiBaseUrl}/api/ai-jobs`, { headers: { Accept: "application/json" } });
     if (!response.ok) {
       throw new Error(`AI jobs request failed: ${response.status}`);
