@@ -13,6 +13,7 @@ import { describe, it } from 'node:test';
 
 const { getSafeTextGeometry, validateTextItemGeometry } = await import('./pdf-text-geometry');
 const { groupTextItemsIntoLines } = await import('../pages/edit-pdf-mvp');
+const { reorderFiles } = await import('../components/shared/FilePreviewList');
 
 describe('pdf text geometry validation', () => {
   it('accepts a normal axis-aligned text item', () => {
@@ -137,5 +138,18 @@ describe('pdf text geometry validation', () => {
     const grouped = groupTextItemsIntoLines(items, 2);
     assert.equal(grouped.length, 1);
     assert.equal(grouped[0].text, 'Introduction');
+  });
+
+  it('moves the full file object together when the drag order changes', () => {
+    const first = new File(['first'], 'first.pdf', { type: 'application/pdf' });
+    const second = new File(['second'], 'second.pdf', { type: 'application/pdf' });
+    const third = new File(['third'], 'third.pdf', { type: 'application/pdf' });
+
+    const reordered = reorderFiles([first, second, third], 2, 0);
+
+    assert.deepEqual(reordered.map((file) => file.name), ['third.pdf', 'first.pdf', 'second.pdf']);
+    assert.equal(reordered[0], third);
+    assert.equal(reordered[1], first);
+    assert.equal(reordered[2], second);
   });
 });

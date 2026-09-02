@@ -712,25 +712,54 @@ export function ToolDetail(props?: any) {
     return postFormDataForBlob(apiUrl("/api/convert-jpg-to-pdf"), formData, "JPG to PDF conversion");
   };
 
-  const convertPdfToJpgOnServer = async (fileToConvert: File): Promise<{ blob: Blob; filename: string }> => {
-    const formData = new FormData();
-    formData.append("files", fileToConvert);
+  const convertPdfToJpgOnClient = async (fileToConvert: File): Promise<{ blob: Blob; filename: string }> => {
+    const bytes = await fileToConvert.arrayBuffer();
+    const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+    const zip = new JSZip();
+    const pageCount = pdf.numPages;
 
-    const response = await fetch(apiUrl("/api/convert-pdf-to-jpg"), {
-      method: "POST",
-      body: formData,
-    });
+    for (let pageNumber = 1; pageNumber <= pageCount; pageNumber += 1) {
+      setProgressStage(`Converting page ${pageNumber} of ${pageCount}...`);
+      setProgress(Math.round((pageNumber / pageCount) * 90));
 
-    if (!response.ok) {
-      const text = await response.text().catch(() => null);
-      throw new Error(text || `PDF to JPG conversion failed with HTTP ${response.status}`);
+      const page = await pdf.getPage(pageNumber);
+      const scale = 1.8;
+      const viewport = page.getViewport({ scale });
+      const canvas = document.createElement("canvas");
+      const context = canvas.getContext("2d");
+      if (!context) {
+        throw new Error("Unable to create a canvas for JPG conversion.");
+      }
+
+      const pixelRatio = 2;
+      canvas.width = Math.max(1, Math.ceil(viewport.width * pixelRatio));
+      canvas.height = Math.max(1, Math.ceil(viewport.height * pixelRatio));
+      context.setTransform(pixelRatio, 0, 0, pixelRatio, 0, 0);
+      context.imageSmoothingEnabled = true;
+      context.imageSmoothingQuality = "high";
+
+      await page.render({
+        canvas,
+        canvasContext: context,
+        viewport,
+      }).promise;
+
+      const jpegBlob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob((blob) => resolve(blob), "image/jpeg", 0.92);
+      });
+
+      if (!jpegBlob) {
+        throw new Error(`Unable to render page ${pageNumber} to a JPG.`);
+      }
+
+      zip.file(`page-${pageNumber}.jpg`, jpegBlob, { binary: true });
     }
 
-    const blob = await response.blob();
-    const contentDisposition = response.headers.get("content-disposition") || "";
-    const filenameMatch = contentDisposition.match(/filename\s*=\s*"?([^";]+)"?/i);
-    const filename = filenameMatch ? filenameMatch[1] : stripExtension(fileToConvert.name) + ".jpg";
-    return { blob, filename };
+    const zipBlob = await zip.generateAsync({ type: "blob", compression: "DEFLATE", compressionOptions: { level: 6 } });
+    const outputName = `${stripExtension(fileToConvert.name)}.zip`;
+    setProgress(100);
+    setProgressStage("Ready to download");
+    return { blob: zipBlob, filename: outputName };
   };
 
   const protectPdfOnServer = async (fileToConvert: File, password: string): Promise<Blob> => {
@@ -1746,6 +1775,20 @@ export function ToolDetail(props?: any) {
     });
   };
 
+  const handleReorderFiles = (fromIndex: number, toIndex: number) => {
+    setFiles((prev) => {
+      if (prev.length < 2) return prev;
+      if (fromIndex === toIndex) return prev;
+      if (fromIndex < 0 || toIndex < 0 || fromIndex >= prev.length || toIndex >= prev.length) return prev;
+
+      const next = [...prev];
+      const [moved] = next.splice(fromIndex, 1);
+      if (!moved) return prev;
+      next.splice(toIndex, 0, moved);
+      return next;
+    });
+  };
+
   const triggerFileDownload = (blob: Blob, fileName: string) => {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -1947,7 +1990,7 @@ export function ToolDetail(props?: any) {
         blob = await convertJpgToPdfOnServer(files);
         outputName = "images.pdf";
       } else if (tool.slug === "pdf-to-jpg") {
-        const pdfResult = await convertPdfToJpgOnServer(files[0]);
+        const pdfResult = await convertPdfToJpgOnClient(files[0]);
         blob = pdfResult.blob;
         outputName = pdfResult.filename;
       } else if (tool.slug === "image-resize") {
@@ -2306,6 +2349,7 @@ export function ToolDetail(props?: any) {
                     <FilePreviewList 
                       files={files} 
                       onRemove={handleRemoveFile} 
+                      onReorder={tool.slug === "merge-pdf" || tool.slug === "jpg-to-pdf" ? handleReorderFiles : undefined}
                       status="options" 
                     />
                   )}
@@ -2692,13 +2736,10 @@ export function ToolDetail(props?: any) {
                     </div>
                   )}
 
-                  <div className="mt-8 flex flex-col gap-4 md:flex-row">
-                    <Button variant="outline" onClick={() => setStatus("idle")} className="flex-1 rounded-xl h-12">
-                      <ArrowLeft className="w-4 h-4 mr-2" /> Add More
-                    </Button>
+                  <div className="mt-8">
                     <Button
                       onClick={handleProcess}
-                      className="flex-[2] rounded-xl h-12 text-lg shadow-md shadow-primary/20"
+                      className="w-full rounded-xl h-12 text-lg shadow-md shadow-primary/20"
                       disabled={!canProcess}
                     >
                       {buttonLabel}
