@@ -33,7 +33,7 @@ export function Home() {
     : [];
 
   const popularTools = Array.isArray(tools)
-    ? tools.filter((tool) => tool.popular).slice(0, 6)
+    ? tools.filter((tool) => tool.slug !== "edit-pdf" && tool.popular).slice(0, 6)
     : [];
 
   const latestPosts = Array.isArray(posts)

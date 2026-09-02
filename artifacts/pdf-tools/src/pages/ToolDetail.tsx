@@ -143,6 +143,15 @@ const getUploadConfig = (slug?: string): UploadConfig => {
         supportedFormats: ["PDF"],
         highlights: ["Split by page range", "Preview before export", "Create focused PDFs quickly"],
       };
+    case "edit-pdf":
+      return {
+        accept: "application/pdf,.pdf",
+        maxSizeMB: 50,
+        label: "PDF file",
+        description: "or drop a PDF here.",
+        supportedFormats: ["PDF"],
+        highlights: ["Edit pages locally", "Keep files on-device", "Download a cleaned PDF"],
+      };
     case "organize-pdf":
       return {
         accept: "application/pdf,.pdf",
@@ -327,7 +336,7 @@ export function ToolDetail(props?: any) {
     if (!Array.isArray(catalogTools) || !tool) return [];
 
     return catalogTools
-      .filter((candidate) => candidate.slug !== tool.slug && candidate.status === "available" && candidate.category === tool.category)
+      .filter((candidate) => candidate.slug !== "edit-pdf" && candidate.slug !== tool.slug && candidate.status === "available" && candidate.category === tool.category)
       .slice(0, 4);
   }, [catalogTools, tool]);
   const landingSteps = tool?.steps?.length ? tool.steps.slice(0, 3) : ["Upload your file", "Adjust the options", "Download the result"];
@@ -407,6 +416,7 @@ export function ToolDetail(props?: any) {
     "merge-pdf": "Merge PDF",
     "split-pdf": "Split PDF",
     "compress-pdf": "Compress PDF",
+    "edit-pdf": "Edit PDF",
     "rotate-pdf": "Rotate PDF",
     "unlock-pdf": "Unlock PDF",
     "protect-pdf": "Protect PDF",
@@ -599,7 +609,7 @@ export function ToolDetail(props?: any) {
           thumbnailUrl: null,
         })),
       );
-      if (["rotate-pdf", "organize-pdf", "delete-pages", "extract-pages"].includes(tool?.slug ?? "")) {
+      if (["rotate-pdf", "organize-pdf", "edit-pdf", "delete-pages", "extract-pages"].includes(tool?.slug ?? "")) {
         void renderPdfThumbnails(file, pageCount);
       }
     } catch (error: any) {
@@ -842,6 +852,26 @@ export function ToolDetail(props?: any) {
     formData.append("pages", pages.join(","));
 
     return postFormDataForBlob(apiUrl("/api/extract-pages"), formData, "Extract Pages");
+  };
+
+  const editPdfOnClient = async (fileToEdit: File, pagesToDelete: number[]): Promise<Blob> => {
+    if (!pagesToDelete.length) {
+      return new Blob([await fileToEdit.arrayBuffer()], { type: fileToEdit.type || "application/pdf" });
+    }
+
+    const bytes = await fileToEdit.arrayBuffer();
+    const pdf = await PDFDocument.load(bytes);
+    const pageIndicesToDelete = [...new Set(pagesToDelete)]
+      .map((pageNumber) => Number(pageNumber) - 1)
+      .filter((pageIndex) => pageIndex >= 0 && pageIndex < pdf.getPageCount())
+      .sort((a, b) => b - a);
+
+    for (const pageIndex of pageIndicesToDelete) {
+      pdf.removePage(pageIndex);
+    }
+
+    const editedBytes = await pdf.save();
+    return new Blob([new Uint8Array(editedBytes)], { type: "application/pdf" });
   };
 
   const movePage = (index: number, direction: "up" | "down") => {
@@ -1677,6 +1707,7 @@ export function ToolDetail(props?: any) {
       } else if (
         tool?.slug === "organize-pdf" ||
         tool?.slug === "rotate-pdf" ||
+        tool?.slug === "edit-pdf" ||
         tool?.slug === "delete-pages" ||
         tool?.slug === "extract-pages"
       ) {
@@ -1870,6 +1901,10 @@ export function ToolDetail(props?: any) {
 
         blob = await splitPdfOnServer(files[0], pageRange);
         outputName = stripExtension(files[0].name) + `-split.pdf`;
+      } else if (tool.slug === "edit-pdf") {
+        const pagesToDelete = pdfPages.filter((page) => page.selected).map((page) => page.pageNumber);
+        blob = await editPdfOnClient(files[0], pagesToDelete);
+        outputName = stripExtension(files[0].name) + "-edited.pdf";
       } else if (tool.slug === "image-converter") {
         blob = await convertImageOnServer(files[0], outputFormat, svgMode);
         const baseName = stripExtension(files[0].name);
@@ -2275,7 +2310,7 @@ export function ToolDetail(props?: any) {
                     />
                   )}
 
-                  {(tool.slug === "organize-pdf" || tool.slug === "rotate-pdf" || tool.slug === "delete-pages" || tool.slug === "extract-pages") && (
+                  {(tool.slug === "organize-pdf" || tool.slug === "rotate-pdf" || tool.slug === "edit-pdf" || tool.slug === "delete-pages" || tool.slug === "extract-pages") && (
                     <div className="mt-6 space-y-3">
                       {tool.slug === "rotate-pdf" ? (
                         <div className="space-y-4">
@@ -2908,7 +2943,7 @@ export function ToolDetail(props?: any) {
                       </div>
                     )}
 
-                    {(tool.slug === "organize-pdf" || tool.slug === "delete-pages" || tool.slug === "extract-pages") && (
+                    {(tool.slug === "organize-pdf" || tool.slug === "edit-pdf" || tool.slug === "delete-pages" || tool.slug === "extract-pages") && (
                       <div className="rounded-2xl border border-border/70 bg-card/80 p-4">
                         <p className="text-sm font-medium text-foreground">Selection summary</p>
                         <p className="mt-1 text-sm text-muted-foreground">

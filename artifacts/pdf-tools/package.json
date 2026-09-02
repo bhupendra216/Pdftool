@@ -79,6 +79,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "@embedpdf/pdfium": "^2.15.0",
     "@tanstack/react-virtual": "^3.14.10",
     "@vercel/analytics": "^2.0.1",
     "jszip": "^3.10.0",

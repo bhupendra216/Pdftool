@@ -14,6 +14,7 @@ import { ToolDetail } from '@/pages/ToolDetail';
 import MergePdfPage from '@/pages/merge-pdf';
 import SplitPdfPage from '@/pages/split-pdf';
 import CompressPdfPage from '@/pages/compress-pdf';
+import EditPdfPage from '@/pages/edit-pdf';
 import ConvertPdfPage from '@/pages/convert-pdf';
 import PdfOcrPage from '@/pages/pdf-ocr';
 import OrganizePdfPage from '@/pages/organize-pdf';
@@ -78,6 +79,7 @@ function Router() {
         <Route path="/tools/merge-pdf" component={MergePdfPage} />
         <Route path="/tools/split-pdf" component={SplitPdfPage} />
         <Route path="/tools/compress-pdf" component={CompressPdfPage} />
+        <Route path="/tools/edit-pdf" component={EditPdfPage} />
         <Route path="/tools/convert-pdf" component={ConvertPdfPage} />
         <Route path="/tools/pdf-ocr" component={PdfOcrPage} />
         <Route path="/tools/organize-pdf" component={OrganizePdfPage} />
@@ -88,6 +90,7 @@ function Router() {
         <Route path="/merge-pdf" component={MergePdfPage} />
         <Route path="/split-pdf" component={SplitPdfPage} />
         <Route path="/compress-pdf" component={CompressPdfPage} />
+        <Route path="/edit-pdf" component={EditPdfPage} />
         <Route path="/convert-pdf" component={ConvertPdfPage} />
         <Route path="/pdf-ocr" component={PdfOcrPage} />
         <Route path="/organize-pdf" component={OrganizePdfPage} />

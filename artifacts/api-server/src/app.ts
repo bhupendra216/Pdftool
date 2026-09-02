@@ -29,8 +29,11 @@ app.use(
   }),
 );
 app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Increase body size limit to allow receiving base64-encoded PDF payloads from the editor
+app.use(express.json({ limit: '60mb' }));
+app.use(express.urlencoded({ extended: true, limit: '60mb' }));
+// Accept raw PDF uploads (binary) so editors can POST a Blob directly.
+app.use(express.raw({ type: 'application/pdf', limit: '60mb' }));
 
 app.use((req, res, next) => {
   const startedAt = Date.now();

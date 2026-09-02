@@ -3,6 +3,8 @@ import dns from "dns";
 import net from "net";
 import { URL } from "url";
 import path from "path";
+import fs from "fs";
+import crypto from "crypto";
 
 const router = Router();
 const dnsLookup = dns.promises.lookup;
@@ -85,8 +87,84 @@ function sanitizeFilename(name: string) {
 }
 
 router.post('/download-pdf', async (req, res) => {
-  const { url } = req.body ?? {};
+  const { url, data, filename: bodyFilename } = req.body ?? {};
   const rawUrl = typeof url === 'string' ? url.trim() : '';
+
+  // Support raw PDF POSTs (binary) sent with Content-Type: application/pdf
+  if ((req.headers['content-type'] || '').toString().includes('application/pdf') && Buffer.isBuffer(req.body)) {
+    const buf = req.body as Buffer;
+    try {
+      console.debug('[download-pdf] received raw PDF buffer length=%d filename=%s', buf.length, req.headers['x-filename'] || bodyFilename || '');
+      if (buf.length === 0 || buf.length > MAX_BYTES) {
+        res.status(400).json({ error: 'Invalid or too large PDF data' });
+        return;
+      }
+      const prefix = buf.slice(0, 32).toString('latin1').replace(/^\uFEFF/, '').replace(/^\s+/, '');
+      if (!prefix.startsWith('%PDF')) {
+        res.status(400).json({ error: 'Provided data is not a valid PDF' });
+        return;
+      }
+
+      // Debug: write the received raw PDF to a temporary file and log its sha256
+      try {
+        const tmpDir = process.env.TMPDIR || '/tmp';
+        const safeName = sanitizeFilename((req.headers['x-filename'] || bodyFilename) as string || `download-${Date.now()}`);
+        const tmpPath = path.join(tmpDir, `pdf-debug-raw-${Date.now()}-${safeName}`);
+        fs.writeFileSync(tmpPath, buf);
+        const hash = crypto.createHash('sha256').update(buf).digest('hex');
+        console.debug('[download-pdf] debug-saved raw tmpPath=%s size=%d sha256=%s', tmpPath, buf.length, hash);
+      } catch (err) {
+        console.warn('[download-pdf] failed to write debug temp file (raw)', err);
+      }
+
+      const filename = sanitizeFilename((req.headers['x-filename'] || bodyFilename) as string || `download`);
+      res.setHeader('content-type', 'application/pdf');
+      res.setHeader('content-disposition', `attachment; filename="${filename}"`);
+      res.send(buf);
+      return;
+    } catch (err: any) {
+      res.status(400).json({ error: 'Failed to handle raw PDF data' });
+      return;
+    }
+  }
+
+  // If client posted PDF bytes (base64), return them directly as a download.
+  if (typeof data === 'string' && data.trim().length > 0) {
+    try {
+      const buf = Buffer.from(data, 'base64');
+      console.debug('[download-pdf] received base64 data length=%d bytes, filename=%s', buf.length, bodyFilename || '');
+      if (buf.length === 0 || buf.length > MAX_BYTES) {
+        res.status(400).json({ error: 'Invalid or too large PDF data' });
+        return;
+      }
+      const prefix = buf.slice(0, 32).toString('latin1').replace(/^\uFEFF/, '').replace(/^\s+/, '');
+      if (!prefix.startsWith('%PDF')) {
+        res.status(400).json({ error: 'Provided data is not a valid PDF' });
+        return;
+      }
+
+      // Debug: write the received PDF to a temporary file and log its sha256
+      try {
+        const tmpDir = process.env.TMPDIR || '/tmp';
+        const safeName = sanitizeFilename(typeof bodyFilename === 'string' ? bodyFilename : `download-${Date.now()}`);
+        const tmpPath = path.join(tmpDir, `pdf-debug-${Date.now()}-${safeName}`);
+        fs.writeFileSync(tmpPath, buf);
+        const hash = crypto.createHash('sha256').update(buf).digest('hex');
+        console.debug('[download-pdf] debug-saved tmpPath=%s size=%d sha256=%s', tmpPath, buf.length, hash);
+      } catch (err) {
+        console.warn('[download-pdf] failed to write debug temp file', err);
+      }
+
+      const filename = sanitizeFilename(typeof bodyFilename === 'string' ? bodyFilename : 'download');
+      res.setHeader('content-type', 'application/pdf');
+      res.setHeader('content-disposition', `attachment; filename="${filename}"`);
+      res.send(buf);
+      return;
+    } catch (err: any) {
+      res.status(400).json({ error: 'Failed to decode PDF data' });
+      return;
+    }
+  }
 
   if (!rawUrl) {
     res.status(400).json({ error: 'Invalid URL' });

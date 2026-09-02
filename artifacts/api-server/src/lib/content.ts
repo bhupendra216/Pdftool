@@ -148,6 +148,36 @@ export const tools: ToolRecord[] = [
     blogSlug: "2026-08-21-how-to-compress-pdf-files-without-losing-quality",
   },
   {
+    slug: "edit-pdf",
+    name: "Edit PDF",
+    shortDescription: "Delete pages or make small browser-side edits without sending files to a server.",
+    category: "Edit & Sign",
+    icon: "PenTool",
+    popular: true,
+    status: "available",
+    seoTitle: "Edit PDF Online Free | PDFKira",
+    seoDescription:
+      "Make safe, client-side PDF edits in your browser. Remove pages and adjust the document without uploading files outside your device.",
+    steps: [
+      "Upload the PDF you want to edit.",
+      "Choose the page range or edit operations you want to apply.",
+      "Download the updated PDF directly from your browser.",
+    ],
+    faqs: [
+      {
+        question: "Does this upload my file to a server?",
+        answer:
+          "No. The edit flow is implemented as a browser-side proof of concept and keeps the file on your device while it is processed.",
+      },
+      {
+        question: "What kind of edits are supported?",
+        answer:
+          "The current client-side workflow supports local page-level edits and prepared PDFium compatibility checks for advanced object-level editing.",
+      },
+    ],
+    blogSlug: null,
+  },
+  {
     slug: "image-converter",
     name: "Image Converter",
     shortDescription: "Convert JPG, PNG, WEBP, and other image files in a fast browser-based workflow.",

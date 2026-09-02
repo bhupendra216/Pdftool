@@ -27,6 +27,7 @@ export function ToolsIndex() {
   const filteredTools = useMemo(() => {
     if (!Array.isArray(tools)) return [];
     return tools.filter((tool) => {
+      if (tool.slug === "edit-pdf") return false;
       const matchesSearch = tool.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         tool.shortDescription.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesCategory = activeCategory === "All" || tool.category === activeCategory;
