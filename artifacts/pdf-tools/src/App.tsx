@@ -1,9 +1,7 @@
-import { useMemo } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
-import { Route, Switch, Router as WouterRouter, useParams } from 'wouter';
-import { useListTools } from '@workspace/api-client-react';
+import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { Layout } from '@/components/layout/Layout';
 import { ScrollToTop } from '@/components/shared/ScrollToTop';
 
@@ -41,34 +39,6 @@ const queryClient = new QueryClient({
   },
 });
 
-function ToolDetailAliasRoute() {
-  const params = useParams<{ slug: string }>();
-  const { data: catalogTools = [] } = useListTools();
-
-  const resolvedSlug = useMemo(() => {
-    const rawSlug = (params?.slug || '').trim().toLowerCase();
-    if (!rawSlug) return rawSlug;
-
-    const exact = catalogTools.find((tool) => tool.slug.toLowerCase() === rawSlug);
-    if (exact) return exact.slug;
-
-    const normalized = rawSlug.replace(/-pdf$/, '');
-    const directAlias = catalogTools.find((tool) => tool.slug.toLowerCase() === `${normalized}-pdf`);
-    if (directAlias) return directAlias.slug;
-
-    const byName = catalogTools.find((tool) => {
-      const nameSlug = tool.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
-      return nameSlug === rawSlug || nameSlug === normalized;
-    });
-
-    if (byName) return byName.slug;
-
-    return rawSlug;
-  }, [catalogTools, params?.slug]);
-
-  return <ToolDetail forcedSlug={resolvedSlug || undefined} />;
-}
-
 function Router() {
   return (
     <Layout>
@@ -105,8 +75,7 @@ function Router() {
         <Route path="/ai-jobs" component={AiJobs} />
         <Route path="/admin/login" component={AdminLogin} />
         <Route path="/admin/dashboard" component={AdminDashboard} />
-        <Route path="/:slug" component={ToolDetailAliasRoute} />
-        <Route component={NotFound} />
+        <Route path="*" component={NotFound} />
       </Switch>
     </Layout>
   );

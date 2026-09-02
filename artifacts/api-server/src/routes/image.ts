@@ -265,7 +265,12 @@ router.post("/image-compress", upload.single("files"), async (req, res) => {
     let transformed: Sharp = image;
 
     if (mime === "image/png") {
-      transformed = image.png({ compressionLevel: Math.round((100 - quality) / 10), adaptiveFiltering: true });
+      transformed = image.png({
+        quality,
+        compressionLevel: Math.min(9, Math.max(0, Math.round((100 - quality) / 10))),
+        adaptiveFiltering: true,
+        effort: 10,
+      });
     } else if (mime === "image/webp") {
       transformed = image.webp({ quality });
     } else if (mime === "image/jpeg" || mime === "image/jpg") {

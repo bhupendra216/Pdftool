@@ -10,6 +10,7 @@ interface UploadAreaProps {
   maxSizeMB?: number;
   label?: string;
   description?: string;
+  compact?: boolean;
 }
 
 export function UploadArea({
@@ -20,6 +21,7 @@ export function UploadArea({
   maxSizeMB = 50,
   label = "PDF file",
   description = "or drop PDF here.",
+  compact = false,
 }: UploadAreaProps) {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -105,7 +107,8 @@ export function UploadArea({
 
   return (
     <div
-      className={`relative rounded-[28px] border-2 border-dashed transition-all duration-300 ease-out p-6 md:p-14 flex flex-col items-center justify-center text-center bg-card/90 shadow-sm backdrop-blur-sm
+      className={`relative rounded-[28px] border-2 border-dashed transition-all duration-300 ease-out flex flex-col items-center justify-center text-center bg-card/90 shadow-sm backdrop-blur-sm
+        ${compact ? 'p-4 md:p-6' : 'p-6 md:p-14'}
         ${isDragging ? 'border-primary bg-primary/5 shadow-[0_24px_80px_-40px_rgba(59,130,246,0.45)] scale-[1.01]' : 'border-border/80 hover:border-primary/50 hover:bg-secondary/20'}`}
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
@@ -120,20 +123,20 @@ export function UploadArea({
         accept={accept}
       />
       
-      <div className={`p-3 md:p-5 rounded-full mb-6 transition-all duration-300 ${isDragging ? 'bg-primary text-primary-foreground scale-110' : 'bg-primary/10 text-primary'}`}>
-        <UploadCloud className="w-10 h-10" />
+      <div className={`rounded-full transition-all duration-300 ${compact ? 'mb-3 p-2 md:p-3' : 'mb-6 p-3 md:p-5'} ${isDragging ? 'bg-primary text-primary-foreground scale-110' : 'bg-primary/10 text-primary'}`}>
+        <UploadCloud className={compact ? 'w-6 h-6 md:w-7 md:h-7' : 'w-10 h-10'} />
       </div>
       
-      <h3 className="text-2xl md:text-3xl font-semibold tracking-tight mb-3 text-foreground">
+      <h3 className={`font-semibold tracking-tight text-foreground ${compact ? 'text-lg md:text-xl mb-2' : 'text-2xl md:text-3xl mb-3'}`}>
         Select {label}{multiple ? 's' : ''}
       </h3>
-      <p className="text-sm md:text-base text-muted-foreground mb-8 max-w-md leading-relaxed">
+      <p className={`text-muted-foreground leading-relaxed max-w-md ${compact ? 'text-xs md:text-sm mb-4' : 'text-sm md:text-base mb-8'}`}>
         {description} Maximum file size is {maxSizeMB}MB.
       </p>
       
       <Button 
-        size="lg" 
-        className="rounded-full px-8 text-base md:text-lg h-12 md:h-14 shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/25 transition-all"
+        size={compact ? 'default' : 'lg'} 
+        className={compact ? 'h-10 rounded-full px-5 text-sm' : 'rounded-full px-8 text-base md:text-lg h-12 md:h-14 shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/25 transition-all'}
         onClick={() => fileInputRef.current?.click()}
       >
         Select Files

@@ -26,6 +26,7 @@ import { ArrowLeft, ChevronRight, Settings2, Download, AlertCircle, MoveUp, Move
 import { BrandMark } from "@/components/brand/BrandMark";
 import { QrCodeGeneratorTool } from "@/components/shared/QrCodeGeneratorTool";
 import { SignPdfTool } from "@/components/shared/SignPdfTool";
+import NotFoundPage from "@/pages/not-found";
 import { removePagesById } from "@/lib/page-state";
 
 GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
@@ -311,6 +312,14 @@ export function ToolDetail(props?: any) {
   const [svgMode, setSvgMode] = useState<"embed" | "trace">("embed");
   const [resizeWidth, setResizeWidth] = useState<string>("");
   const [resizeHeight, setResizeHeight] = useState<string>("");
+  const [resizeMode, setResizeMode] = useState<"pixels" | "percent">("pixels");
+  const [resizePercent, setResizePercent] = useState<number>(100);
+  const [resizeAspectLocked, setResizeAspectLocked] = useState<boolean>(true);
+  const [resizePreset, setResizePreset] = useState<string>("");
+  const [resizeOutputFormat, setResizeOutputFormat] = useState<"original" | "jpg" | "png" | "webp">("original");
+  const [resizeQuality, setResizeQuality] = useState<number>(88);
+  const [preventUpscaling, setPreventUpscaling] = useState<boolean>(true);
+  const [resizeOrientation, setResizeOrientation] = useState<number>(1);
   const [compressQuality, setCompressQuality] = useState<number>(78);
   const [upscaleFactor, setUpscaleFactor] = useState<number>(4);
   const [upscaleWidth, setUpscaleWidth] = useState<string>("");
@@ -346,6 +355,14 @@ export function ToolDetail(props?: any) {
   const highlights = uploadConfig.highlights;
   const trustedPoints = TRUST_POINTS;
   const SUPPORTED_OUTPUT = ["png", "jpg", "jpeg", "webp", "bmp", "tiff", "gif", "svg"];
+  const resizePresetOptions = [
+    { value: "instagram-post", label: "Instagram Post 1080×1080", width: 1080, height: 1080 },
+    { value: "instagram-story", label: "Instagram Story 1080×1920", width: 1080, height: 1920 },
+    { value: "hd-landscape", label: "HD 1920×1080", width: 1920, height: 1080 },
+    { value: "passport", label: "Passport Photo 600×900", width: 600, height: 900 },
+    { value: "thumbnail", label: "Thumbnail 150×150", width: 150, height: 150 },
+  ];
+
   const compressionPresets = [
     { id: "best", label: "Best Quality", quality: 92, estimateFactor: 0.88, description: "Keep more detail and color fidelity while still shaving off noticeable size." },
     { id: "balanced", label: "Balanced", quality: 78, estimateFactor: 0.65, description: "A practical middle ground for everyday sharing and storage." },
@@ -354,19 +371,84 @@ export function ToolDetail(props?: any) {
 
   const activeCompressionPreset = compressionPresets.find((preset) => preset.quality === compressQuality) ?? compressionPresets[1];
 
-  const compressionEstimate = useMemo(() => {
-    if (!files[0]) return null;
+  const [compressionEstimate, setCompressionEstimate] = useState<{ originalSize: number; estimatedSize: number; savedPercent: number } | null>(null);
 
-    const originalSize = files[0].size;
-    const estimatedSize = Math.max(1024, Math.round(originalSize * activeCompressionPreset.estimateFactor));
-    const savedPercent = originalSize > 0 ? Math.max(0, Math.round(((originalSize - estimatedSize) / originalSize) * 100)) : 0;
+  useEffect(() => {
+    const file = files[0];
+    if (!file || tool?.slug !== "image-compress") {
+      setCompressionEstimate(null);
+      return;
+    }
 
-    return {
-      originalSize,
-      estimatedSize,
-      savedPercent,
+    let cancelled = false;
+
+    const estimateCompressionSize = async () => {
+      try {
+        const imageUrl = URL.createObjectURL(file);
+        try {
+          const image = await new Promise<HTMLImageElement>((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => resolve(img);
+            img.onerror = () => reject(new Error("Unable to decode image for compression estimate."));
+            img.src = imageUrl;
+          });
+
+          const maxDimension = 1600;
+          const scale = Math.min(1, maxDimension / Math.max(image.width, image.height));
+          const width = Math.max(1, Math.round(image.width * scale));
+          const height = Math.max(1, Math.round(image.height * scale));
+          const canvas = document.createElement("canvas");
+          canvas.width = width;
+          canvas.height = height;
+
+          const context = canvas.getContext("2d");
+          if (!context) throw new Error("Canvas is unavailable for compression estimate.");
+
+          context.drawImage(image, 0, 0, width, height);
+
+          const mimeType = file.type.includes("webp")
+            ? "image/webp"
+            : file.type.includes("png")
+            ? "image/png"
+            : "image/jpeg";
+
+          const qualityValue = mimeType === "image/png" ? undefined : activeCompressionPreset.quality / 100;
+          const sampleBlob = await new Promise<Blob | null>((resolve) => {
+            canvas.toBlob(resolve, mimeType, qualityValue);
+          });
+
+          const sampleSize = sampleBlob?.size ?? file.size;
+          const originalPixels = image.width * image.height;
+          const samplePixels = width * height;
+          const estimatedSize = Math.max(
+            1024,
+            Math.round(sampleSize * (originalPixels / Math.max(1, samplePixels)) * 1.04),
+          );
+
+          if (!cancelled) {
+            const savedPercent = file.size > 0 ? Math.max(0, Math.round(((file.size - estimatedSize) / file.size) * 100)) : 0;
+            setCompressionEstimate({
+              originalSize: file.size,
+              estimatedSize,
+              savedPercent,
+            });
+          }
+        } finally {
+          URL.revokeObjectURL(imageUrl);
+        }
+      } catch {
+        if (!cancelled) {
+          setCompressionEstimate(null);
+        }
+      }
     };
-  }, [activeCompressionPreset.estimateFactor, files]);
+
+    void estimateCompressionSize();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeCompressionPreset.quality, files, tool?.slug]);
 
   const upscalePreviewStats = useMemo(() => {
     if (tool?.slug !== "image-upscale" || !files[0] || imageWidth == null || imageHeight == null) {
@@ -395,6 +477,34 @@ export function ToolDetail(props?: any) {
       estimatedProcessingTimeSeconds,
     };
   }, [files, imageHeight, imageWidth, tool?.slug, upscaleFactor]);
+
+  const resizePreviewStats = useMemo(() => {
+    if (tool?.slug !== "image-resize" || !files[0] || imageWidth == null || imageHeight == null) {
+      return null;
+    }
+
+    const originalWidth = imageWidth;
+    const originalHeight = imageHeight;
+    const originalPixels = originalWidth * originalHeight;
+    const scale = resizeMode === "percent" ? Number(resizePercent || 100) / 100 : 1;
+    const targetWidth = resizeMode === "percent"
+      ? Math.max(1, Math.round(originalWidth * scale))
+      : Math.max(1, Math.round(Number(resizeWidth || originalWidth)));
+    const targetHeight = resizeMode === "percent"
+      ? Math.max(1, Math.round(originalHeight * scale))
+      : Math.max(1, Math.round(Number(resizeHeight || originalHeight)));
+
+    const outputPixels = targetWidth * targetHeight;
+    const estimateMultiplier = Math.max(0.05, outputPixels / originalPixels);
+    const approximateOutputSize = Math.max(1024, Math.round(files[0].size * estimateMultiplier));
+
+    return {
+      width: targetWidth,
+      height: targetHeight,
+      approximateOutputSize,
+      outputPixels,
+    };
+  }, [files, imageHeight, imageWidth, resizeHeight, resizeMode, resizePercent, resizeWidth, tool?.slug]);
 
   const estimateCompressedSize = (size: number, quality: number) => {
     const factor = quality >= 90 ? 0.95
@@ -460,6 +570,15 @@ export function ToolDetail(props?: any) {
   const uploadHint = uploadHintBySlug[tool?.slug ?? ""] ?? (allowsMultipleFiles
     ? `Upload ${requiredFileCount}+ PDF files to ${actionLabel.toLowerCase()}.`
     : `Upload a single PDF file to ${actionLabel.toLowerCase()}.`);
+
+  const showCompactUploadLayout = files.length > 0 && (
+    tool?.slug === "image-resize" ||
+    tool?.slug === "image-upscale" ||
+    tool?.slug === "image-compress" ||
+    tool?.slug === "image-converter" ||
+    tool?.slug === "pdf-to-jpg" ||
+    tool?.slug === "jpg-to-pdf"
+  );
 
   const ocrMutation = useOcrImageToText();
 
@@ -622,8 +741,60 @@ export function ToolDetail(props?: any) {
 
   const getSelectedPageCount = () => pdfPages.filter((page) => page.selected).length;
 
+  const hasValidResizeTarget =
+    tool?.slug === "image-resize"
+      ? resizeMode === "percent"
+        ? Number(resizePercent) > 0
+        : (Number(resizeWidth) > 0 || Number(resizeHeight) > 0)
+      : true;
+
+  const getResizeDimensions = () => {
+    if (!imageWidth || !imageHeight) return { width: null, height: null };
+
+    if (resizeMode === "percent") {
+      const percent = Number(resizePercent || 100) / 100;
+      return {
+        width: Math.max(1, Math.round(imageWidth * percent)),
+        height: Math.max(1, Math.round(imageHeight * percent)),
+      };
+    }
+
+    const originalRatio = imageWidth / imageHeight;
+    const hasWidth = resizeWidth !== "" && Number(resizeWidth) > 0;
+    const hasHeight = resizeHeight !== "" && Number(resizeHeight) > 0;
+
+    let width = hasWidth ? Number(resizeWidth) : imageWidth;
+    let height = hasHeight ? Number(resizeHeight) : imageHeight;
+
+    if (resizeAspectLocked && hasWidth && !hasHeight) {
+      height = width / originalRatio;
+    }
+
+    if (resizeAspectLocked && hasHeight && !hasWidth) {
+      width = height * originalRatio;
+    }
+
+    if (resizeAspectLocked && hasWidth && hasHeight) {
+      const ratio = width / height;
+      if (Math.abs(ratio - originalRatio) > 0.01) {
+        height = width / originalRatio;
+      }
+    }
+
+    if (preventUpscaling) {
+      width = Math.min(width, imageWidth);
+      height = Math.min(height, imageHeight);
+    }
+
+    return {
+      width: Math.max(1, Math.round(width)),
+      height: Math.max(1, Math.round(height)),
+    };
+  };
+
   const canProcess =
     files.length >= requiredFileCount &&
+    hasValidResizeTarget &&
     (tool?.slug === "delete-pages" || tool?.slug === "extract-pages"
       ? getSelectedPageCount() > 0
       : tool?.slug === "organize-pdf"
@@ -817,6 +988,169 @@ export function ToolDetail(props?: any) {
     if (height != null) formData.append("height", String(height));
 
     return postFormDataForBlob(apiUrl("/api/image-resize"), formData, "Image resize");
+  };
+
+  const readExifOrientation = async (file: File): Promise<number> => {
+    const type = (file.type || "").toLowerCase();
+    if (!type.includes("jpeg") && !type.includes("jpg")) return 1;
+
+    try {
+      const buffer = await file.arrayBuffer();
+      const bytes = new Uint8Array(buffer);
+      if (bytes.length < 4 || bytes[0] !== 0xff || bytes[1] !== 0xd8) return 1;
+
+      let offset = 2;
+      while (offset + 1 < bytes.length) {
+        const marker = (bytes[offset] << 8) | bytes[offset + 1];
+        offset += 2;
+
+        if (marker === 0xffe1) {
+          if (offset + 2 > bytes.length) break;
+          const length = (bytes[offset] << 8) | bytes[offset + 1];
+          if (length < 8 || offset + length > bytes.length) break;
+          const exifHeader = Array.from(bytes.slice(offset + 2, offset + 6)).map((byte) => String.fromCharCode(byte)).join("");
+          if (exifHeader !== "Exif\0\0") break;
+
+          const tiffOffset = offset + 8;
+          const tiffView = new DataView(buffer, tiffOffset, Math.min(buffer.byteLength - tiffOffset, 1024));
+          if (tiffView.byteLength < 10) return 1;
+
+          const littleEndian = String.fromCharCode(bytes[tiffOffset], bytes[tiffOffset + 1]) === "II";
+          const ifdOffset = tiffView.getUint32(4, littleEndian);
+          const ifdEntryCount = tiffView.getUint16(ifdOffset, littleEndian);
+
+          for (let index = 0; index < ifdEntryCount; index += 1) {
+            const entryOffset = ifdOffset + 2 + index * 12;
+            const tag = tiffView.getUint16(entryOffset, littleEndian);
+            if (tag === 0x0112) {
+              return tiffView.getUint16(entryOffset + 8, littleEndian) || 1;
+            }
+          }
+
+          return 1;
+        }
+
+        if ((marker >= 0xffc0 && marker <= 0xffdf) || marker === 0xffda) {
+          if (offset + 2 > bytes.length) break;
+          const segmentLength = (bytes[offset] << 8) | bytes[offset + 1];
+          offset += segmentLength - 2;
+        } else if (marker === 0xffd9) {
+          break;
+        }
+      }
+    } catch (error) {
+      console.warn("EXIF orientation read failed", error);
+    }
+
+    return 1;
+  };
+
+  const resizeImageOnClient = async (
+    fileToResize: File,
+    opts: {
+      width: number | null;
+      height: number | null;
+      outputFormat: "original" | "jpg" | "png" | "webp";
+      quality: number;
+      preventUpscaling: boolean;
+    },
+  ): Promise<{ blob: Blob; filename: string }> => {
+    const originalWidth = imageWidth ?? 0;
+    const originalHeight = imageHeight ?? 0;
+    const displayWidth = resizeOrientation >= 5 && resizeOrientation <= 8 ? originalHeight : originalWidth;
+    const displayHeight = resizeOrientation >= 5 && resizeOrientation <= 8 ? originalWidth : originalHeight;
+
+    let nextWidth = opts.width ?? displayWidth;
+    let nextHeight = opts.height ?? displayHeight;
+
+    if (opts.preventUpscaling) {
+      nextWidth = Math.min(nextWidth, displayWidth || nextWidth);
+      nextHeight = Math.min(nextHeight, displayHeight || nextHeight);
+    }
+
+    const imageObject = await createImageBitmap(fileToResize);
+    const canvas = document.createElement("canvas");
+    const context = canvas.getContext("2d");
+
+    if (!context) {
+      throw new Error("Your browser does not support canvas resizing.");
+    }
+
+    canvas.width = Math.max(1, Math.round(nextWidth));
+    canvas.height = Math.max(1, Math.round(nextHeight));
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "high";
+
+    context.save();
+    context.translate(canvas.width / 2, canvas.height / 2);
+
+    switch (resizeOrientation) {
+      case 2:
+        context.scale(-1, 1);
+        break;
+      case 3:
+        context.rotate(Math.PI);
+        break;
+      case 4:
+        context.scale(1, -1);
+        break;
+      case 5:
+        context.rotate(Math.PI / 2);
+        context.scale(1, -1);
+        break;
+      case 6:
+        context.rotate(Math.PI / 2);
+        break;
+      case 7:
+        context.rotate(-Math.PI / 2);
+        context.scale(1, -1);
+        break;
+      case 8:
+        context.rotate(-Math.PI / 2);
+        break;
+      default:
+        break;
+    }
+
+    context.translate(-canvas.width / 2, -canvas.height / 2);
+    context.drawImage(imageObject, 0, 0, canvas.width, canvas.height);
+    context.restore();
+
+    const mime = opts.outputFormat === "original"
+      ? (
+          fileToResize.type === "image/png"
+            ? "image/png"
+            : fileToResize.type === "image/webp"
+            ? "image/webp"
+            : "image/jpeg"
+        )
+      : opts.outputFormat === "png"
+      ? "image/png"
+      : opts.outputFormat === "webp"
+      ? "image/webp"
+      : "image/jpeg";
+
+    const extension = opts.outputFormat === "original"
+      ? (fileToResize.name.match(/\.[^.]+$/)?.[0] || ".png")
+      : opts.outputFormat === "png"
+      ? ".png"
+      : opts.outputFormat === "webp"
+      ? ".webp"
+      : ".jpg";
+
+    const blob = await new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((result) => {
+        if (result) resolve(result);
+        else reject(new Error("Unable to resize the image."));
+      }, mime, Math.min(1, Math.max(0, opts.quality / 100)));
+    });
+
+    imageObject.close?.();
+
+    return {
+      blob,
+      filename: `${stripExtension(fileToResize.name)}-resized${extension}`,
+    };
   };
 
   const compressImageOnServer = async (fileToCompress: File, quality: number): Promise<Blob> => {
@@ -1520,13 +1854,7 @@ export function ToolDetail(props?: any) {
   }
 
   if (isError || !tool) {
-    return (
-      <div className="container mx-auto px-4 py-32 text-center max-w-2xl">
-        <h1 className="text-4xl font-bold mb-6">Tool not found</h1>
-        <p className="text-xl text-muted-foreground mb-8">We couldn't find the tool you're looking for.</p>
-        <Button asChild><Link href="/tools">Back to All Tools</Link></Button>
-      </div>
-    );
+    return <NotFoundPage />;
   }
 
   const isComingSoon = tool.status === "comingSoon";
@@ -1647,11 +1975,22 @@ export function ToolDetail(props?: any) {
     setImageFormat(inferredFormat);
     setImageWidth(null);
     setImageHeight(null);
+    setResizeOrientation(1);
+    setResizePreset("");
     setUpscaleFactor(4);
     const img = new Image();
-    img.onload = () => {
-      setImageWidth(img.naturalWidth);
-      setImageHeight(img.naturalHeight);
+    img.onload = async () => {
+      const naturalWidth = img.naturalWidth || img.width;
+      const naturalHeight = img.naturalHeight || img.height;
+      setImageWidth(naturalWidth);
+      setImageHeight(naturalHeight);
+      const orientation = await readExifOrientation(fileForPreview);
+      setResizeOrientation(orientation);
+      const effectiveWidth = orientation >= 5 && orientation <= 8 ? naturalHeight : naturalWidth;
+      const effectiveHeight = orientation >= 5 && orientation <= 8 ? naturalWidth : naturalHeight;
+      setResizeWidth(String(Math.round(effectiveWidth)));
+      setResizeHeight(String(Math.round(effectiveHeight)));
+      setResizePercent(100);
     };
     img.onerror = () => {
       setImageWidth(null);
@@ -1719,7 +2058,7 @@ export function ToolDetail(props?: any) {
           }
         })();
       }
-      if (tool?.slug === "image-converter" || tool?.slug === "image-upscale" || tool?.slug === "image-compress") {
+      if (tool?.slug === "image-converter" || tool?.slug === "image-upscale" || tool?.slug === "image-compress" || tool?.slug === "image-resize") {
         await prepareSingleImagePreview(first);
       } else if (tool?.slug === "split-pdf" || tool?.slug === "compress-pdf") {
         (async () => {
@@ -1994,10 +2333,19 @@ export function ToolDetail(props?: any) {
         blob = pdfResult.blob;
         outputName = pdfResult.filename;
       } else if (tool.slug === "image-resize") {
-        const width = resizeWidth ? Number(resizeWidth) : null;
-        const height = resizeHeight ? Number(resizeHeight) : null;
-        blob = await resizeImageOnServer(files[0], width, height);
-        outputName = stripExtension(files[0].name) + "-resized" + files[0].name.match(/\.[^.]+$/)?.[0];
+        const dimensions = getResizeDimensions();
+        const width = dimensions.width ?? null;
+        const height = dimensions.height ?? null;
+        const sizeOptions = {
+          width,
+          height,
+          outputFormat: resizeOutputFormat,
+          quality: resizeQuality,
+          preventUpscaling,
+        };
+        const resized = await resizeImageOnClient(files[0], sizeOptions);
+        blob = resized.blob;
+        outputName = resized.filename;
       } else if (tool.slug === "image-compress") {
         blob = await compressImageOnServer(files[0], compressQuality);
         outputName = stripExtension(files[0].name) + "-compressed" + files[0].name.match(/\.[^.]+$/)?.[0];
@@ -2273,86 +2621,91 @@ export function ToolDetail(props?: any) {
           <div className="bg-card rounded-3xl shadow-sm border border-border p-6 md:p-10 transition-all">
             
             {status === "options" && (
-              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                {tool?.slug === 'download-pdf' ? (
-                  <DownloadPdfPage />
-                ) : tool?.slug === 'search-free-pdfs' ? (
-                  <SearchFreePdfsPage />
-                ) : (
-                  <UploadArea
-                    onFilesSelected={handleFilesSelected}
-                    onError={setErrorMessage}
-                    multiple={allowsMultipleFiles}
-                    accept={uploadConfig.accept}
-                    maxSizeMB={uploadConfig.maxSizeMB}
-                    label={uploadConfig.label}
-                    description={uploadConfig.description}
-                  />
-                )}
-                <p className="mt-4 text-sm text-muted-foreground text-center">
-                  {uploadHint}
-                </p>
-                <div className="flex-1">
-                  {tool.slug === "image-converter" && files.length > 1 ? (
-                    <div className="w-full space-y-3 mt-8">
-                      <div className="flex items-center justify-between gap-3">
-                        <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">
-                          Batch queue ({files.length})
-                        </h4>
-                        <Badge variant="secondary" className="rounded-full border border-border/60 bg-background/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
-                          Up to 30 files
-                        </Badge>
-                      </div>
-                      <div className="space-y-2">
-                        {imageBatchItems.map((item, index) => {
-                          const extension = item.file.name.split(".").pop()?.toUpperCase() || "FILE";
-                          const statusTone = item.status === "done"
-                            ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-                            : item.status === "failed"
-                            ? "border-destructive/20 bg-destructive/10 text-destructive"
-                            : item.status === "converting"
-                            ? "border-primary/20 bg-primary/10 text-primary"
-                            : "border-border/70 bg-background/80 text-muted-foreground";
-
-                          return (
-                            <div key={`${item.file.name}-${index}`} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/70 bg-card/90 p-3 shadow-sm">
-                              <div className="min-w-0 flex-1">
-                                <div className="flex items-center gap-2">
-                                  <p className="truncate text-sm font-medium text-foreground" title={item.file.name}>{item.file.name}</p>
-                                  <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.2em]">
-                                    {extension}
-                                  </Badge>
-                                </div>
-                                <p className="mt-1 text-xs text-muted-foreground">{formatBytes(item.file.size)}</p>
-                                {item.error ? <p className="mt-1 text-xs text-destructive">{item.error}</p> : null}
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Badge variant="outline" className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${statusTone}`}>
-                                  {item.status}
-                                </Badge>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-8 w-8 rounded-full border border-border/70 bg-background/95 hover:bg-destructive hover:text-destructive-foreground hover:border-destructive"
-                                  onClick={() => handleRemoveFile(index)}
-                                  aria-label={`Remove ${item.file.name}`}
-                                >
-                                  <Trash2 className="h-4 w-4" />
-                                </Button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
+              <div className={showCompactUploadLayout ? "animate-in fade-in slide-in-from-bottom-4 duration-500 grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_360px] xl:items-start" : "animate-in fade-in slide-in-from-bottom-4 duration-500"}>
+                <div className={showCompactUploadLayout ? "min-w-0 space-y-6" : ""}>
+                  {tool?.slug === 'download-pdf' ? (
+                    <DownloadPdfPage />
+                  ) : tool?.slug === 'search-free-pdfs' ? (
+                    <SearchFreePdfsPage />
                   ) : (
-                    <FilePreviewList 
-                      files={files} 
-                      onRemove={handleRemoveFile} 
-                      onReorder={tool.slug === "merge-pdf" || tool.slug === "jpg-to-pdf" ? handleReorderFiles : undefined}
-                      status="options" 
+                    <UploadArea
+                      onFilesSelected={handleFilesSelected}
+                      onError={setErrorMessage}
+                      multiple={allowsMultipleFiles}
+                      accept={uploadConfig.accept}
+                      maxSizeMB={uploadConfig.maxSizeMB}
+                      label={uploadConfig.label}
+                      description={uploadConfig.description}
+                      compact={showCompactUploadLayout}
                     />
                   )}
+
+                  <p className="mt-4 text-sm text-muted-foreground text-center">
+                    {uploadHint}
+                  </p>
+
+                  <div className="flex-1">
+                    {tool.slug === "image-converter" && files.length > 1 ? (
+                      <div className="w-full space-y-3 mt-8">
+                        <div className="flex items-center justify-between gap-3">
+                          <h4 className="font-semibold text-sm text-muted-foreground uppercase tracking-wider">
+                            Batch queue ({files.length})
+                          </h4>
+                          <Badge variant="secondary" className="rounded-full border border-border/60 bg-background/80 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground">
+                            Up to 30 files
+                          </Badge>
+                        </div>
+                        <div className="space-y-2">
+                          {imageBatchItems.map((item, index) => {
+                            const extension = item.file.name.split(".").pop()?.toUpperCase() || "FILE";
+                            const statusTone = item.status === "done"
+                              ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                              : item.status === "failed"
+                              ? "border-destructive/20 bg-destructive/10 text-destructive"
+                              : item.status === "converting"
+                              ? "border-primary/20 bg-primary/10 text-primary"
+                              : "border-border/70 bg-background/80 text-muted-foreground";
+
+                            return (
+                              <div key={`${item.file.name}-${index}`} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/70 bg-card/90 p-3 shadow-sm">
+                                <div className="min-w-0 flex-1">
+                                  <div className="flex items-center gap-2">
+                                    <p className="truncate text-sm font-medium text-foreground" title={item.file.name}>{item.file.name}</p>
+                                    <Badge variant="outline" className="rounded-full px-2 py-0.5 text-[10px] uppercase tracking-[0.2em]">
+                                      {extension}
+                                    </Badge>
+                                  </div>
+                                  <p className="mt-1 text-xs text-muted-foreground">{formatBytes(item.file.size)}</p>
+                                  {item.error ? <p className="mt-1 text-xs text-destructive">{item.error}</p> : null}
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="outline" className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.2em] ${statusTone}`}>
+                                    {item.status}
+                                  </Badge>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="h-8 w-8 rounded-full border border-border/70 bg-background/95 hover:bg-destructive hover:text-destructive-foreground hover:border-destructive"
+                                    onClick={() => handleRemoveFile(index)}
+                                    aria-label={`Remove ${item.file.name}`}
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                  </Button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ) : (
+                      <FilePreviewList 
+                        files={files} 
+                        onRemove={handleRemoveFile} 
+                        onReorder={tool.slug === "merge-pdf" || tool.slug === "jpg-to-pdf" ? handleReorderFiles : undefined}
+                        status="options" 
+                      />
+                    )}
+                  </div>
 
                   {(tool.slug === "organize-pdf" || tool.slug === "rotate-pdf" || tool.slug === "edit-pdf" || tool.slug === "delete-pages" || tool.slug === "extract-pages") && (
                     <div className="mt-6 space-y-3">
@@ -2418,14 +2771,14 @@ export function ToolDetail(props?: any) {
                                 onRotate={(indexes, delta) => {
                                   setPdfPages((pages) => pages.map((page, index) => (indexes.includes(index) ? { ...page, rotation: normalizeRotation(page.rotation + delta) } : page)));
                                 }}
-                                  onDelete={() => undefined}
+                                onDelete={() => undefined}
                                 onExtract={() => undefined}
                                 onSaveChanges={handleProcess}
                                 zoom={thumbnailZoom}
                                 setZoom={setThumbnailZoom}
                                 alwaysShowActions
                                 mode="rotate"
-                                  enableRotateControls={true}
+                                enableRotateControls={true}
                                 thumbnailUrls={pdfPages.map((page) => page.thumbnailUrl ?? null)}
                               />
                             </>
@@ -2507,7 +2860,7 @@ export function ToolDetail(props?: any) {
                       <div className="mt-6 grid gap-6 lg:grid-cols-[minmax(0,0.8fr)_minmax(0,1.2fr)]">
                         <div className="overflow-hidden rounded-2xl border border-border/70 bg-card/70 p-3">
                           {tool.slug === "compress-pdf" ? (
-                              <div className="flex h-[260px] flex-col items-center justify-center gap-3 rounded-2xl bg-muted/50 px-4 text-center">
+                            <div className="flex h-[260px] flex-col items-center justify-center gap-3 rounded-2xl bg-muted/50 px-4 text-center">
                               <img src="/logo.png" alt="PDFKira" className="h-12 w-12 object-cover" />
                               <div>
                                 <p className="font-semibold text-foreground">{files[0].name}</p>
@@ -2554,7 +2907,7 @@ export function ToolDetail(props?: any) {
                           )}
 
                           {(tool.slug === "image-compress" || tool.slug === "compress-pdf") && (
-                            <div className="rounded-2xl border border-border/70 bg-background/90 p-4">
+                            <div className="rounded-2xl border border-border/70 bg-background/90 p-4 min-w-0 max-w-full">
                               <div className="flex items-center gap-2">
                                 <Sparkles className="h-4 w-4 text-primary" />
                                 <p className="text-sm font-semibold text-foreground">Compression preset</p>
@@ -2565,7 +2918,7 @@ export function ToolDetail(props?: any) {
                                     key={preset.id}
                                     type="button"
                                     onClick={() => setCompressQuality(preset.quality)}
-                                    className={`rounded-2xl border px-3 py-3 text-left transition-all ${compressQuality === preset.quality ? "border-primary bg-primary/10 shadow-sm" : "border-border/70 bg-background/70 hover:border-primary/40"}`}
+                                    className={`min-w-0 break-words rounded-2xl border px-3 py-3 text-left transition-all ${compressQuality === preset.quality ? "border-primary bg-primary/10 shadow-sm" : "border-border/70 bg-background/70 hover:border-primary/40"}`}
                                   >
                                     <div className="flex items-center justify-between gap-2">
                                       <span className="font-semibold text-foreground">{preset.label}</span>
@@ -2578,7 +2931,7 @@ export function ToolDetail(props?: any) {
                                   </button>
                                 ))}
                               </div>
-                              <p className="mt-3 text-xs text-muted-foreground">{activeCompressionPreset.description}</p>
+                              <p className="mt-3 text-xs text-muted-foreground break-words leading-relaxed">{activeCompressionPreset.description}</p>
                             </div>
                           )}
 
@@ -2749,14 +3102,14 @@ export function ToolDetail(props?: any) {
                     <p className="mt-4 text-sm text-destructive">{errorMessage}</p>
                   )}
                 </div>
-                
-                <div className="w-full md:w-80 h-fit shrink-0 rounded-2xl border border-border/70 bg-background/90 p-6 shadow-sm">
+
+                <div className={showCompactUploadLayout ? "w-full h-fit shrink-0 min-w-0 max-w-full rounded-2xl border border-border/70 bg-background/90 p-6 shadow-sm xl:sticky xl:top-6" : "w-full md:w-80 h-fit shrink-0 min-w-0 max-w-full rounded-2xl border border-border/70 bg-background/90 p-6 shadow-sm"}>
                   <div className="mb-6 flex items-center gap-2 border-b border-border/70 pb-4 font-semibold text-foreground">
                     <Settings2 className="h-5 w-5 text-primary" />
                     Tool options
                   </div>
 
-                  <div className="space-y-5">
+                  <div className="space-y-5 min-w-0 max-w-full">
                     {(tool.slug === "merge-pdf" || tool.slug === "jpg-to-pdf") && (
                       <div className="rounded-2xl border border-border/70 bg-card/80 p-4">
                         <p className="text-sm font-medium text-foreground">Upload order</p>
@@ -2902,14 +3255,198 @@ export function ToolDetail(props?: any) {
                       </div>
                     )}
 
-                    {(tool.slug === "image-resize" || tool.slug === "image-upscale") && (
+                    {tool.slug === "image-resize" && (
+                      <div className="space-y-4 rounded-2xl border border-border/70 bg-card/80 p-4">
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-foreground">Presets</label>
+                          <select
+                            value={resizePreset}
+                            onChange={(e) => {
+                              setResizePreset(e.target.value);
+                              const preset = resizePresetOptions.find((option) => option.value === e.target.value);
+                              if (preset) {
+                                setResizeWidth(String(preset.width));
+                                setResizeHeight(String(preset.height));
+                              }
+                            }}
+                            className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                          >
+                            <option value="">Custom size</option>
+                            {resizePresetOptions.map((preset) => (
+                              <option key={preset.value} value={preset.value}>{preset.label}</option>
+                            ))}
+                          </select>
+                        </div>
+
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-foreground">Mode</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setResizeMode("pixels")}
+                              className={`rounded-xl border px-3 py-2 text-sm ${resizeMode === "pixels" ? "border-primary bg-primary/10 text-primary" : "border-border/70 bg-background/70 text-foreground"}`}
+                            >
+                              Pixels
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setResizeMode("percent")}
+                              className={`rounded-xl border px-3 py-2 text-sm ${resizeMode === "percent" ? "border-primary bg-primary/10 text-primary" : "border-border/70 bg-background/70 text-foreground"}`}
+                            >
+                              Percentage
+                            </button>
+                          </div>
+                        </div>
+
+                        {resizeMode === "pixels" ? (
+                          <>
+                            <div className="grid gap-3 sm:grid-cols-[1fr_auto_1fr] sm:items-end">
+                              <div>
+                                <label className="mb-2 block text-sm font-medium text-foreground">Width</label>
+                                <input
+                                  value={resizeWidth}
+                                  onChange={(e) => {
+                                    const next = e.target.value;
+                                    setResizeWidth(next);
+                                    if (resizeAspectLocked && imageWidth && imageHeight && next !== "") {
+                                      const widthNumber = Number(next);
+                                      if (Number.isFinite(widthNumber) && widthNumber > 0) {
+                                        const aspect = imageWidth / imageHeight;
+                                        setResizeHeight(String(Math.max(1, Math.round(widthNumber / aspect))));
+                                      }
+                                    }
+                                  }}
+                                  placeholder="Width"
+                                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                                  type="number"
+                                  min={1}
+                                />
+                              </div>
+
+                              <button
+                                type="button"
+                                onClick={() => setResizeAspectLocked((prev) => !prev)}
+                                className="rounded-xl border border-border/70 bg-background/80 p-2 text-muted-foreground transition hover:text-foreground"
+                                aria-label={resizeAspectLocked ? "Unlock aspect ratio" : "Lock aspect ratio"}
+                                title={resizeAspectLocked ? "Aspect ratio locked" : "Aspect ratio unlocked"}
+                              >
+                                {resizeAspectLocked ? "🔒" : "🔓"}
+                              </button>
+
+                              <div>
+                                <label className="mb-2 block text-sm font-medium text-foreground">Height</label>
+                                <input
+                                  value={resizeHeight}
+                                  onChange={(e) => {
+                                    const next = e.target.value;
+                                    setResizeHeight(next);
+                                    if (resizeAspectLocked && imageWidth && imageHeight && next !== "") {
+                                      const heightNumber = Number(next);
+                                      if (Number.isFinite(heightNumber) && heightNumber > 0) {
+                                        const aspect = imageWidth / imageHeight;
+                                        setResizeWidth(String(Math.max(1, Math.round(heightNumber * aspect))));
+                                      }
+                                    }
+                                  }}
+                                  placeholder="Height"
+                                  className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                                  type="number"
+                                  min={1}
+                                />
+                              </div>
+                            </div>
+                          </>
+                        ) : (
+                          <div>
+                            <label className="mb-2 block text-sm font-medium text-foreground">Scale percentage</label>
+                            <div className="flex items-center gap-3">
+                              <input
+                                type="range"
+                                min={1}
+                                max={400}
+                                step={1}
+                                value={resizePercent}
+                                onChange={(e) => setResizePercent(Number(e.target.value))}
+                                className="w-full accent-primary"
+                              />
+                              <input
+                                type="number"
+                                min={1}
+                                max={400}
+                                step={1}
+                                value={resizePercent}
+                                onChange={(e) => setResizePercent(Math.max(1, Math.min(400, Number(e.target.value) || 1)))}
+                                className="w-20 rounded-xl border border-border bg-background px-2 py-2 text-sm text-foreground"
+                              />
+                              <span className="text-sm text-muted-foreground">%</span>
+                            </div>
+                          </div>
+                        )}
+
+                        <label className="flex items-center gap-2 text-sm text-foreground">
+                          <input
+                            type="checkbox"
+                            checked={preventUpscaling}
+                            onChange={(e) => setPreventUpscaling(e.target.checked)}
+                            className="h-4 w-4 rounded border-border text-primary"
+                          />
+                          Don’t enlarge if smaller than original
+                        </label>
+
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-foreground">Output format</label>
+                          <select
+                            value={resizeOutputFormat}
+                            onChange={(e) => setResizeOutputFormat(e.target.value as "original" | "jpg" | "png" | "webp")}
+                            className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
+                          >
+                            <option value="original">Keep original format</option>
+                            <option value="jpg">JPG</option>
+                            <option value="png">PNG</option>
+                            <option value="webp">WebP</option>
+                          </select>
+                        </div>
+
+                        {(resizeOutputFormat === "jpg" || resizeOutputFormat === "webp") && (
+                          <div>
+                            <div className="mb-2 flex items-center justify-between text-sm font-medium text-foreground">
+                              <span>Quality</span>
+                              <span>{resizeQuality}%</span>
+                            </div>
+                            <input
+                              type="range"
+                              min={10}
+                              max={100}
+                              step={1}
+                              value={resizeQuality}
+                              onChange={(e) => setResizeQuality(Number(e.target.value))}
+                              className="w-full accent-primary"
+                            />
+                          </div>
+                        )}
+
+                        {resizePreviewStats && files[0] && (
+                          <div className="rounded-2xl border border-primary/20 bg-primary/5 p-3">
+                            <p className="text-xs uppercase tracking-[0.2em] text-primary">Live preview</p>
+                            <p className="mt-2 text-sm font-semibold text-foreground">
+                              New size: {resizePreviewStats.width} × {resizePreviewStats.height} px
+                            </p>
+                            <p className="mt-1 text-xs text-muted-foreground">
+                              Estimated output: {formatBytes(resizePreviewStats.approximateOutputSize)}
+                            </p>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {tool.slug === "image-upscale" && (
                       <div className="space-y-4 rounded-2xl border border-border/70 bg-card/80 p-4">
                         <div>
                           <label className="mb-2 block text-sm font-medium text-foreground">Width</label>
                           <input
-                            value={tool.slug === "image-upscale" ? upscaleWidth : resizeWidth}
-                            onChange={(e) => tool.slug === "image-upscale" ? setUpscaleWidth(e.target.value) : setResizeWidth(e.target.value)}
-                            placeholder={tool.slug === "image-upscale" ? "Optional width" : "Width in pixels"}
+                            value={upscaleWidth}
+                            onChange={(e) => setUpscaleWidth(e.target.value)}
+                            placeholder="Optional width"
                             className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                             aria-label="Image width"
                             type="number"
@@ -2919,67 +3456,37 @@ export function ToolDetail(props?: any) {
                         <div>
                           <label className="mb-2 block text-sm font-medium text-foreground">Height</label>
                           <input
-                            value={tool.slug === "image-upscale" ? upscaleHeight : resizeHeight}
-                            onChange={(e) => tool.slug === "image-upscale" ? setUpscaleHeight(e.target.value) : setResizeHeight(e.target.value)}
-                            placeholder={tool.slug === "image-upscale" ? "Optional height" : "Height in pixels"}
+                            value={upscaleHeight}
+                            onChange={(e) => setUpscaleHeight(e.target.value)}
+                            placeholder="Optional height"
                             className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                             aria-label="Image height"
                             type="number"
                             min={1}
                           />
                         </div>
-                        {tool.slug === "image-upscale" && (
-                          <div>
-                            <label className="mb-2 block text-sm font-medium text-foreground">Scale factor</label>
-                            <div className="grid gap-2 sm:grid-cols-3">
-                              {[2, 4, 8].map((value) => (
-                                <button
-                                  key={value}
-                                  type="button"
-                                  onClick={() => setUpscaleFactor(value)}
-                                  className={`rounded-2xl border px-3 py-3 text-left transition-all ${upscaleFactor === value ? "border-primary bg-primary/10 shadow-sm" : "border-border/70 bg-background/70 hover:border-primary/40"}`}
-                                >
-                                  <div className="flex items-center justify-between">
-                                    <span className="font-semibold text-foreground">{value}×</span>
-                                    {value === 4 && (
-                                      <Badge variant="outline" className="rounded-full border-primary/20 bg-primary/5 text-[10px] font-semibold uppercase tracking-[0.2em] text-primary">
-                                        Recommended
-                                      </Badge>
-                                    )}
-                                  </div>
-                                </button>
-                              ))}
-                            </div>
-                            <p className="mt-2 text-xs text-muted-foreground">4× is recommended for a balanced quality boost.</p>
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {(tool.slug === "image-compress" || tool.slug === "compress-pdf") && (
-                      <div className="rounded-2xl border border-border/70 bg-card/80 p-4">
-                        <label className="mb-2 block text-sm font-medium text-foreground">Compression preset</label>
-                        <div className="grid gap-2">
-                          {compressionPresets.map((preset) => (
-                            <button
-                              key={preset.id}
-                              type="button"
-                              onClick={() => setCompressQuality(preset.quality)}
-                              className={`rounded-2xl border px-3 py-3 text-left transition-all ${compressQuality === preset.quality ? "border-primary bg-primary/10 shadow-sm" : "border-border/70 bg-background/70 hover:border-primary/40"}`}
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <div>
-                                  <p className="font-semibold text-foreground">{preset.label}</p>
-                                  <p className="text-xs text-muted-foreground">{preset.description}</p>
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-foreground">Scale factor</label>
+                          <div className="grid gap-2 sm:grid-cols-3">
+                            {[2, 4, 8].map((value) => (
+                              <button
+                                key={value}
+                                type="button"
+                                onClick={() => setUpscaleFactor(value)}
+                                className={`rounded-2xl border px-3 py-3 text-left transition-all ${upscaleFactor === value ? "border-primary bg-primary/10 shadow-sm" : "border-border/70 bg-background/70 hover:border-primary/40"}`}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="font-semibold text-foreground">{value}×</span>
+                                  {value === 4 && (
+                                    <Badge variant="outline" className="rounded-full border-primary/20 bg-primary/5 text-[10px] font-semibold uppercase tracking-[0.2em] text-primary">
+                                      Recommended
+                                    </Badge>
+                                  )}
                                 </div>
-                                {preset.id === "balanced" && (
-                                  <Badge variant="outline" className="rounded-full border-primary/20 bg-primary/5 text-[10px] font-semibold uppercase tracking-[0.2em] text-primary">
-                                    Preferred
-                                  </Badge>
-                                )}
-                              </div>
-                            </button>
-                          ))}
+                              </button>
+                            ))}
+                          </div>
+                          <p className="mt-2 text-xs text-muted-foreground">4× is recommended for a balanced quality boost.</p>
                         </div>
                       </div>
                     )}
