@@ -30,7 +30,7 @@ function RelatedTools({ currentToolSlug }) {
         <h2 id="related-tools-title">You might also need:</h2>
         <div className={styles.grid}>
           {related.map(({ slug, title, description, Icon }) => (
-            <Link key={slug} href={`/${slug}`} className={styles.card}>
+            <Link key={slug} href={`/tools/${slug}`} className={styles.card}>
               <div className={styles.iconWrap} aria-hidden="true">
                 <Icon size={22} />
               </div>

@@ -20,7 +20,7 @@ export default function RelatedTools({ currentToolSlug }) {
       <h3>Related tools</h3>
       <div style={{ display: 'grid', gap: '1rem', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))' }}>
         {related.map((tool) => (
-          <Link key={tool.slug} href={`/${tool.slug}`}>
+          <Link key={tool.slug} href={`/tools/${tool.slug}`}>
             <a style={{ display: 'block', padding: '1rem', border: '1px solid #e2e8f0', borderRadius: '0.75rem' }}>
               <div style={{ fontWeight: 700 }}>{tool.name}</div>
               <p style={{ margin: '0.5rem 0 0', color: '#475569' }}>{tool.description}</p>

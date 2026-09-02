@@ -32,7 +32,7 @@ function ToolPageLayout({ toolSlug, toolName, children }) {
       <RelatedTools currentToolSlug={toolSlug} />
       <ToolComparisonTable toolName={toolName || 'PDFKira Tool'} />
       <CTABanner text={`Love ${toolName || 'PDFKira'}? Try our other free tools.`} buttonText="Browse All Tools" href="/tools" />
-      <SocialShare url={`https://pdfkira.com/${toolSlug}`} title={toolName || 'PDFKira'} description={seoMeta.description || 'Free PDF tool from PDFKira.'} />
+      <SocialShare url={`https://pdfkira.com/tools/${toolSlug}`} title={toolName || 'PDFKira'} description={seoMeta.description || 'Free PDF tool from PDFKira.'} />
     </div>
   );
 }
