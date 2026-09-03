@@ -66,9 +66,9 @@ const getUploadConfig = (slug?: string): UploadConfig => {
         accept: "image/png,image/jpeg,image/webp,image/bmp,image/tiff,image/gif,image/svg+xml,image/heic,image/heif,.png,.jpg,.jpeg,.webp,.bmp,.tiff,.tif,.gif,.svg,.heic,.heif",
         maxSizeMB: 20,
         label: "image files",
-        description: "or drop up to 30 images here.",
+        description: "or drop up to 100 images here.",
         supportedFormats: ["PNG", "JPG", "JPEG", "WebP", "BMP", "TIFF", "GIF", "SVG", "HEIC", "HEIF"],
-        highlights: ["Preserve quality", "Batch convert up to 30 images", "Preview before download"],
+        highlights: ["Preserve quality", "Batch convert up to 100 images", "Preview before download"],
       };
     case "image-resize":
     case "image-compress":
@@ -551,7 +551,7 @@ export function ToolDetail(props?: any) {
   const buttonLabel = status === "options" ? actionLabel : "Process";
   const selectedPageCount = pdfPages.filter((page) => page.selected).length;
   const uploadHintBySlug: Record<string, string> = {
-    "image-converter": "Upload up to 30 image files at once to convert them in a batch.",
+    "image-converter": "Upload up to 100 image files at once to convert them in a batch.",
     "pdf-to-word": "Upload a PDF with 20 pages or fewer to convert it into a Word document.",
     "pdf-to-markdown": "Upload a PDF and convert it into Markdown text right in your browser.",
     "word-to-pdf": "Upload a Word document to convert it into a PDF.",
@@ -979,6 +979,64 @@ export function ToolDetail(props?: any) {
     }
 
     return postFormDataForBlob(apiUrl("/api/convert-image"), formData, "Image conversion");
+  };
+
+  // Convert an image locally using canvas to avoid roundtrip to server for common raster formats.
+  const convertImageOnClient = async (fileToConvert: File, outFormat: string): Promise<{ blob: Blob; filename: string }> => {
+    // For SVG output (vector), fallback to server-side conversion because canvas cannot produce proper SVG.
+    if (outFormat === "svg") {
+      const blob = await convertImageOnServer(fileToConvert, outFormat, svgMode);
+      const ext = outFormat === "jpeg" ? "jpg" : outFormat;
+      return { blob, filename: `${stripExtension(fileToConvert.name)}.${ext}` };
+    }
+
+    const mime = outFormat === "png" ? "image/png" : outFormat === "webp" ? "image/webp" : "image/jpeg";
+    const ext = outFormat === "jpeg" ? "jpg" : outFormat;
+
+    const bitmap = await createImageBitmap(fileToConvert);
+    try {
+      const orientation = await readExifOrientation(fileToConvert);
+      const srcW = bitmap.width;
+      const srcH = bitmap.height;
+
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      if (!ctx) throw new Error("Canvas unavailable for conversion.");
+
+      if (orientation >= 5 && orientation <= 8) {
+        canvas.width = Math.max(1, srcH);
+        canvas.height = Math.max(1, srcW);
+      } else {
+        canvas.width = Math.max(1, srcW);
+        canvas.height = Math.max(1, srcH);
+      }
+
+      ctx.save();
+      switch (orientation) {
+        case 2: ctx.translate(canvas.width, 0); ctx.scale(-1,1); break;
+        case 3: ctx.translate(canvas.width, canvas.height); ctx.rotate(Math.PI); break;
+        case 4: ctx.translate(0, canvas.height); ctx.scale(1,-1); break;
+        case 5: ctx.rotate(0.5 * Math.PI); ctx.scale(1,-1); break;
+        case 6: ctx.translate(canvas.width, 0); ctx.rotate(0.5 * Math.PI); break;
+        case 7: ctx.translate(canvas.width, 0); ctx.rotate(0.5 * Math.PI); ctx.scale(-1,1); break;
+        case 8: ctx.translate(0, canvas.height); ctx.rotate(-0.5 * Math.PI); break;
+        default: break;
+      }
+
+      ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+      ctx.restore();
+
+      const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob((b) => resolve(b), mime, mime === "image/jpeg" ? 0.92 : undefined));
+      if (!blob) throw new Error("Conversion failed to produce output blob.");
+
+      // release heavy resources
+      try { bitmap.close?.(); } catch (e) { /* ignore */ }
+      canvas.width = 0; canvas.height = 0;
+
+      return { blob, filename: `${stripExtension(fileToConvert.name)}.${ext}` };
+    } finally {
+      // allow references to be GC'd by the caller
+    }
   };
 
   const resizeImageOnServer = async (fileToResize: File, width: number | null, height: number | null): Promise<Blob> => {
@@ -2012,9 +2070,9 @@ export function ToolDetail(props?: any) {
   const handleFilesSelected = async (newFiles: File[]) => {
     if (tool?.slug === "image-converter") {
       const combinedFiles = [...files, ...newFiles];
-      const limitedFiles = combinedFiles.slice(0, 30);
-      if (combinedFiles.length > 30) {
-        setErrorMessage("You can upload up to 30 images at once. The extra files were ignored.");
+      const limitedFiles = combinedFiles.slice(0, 100);
+      if (combinedFiles.length > 100) {
+        setErrorMessage("You can upload up to 100 images at once. The extra files were ignored.");
       } else {
         setErrorMessage(null);
       }
@@ -2196,42 +2254,66 @@ export function ToolDetail(props?: any) {
         blob = await convertPdfToWordOnServer(files[0]);
         outputName = stripExtension(files[0].name) + ".docx";
       } else if (tool.slug === "image-converter" && files.length > 1) {
-        const concurrencyLimit = Math.min(4, files.length);
-        let nextIndex = 0;
+        // Client-side, chunked conversion to avoid holding many images/canvases in memory.
+        const SIZE_LIMIT_BYTES = 500 * 1024 * 1024; // 500MB
+        const totalSize = files.reduce((s, f) => s + (f?.size || 0), 0);
+        if (totalSize > SIZE_LIMIT_BYTES) {
+          const mb = Math.round((totalSize / (1024 * 1024)) * 10) / 10;
+          const proceed = window.confirm(
+            `The selected images total ${mb} MB. This may cause crashes on low-memory devices. Continue?`
+          );
+          if (!proceed) {
+            clearInterval(interval);
+            setStatus("options");
+            return;
+          }
+        }
+
+        syncImageBatchItems(files);
         const successfulResults: Array<{ blob: Blob; outputName: string }> = [];
         const failedItems: Array<{ fileName: string; message: string }> = [];
         const totalFiles = files.length;
-        syncImageBatchItems(files);
+        const batchSize = 5;
+        let processedCount = 0;
 
-        await Promise.all(
-          Array.from({ length: concurrencyLimit }, async () => {
-            while (nextIndex < totalFiles) {
-              const currentIndex = nextIndex++;
-              const currentFile = files[currentIndex];
-              if (!currentFile) continue;
-              setImageBatchItems((prev) => prev.map((item, index) => (index === currentIndex ? { ...item, status: "converting", error: null } : item)));
-              setProgressStage(`Converting ${currentFile.name}`);
+        for (let start = 0; start < totalFiles; start += batchSize) {
+          const chunk = files.slice(start, Math.min(start + batchSize, totalFiles));
+          for (let i = 0; i < chunk.length; i += 1) {
+            const currentIndex = start + i;
+            const currentFile = chunk[i];
+            if (!currentFile) continue;
 
-              try {
-                const convertedBlob = await convertImageOnServer(currentFile, outputFormat, svgMode);
-                const baseName = stripExtension(currentFile.name);
-                const ext = outputFormat === "jpeg" ? "jpg" : outputFormat;
-                const resolvedName = `${baseName}.${ext}`;
-                successfulResults.push({ blob: convertedBlob, outputName: resolvedName });
-                setImageBatchItems((prev) => prev.map((item, index) => (index === currentIndex ? { ...item, status: "done", error: null, blob: convertedBlob, outputName: resolvedName } : item)));
-              } catch (error: any) {
-                const message = error?.message || "Image conversion failed.";
-                failedItems.push({ fileName: currentFile.name, message });
-                setImageBatchItems((prev) => prev.map((item, index) => (index === currentIndex ? { ...item, status: "failed", error: message } : item)));
+            setImageBatchItems((prev) => prev.map((item, index) => (index === currentIndex ? { ...item, status: "converting", error: null } : item)));
+            setProgressStage(`Converting ${processedCount + 1} of ${totalFiles}...`);
+
+            try {
+              let converted: { blob: Blob; filename?: string; outputName?: string };
+              if (outputFormat === "svg") {
+                const blobResult = await convertImageOnServer(currentFile, outputFormat, svgMode);
+                const resolvedName = `${stripExtension(currentFile.name)}.${outputFormat === "jpeg" ? "jpg" : outputFormat}`;
+                converted = { blob: blobResult, outputName: resolvedName };
+              } else {
+                const clientResult = await convertImageOnClient(currentFile, outputFormat);
+                converted = { blob: clientResult.blob, outputName: clientResult.filename };
               }
 
-              const completedCount = successfulResults.length + failedItems.length;
-              const nextProgress = Math.min(95, Math.round((completedCount / totalFiles) * 100));
-              setProgress(nextProgress);
-              setProgressStage(`Processed ${completedCount}/${totalFiles} files`);
+              successfulResults.push({ blob: converted.blob, outputName: converted.outputName || converted.filename || `${stripExtension(currentFile.name)}.${outputFormat}` });
+              setImageBatchItems((prev) => prev.map((item, index) => (index === currentIndex ? { ...item, status: "done", error: null, blob: converted.blob, outputName: converted.outputName || converted.filename } : item)));
+            } catch (error: any) {
+              const message = error?.message || "Image conversion failed.";
+              failedItems.push({ fileName: currentFile.name, message });
+              setImageBatchItems((prev) => prev.map((item, index) => (index === currentIndex ? { ...item, status: "failed", error: message } : item)));
             }
-          }),
-        );
+
+            processedCount += 1;
+            const nextProgress = Math.min(95, Math.round((processedCount / totalFiles) * 100));
+            setProgress(nextProgress);
+            setProgressStage(`Processed ${processedCount}/${totalFiles} files`);
+          }
+          // allow a short break for GC and event loop
+          // eslint-disable-next-line no-await-in-loop
+          await new Promise((r) => setTimeout(r, 50));
+        }
 
         if (successfulResults.length > 1) {
           const zip = new JSZip();
