@@ -247,14 +247,16 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
   return (
     <div className="relative space-y-4 rounded-[28px] border border-border/70 bg-card/80 p-4 shadow-sm backdrop-blur-sm md:p-6">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-col items-start gap-2 md:flex-row md:items-center">
           <Badge variant="secondary" className="rounded-full border border-border/60 bg-background/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em] text-muted-foreground">
             {isRotateMode ? "Rotate preview" : "Page preview"}
           </Badge>
+
+          {/* Persistent, prominent instruction for selection-based actions */}
           {!isRotateMode && (
-            <Badge variant="outline" className="rounded-full px-3 py-1 text-xs text-muted-foreground">
-              {selectedCount > 0 ? `${selectedCount} selected` : "Tap pages to select"}
-            </Badge>
+            <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm md:text-base font-semibold text-destructive whitespace-normal">
+              Select pages using the checkboxes. Use the "Delete" tool to remove pages, or use the "Extract" tool to export selected pages as a new PDF.
+            </div>
           )}
         </div>
 
@@ -477,7 +479,6 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
         <div className="text-sm text-muted-foreground">{isRotateMode ? `Ready to rotate ${pages.length} page${pages.length === 1 ? "" : "s"}` : `Total pages: ${pages.length}`}</div>
         <div className="flex items-center gap-3">
           <div className="text-sm text-muted-foreground">Zoom {zoom}%</div>
-          <Button className="rounded-full px-4" onClick={onSaveChanges}>{mode === "rotate" ? "Download Rotated PDF" : "Save Changes"}</Button>
         </div>
       </div>
     </div>

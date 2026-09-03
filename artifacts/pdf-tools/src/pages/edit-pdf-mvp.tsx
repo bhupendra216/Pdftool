@@ -751,9 +751,9 @@ function EditPdfMvp() {
           const scaleY = pageSize.height / viewportH;
 
           const x = item.pdfX * scaleX;
-          // Map PDF.js viewport Y into PDF units. Using y = item.pdfY * scaleY aligns the
-          // overlay math used for in-browser rendering with pdf-lib coordinates.
-          const y = item.pdfY * scaleY;
+          // Convert PDF.js viewport Y (origin: top-left) into pdf-lib Y (origin: bottom-left).
+          // Use flipped formula so exported text/masks align with pdf-lib's coordinate system.
+          const y = pageSize.height - (item.pdfY * scaleY);
 
           const scaledFontSize = cappedFontSize * scaleY;
           const boxWidthScaled = Math.max(18, safeGeometry.width || 24) * scaleX;
@@ -776,32 +776,47 @@ function EditPdfMvp() {
           });
 
           // Mask original PDF text for edited items by drawing a white rectangle behind it.
+          // Prefer using the line group's bounding box (if available) so masking is consistent and
+          // avoids per-font metric approximations. Fall back to a conservative per-item mask when
+          // no line group is found.
           if (item.isEdited && !item.isAdded) {
             try {
-              // Prefer masking exactly the original text span so we don't erase
-              // unrelated content when the new text is longer than the original.
-              const original = String(item.originalText ?? '');
-              const maskText = original || safeText;
-              const maskWidth = Math.max(4, font.widthOfTextAtSize(maskText, scaledFontSize));
-              const padding = Math.max(4, Math.round(scaledFontSize * 0.12));
-
-              // Estimate ascent/descent so the rectangle aligns with glyph metrics
-              const ascentEst = scaledFontSize * 0.75;
-              const descentEst = Math.max(2, Math.round(scaledFontSize * 0.25));
-
-              const rectX = Math.max(0, x - padding);
-              // baseline y; rectangle bottom should be baseline - descent - padding
-              const rectY = Math.max(0, y - descentEst - padding);
-              const rectWidth = Math.min(pageSize.width - rectX, maskWidth + padding * 2);
-              const rectHeight = Math.min(pageSize.height - rectY, Math.round(ascentEst + descentEst + padding * 2));
-
-              target.drawRectangle({
-                x: rectX,
-                y: rectY,
-                width: rectWidth,
-                height: rectHeight,
-                color: rgb(1, 1, 1),
+              const pageLayoutObj = pageLayouts.find((p) => p.pageNumber === pageNumber);
+              const groupForItem = pageLayoutObj?.lineGroups?.find((g) => {
+                try {
+                  // exact identity match
+                  if (g.items && g.items.some((it: any) => it && it.id === item.id)) return true;
+                } catch {}
+                // bounding-box containment fallback (loose match)
+                const withinX = item.pdfX >= g.boundingBox.x - 1 && item.pdfX <= g.boundingBox.x + g.boundingBox.width + 1;
+                const withinY = item.pdfY >= g.boundingBox.y - 1 && item.pdfY <= g.boundingBox.y + g.boundingBox.height + 1;
+                return withinX && withinY;
               });
+
+              const pad = 6; // px padding in PDF units after scaling
+              if (groupForItem) {
+                const gb = groupForItem.boundingBox;
+                const rectX = Math.max(0, (gb.x - 4) * scaleX);
+                // Convert top-left origin (gb.y) + height into bottom-left y for pdf-lib, then subtract padding
+                const rectY = Math.max(0, pageSize.height - ((gb.y + gb.height) * scaleY) - pad);
+                const rectWidth = Math.min(pageSize.width - rectX, (gb.width + 8) * scaleX);
+                const rectHeight = Math.min(pageSize.height - rectY, (gb.height + pad * 2) * scaleY);
+                target.drawRectangle({ x: rectX, y: rectY, width: rectWidth, height: rectHeight, color: rgb(1, 1, 1) });
+              } else {
+                // fallback: conservative per-item mask using flipped Y
+                const original = String(item.originalText ?? '');
+                const maskText = original || safeText;
+                const maskWidth = Math.max(4, font.widthOfTextAtSize(maskText, scaledFontSize));
+                const padding = Math.max(4, Math.round(scaledFontSize * 0.12));
+                const ascentEst = scaledFontSize * 0.75;
+                const descentEst = Math.max(2, Math.round(scaledFontSize * 0.25));
+                const rectX = Math.max(0, x - padding);
+                // y is baseline flipped; rectangle bottom should be baseline - descent - padding
+                const rectY = Math.max(0, y - descentEst - padding);
+                const rectWidth = Math.min(pageSize.width - rectX, maskWidth + padding * 2);
+                const rectHeight = Math.min(pageSize.height - rectY, Math.round(ascentEst + descentEst + padding * 2));
+                target.drawRectangle({ x: rectX, y: rectY, width: rectWidth, height: rectHeight, color: rgb(1, 1, 1) });
+              }
             } catch (maskErr) {
               console.warn('[edit-pdf] failed to draw mask rectangle for edited text', maskErr);
             }
@@ -847,6 +862,7 @@ function EditPdfMvp() {
 
           // Rectangle should cover all wrapped lines. y is the baseline of the first (top) line.
           const rectX = Math.max(0, x - padding);
+          // rectY: convert top-origin to pdf-lib bottom-origin for the bottom of the wrapped block
           const rectY = Math.max(0, y - descentEst - (lines.length - 1) * lineHeight - padding);
           const measuredLineWidths = lines.map((l) => font.widthOfTextAtSize(l, scaledFontSize));
           const rectWidth = Math.min(pageSize.width - rectX, Math.max(...measuredLineWidths, 0) + padding * 2);
@@ -854,7 +870,19 @@ function EditPdfMvp() {
 
           if (item.isEdited && !item.isAdded) {
             try {
-              target.drawRectangle({ x: rectX, y: rectY, width: rectWidth, height: rectHeight, color: rgb(1, 1, 1) });
+              // If a line-group was available we already drew its mask above; avoid double-drawing
+              const pageLayoutObj = pageLayouts.find((p) => p.pageNumber === pageNumber);
+              const groupForItem = pageLayoutObj?.lineGroups?.find((g) => {
+                try {
+                  if (g.items && g.items.some((it: any) => it && it.id === item.id)) return true;
+                } catch {}
+                const withinX = item.pdfX >= g.boundingBox.x - 1 && item.pdfX <= g.boundingBox.x + g.boundingBox.width + 1;
+                const withinY = item.pdfY >= g.boundingBox.y - 1 && item.pdfY <= g.boundingBox.y + g.boundingBox.height + 1;
+                return withinX && withinY;
+              });
+              if (!groupForItem) {
+                target.drawRectangle({ x: rectX, y: rectY, width: rectWidth, height: rectHeight, color: rgb(1, 1, 1) });
+              }
             } catch (maskErr) {
               console.warn('[edit-pdf] failed to draw mask rectangle for edited text', maskErr);
             }
@@ -1089,9 +1117,9 @@ function EditPdfMvp() {
                         const overlayBounds = getOverlayBoundsForLineGroup(group, page, pageWidth, pageHeight);
 
                         return (
-                          <button
+                          <div
                             key={group.id}
-                            type="button"
+                            role="button"
                             aria-label={`Select text on page ${page.pageNumber}`}
                             title="Select PDF text"
                             onMouseDown={(event) => {
@@ -1114,25 +1142,97 @@ function EditPdfMvp() {
                               });
                               setSelectedTextId(group.id);
                             }}
-                            className="absolute cursor-text rounded-md border transition"
+                            className="absolute rounded-md transition"
                             style={{
                               left: `${overlayBounds.left}px`,
                               top: `${overlayBounds.top}px`,
                               width: `${overlayBounds.width}px`,
                               height: `${overlayBounds.height}px`,
                               zIndex: 12,
-                              background: isSelected ? 'rgba(59,130,246,0.12)' : 'rgba(148,163,184,0.06)',
-                              border: isSelected ? '1px solid rgba(59,130,246,0.8)' : '1px solid rgba(148,163,184,0.32)',
                               boxSizing: 'border-box',
-                              color: 'transparent',
-                              fontSize: '0',
-                              lineHeight: '1',
-                              padding: '0',
-                              userSelect: 'none',
-                              pointerEvents: 'auto',
                               transform: 'translateY(0)',
+                              pointerEvents: 'auto',
                             }}
-                          />
+                          >
+                            <div
+                              style={{
+                                width: '100%',
+                                height: '100%',
+                                background: isSelected ? 'rgba(59,130,246,0.12)' : 'rgba(148,163,184,0.06)',
+                                border: isSelected ? '1px solid rgba(59,130,246,0.8)' : '1px solid rgba(148,163,184,0.32)',
+                                boxSizing: 'border-box',
+                                color: 'transparent',
+                                fontSize: '0',
+                                lineHeight: '1',
+                                userSelect: 'none',
+                                position: 'relative',
+                              }}
+                            >
+                              <button
+                                type="button"
+                                aria-label={`Edit text on page ${page.pageNumber}`}
+                                title="Edit text"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setEditorDraft({
+                                    pageNumber: page.pageNumber,
+                                    x: group.boundingBox.x,
+                                    y: group.baselineY,
+                                    value: group.text,
+                                    mode: 'edit',
+                                    id: group.id,
+                                  });
+                                  setSelectedTextId(group.id);
+                                }}
+                                className="absolute flex items-center justify-center rounded-full bg-white/90 border text-xs"
+                                style={{
+                                  right: 6,
+                                  top: 6,
+                                  width: 26,
+                                  height: 26,
+                                  zIndex: 20,
+                                  boxShadow: '0 1px 4px rgba(0,0,0,0.12)',
+                                }}
+                              >
+                                Edit
+                              </button>
+                              {editorDraft && editorDraft.mode === 'edit' && editorDraft.id === group.id && (
+                                <div style={{ position: 'absolute', left: 6, top: 40, right: 6, zIndex: 30 }}>
+                                  <textarea
+                                    id={`inline-editor-${group.id}`}
+                                    value={editorDraft.value}
+                                    onChange={(e) => setEditorDraft((cur) => (cur ? { ...cur, value: e.target.value } : cur))}
+                                    className="w-full rounded-md border p-2 text-sm"
+                                    style={{ minHeight: 56, resize: 'vertical', background: 'white' }}
+                                  />
+                                  <div style={{ marginTop: 8, display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setEditorDraft(null);
+                                      }}
+                                      className="rounded-md border px-3 py-1 text-sm"
+                                    >
+                                      Cancel
+                                    </button>
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (!editorDraft) return;
+                                        updateTextItem(editorDraft.pageNumber, editorDraft.id || group.id, editorDraft.value);
+                                        setEditorDraft(null);
+                                      }}
+                                      className="rounded-md bg-primary px-3 py-1 text-sm text-white"
+                                    >
+                                      Apply
+                                    </button>
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         );
                       })}
                     </div>
