@@ -406,6 +406,31 @@ export default function AddBackgroundPage() {
 
   const downloadName = selectedFile ? `${stripExtension(selectedFile.name)}-background.png` : "background.png";
 
+  const convertResultToMime = async (sourceBlob: Blob, mimeType: ExportMimeType) => {
+    if (mimeType === "image/png") return sourceBlob;
+    const sourceBitmap = await createImageBitmap(sourceBlob);
+    try {
+      const canvas = document.createElement("canvas");
+      canvas.width = sourceBitmap.width;
+      canvas.height = sourceBitmap.height;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("Canvas unavailable.");
+      if (mimeType === "image/jpeg" || mimeType === "image/bmp") {
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+      }
+      context.drawImage(sourceBitmap, 0, 0);
+      const exportMimeType = mimeType === "image/gif" || mimeType === "image/bmp" ? "image/png" : mimeType;
+      const nextBlob = await new Promise<Blob | null>((resolve) => {
+        canvas.toBlob((b) => resolve(b), exportMimeType, exportMimeType === "image/jpeg" || exportMimeType === "image/webp" || exportMimeType === "image/avif" ? 0.98 : undefined);
+      });
+      if (!nextBlob) throw new Error("Unable to export the processed image.");
+      return nextBlob;
+    } finally {
+      sourceBitmap.close?.();
+    }
+  };
+
   const composePreview = useCallback(async (mimeType: ExportMimeType) => {
     if (!foregroundBitmap || !outputSize) {
       throw new Error("Foreground not ready.");
@@ -430,6 +455,9 @@ export default function AddBackgroundPage() {
   }, [backgroundBitmap, backgroundMode, foregroundBitmap, foregroundScale, outputSize, positionX, positionY, resolvedSolidColor]);
 
   const handleMainImageSelected = async (files: File[]) => {
+    if (!files || files.length === 0) return;
+    
+
     const file = files[0];
     if (!file) return;
 
@@ -634,6 +662,8 @@ export default function AddBackgroundPage() {
     setBackgroundMode("image");
     setBackgroundNote(null);
   };
+
+  
 
   useEffect(() => {
     if (!foregroundBitmap || !outputSize || status === "processing" || status === "idle") {
@@ -990,6 +1020,7 @@ export default function AddBackgroundPage() {
                 )}
 
                 <div className={status === "processing" ? "pointer-events-none opacity-70" : ""}>
+                  
                   <UploadArea
                     onFilesSelected={handleMainImageSelected}
                     onError={(message) => {

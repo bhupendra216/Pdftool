@@ -28,6 +28,7 @@ const SUPPORTED_PREVIEW_TYPES = new Set([
 ]);
 
 type ToolStatus = "idle" | "processing" | "success" | "error";
+type ItemStatus = "pending" | "processing" | "done" | "error";
 type OriginalFileFormat = "png" | "jpeg" | "webp" | "gif" | "bmp" | "avif" | "heic" | "heif";
 
 const stripExtension = (fileName: string) => fileName.replace(/\.[^/.]+$/, "");
@@ -140,6 +141,7 @@ export default function RemoveBackgroundPage() {
   });
 
   const [status, setStatus] = useState<ToolStatus>("idle");
+  
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [originalFile, setOriginalFile] = useState<File | null>(null);
   const [originalUploadFormat, setOriginalUploadFormat] = useState<OriginalFileFormat | null>(null);
@@ -318,12 +320,14 @@ export default function RemoveBackgroundPage() {
       setStatus("error");
     }
   };
-
   const handleFilesSelected = async (files: File[]) => {
+    if (!files || files.length === 0) return;
     const file = files[0];
     if (!file) return;
     await processImage(file);
   };
+
+  
 
   const getOriginalDownloadMimeType = (): "image/png" | "image/jpeg" | "image/webp" | "image/avif" | "image/bmp" | "image/gif" | null => {
     if (originalDownloadMime) return originalDownloadMime;
@@ -348,16 +352,16 @@ export default function RemoveBackgroundPage() {
     return "PNG";
   };
 
-  const renderResultToMimeType = async (mimeType: "image/png" | "image/jpeg" | "image/webp" | "image/avif" | "image/bmp" | "image/gif") => {
-    if (!resultBlob) {
+  const renderResultToMimeType = async (sourceBlob: Blob, mimeType: "image/png" | "image/jpeg" | "image/webp" | "image/avif" | "image/bmp" | "image/gif") => {
+    if (!sourceBlob) {
       throw new Error("Result not ready.");
     }
 
     if (mimeType === "image/png") {
-      return resultBlob;
+      return sourceBlob;
     }
 
-    const sourceBitmap = await createImageBitmap(resultBlob);
+    const sourceBitmap = await createImageBitmap(sourceBlob);
     try {
       const canvas = document.createElement("canvas");
       canvas.width = sourceBitmap.width;
@@ -397,32 +401,23 @@ export default function RemoveBackgroundPage() {
       sourceBitmap.close?.();
     }
   };
-
-  const handleDownload = async (mimeType?: "image/png" | "image/jpeg" | "image/webp" | "image/avif" | "image/bmp" | "image/gif") => {
+  const handleDownload = async (
+    sourceBlob: Blob | null | undefined,
+    originalFileName: string,
+    mimeType?: "image/png" | "image/jpeg" | "image/webp" | "image/avif" | "image/bmp" | "image/gif",
+  ) => {
     const targetMime = mimeType ?? "image/png";
-    if (!resultUrl && targetMime === "image/png") return;
+    if (!sourceBlob) return;
 
     try {
-      const blob = targetMime === "image/png" ? resultBlob : await renderResultToMimeType(targetMime);
+      const blob = targetMime === "image/png" ? sourceBlob : await renderResultToMimeType(sourceBlob, targetMime);
       if (!blob) return;
 
       const url = URL.createObjectURL(blob);
       const anchor = document.createElement("a");
       anchor.href = url;
-      anchor.download =
-        targetMime === "image/png"
-          ? downloadName
-          : `${stripExtension(selectedFile?.name || "no-background")}-no-background.${
-              targetMime === "image/jpeg"
-                ? "jpg"
-                : targetMime === "image/webp"
-                  ? "webp"
-                  : targetMime === "image/bmp"
-                    ? "bmp"
-                    : targetMime === "image/gif"
-                      ? "gif"
-                      : "avif"
-            }`;
+      const ext = targetMime === "image/jpeg" ? "jpg" : targetMime === "image/webp" ? "webp" : targetMime === "image/bmp" ? "bmp" : targetMime === "image/gif" ? "gif" : targetMime === "image/avif" ? "avif" : "png";
+      anchor.download = `${stripExtension(originalFileName)}-no-background.${ext}`;
       anchor.click();
       URL.revokeObjectURL(url);
     } catch {
@@ -538,6 +533,8 @@ export default function RemoveBackgroundPage() {
               </CardContent>
             </Card>
 
+            
+
             <Card className="border-border/70 shadow-sm">
               <CardContent className="space-y-4 p-5 sm:p-6">
                 <div className="flex items-center gap-3">
@@ -606,7 +603,7 @@ export default function RemoveBackgroundPage() {
                         const pngLabel = showOriginalDownload ? "Download as PNG" : "Download PNG";
                         return (
                           <>
-                            <Button size="lg" className="rounded-full px-6" onClick={() => void handleDownload("image/png")}>
+                            <Button size="lg" className="rounded-full px-6" onClick={() => void handleDownload(resultBlob, selectedFile?.name ?? "no-background", "image/png")}>
                               <Download className="mr-2 h-4 w-4" />
                               {pngLabel}
                             </Button>
@@ -616,7 +613,7 @@ export default function RemoveBackgroundPage() {
                                 size="lg"
                                 variant="outline"
                                 className="rounded-full px-6"
-                                onClick={() => void handleDownload(originalMime)}
+                                onClick={() => void handleDownload(resultBlob, selectedFile?.name ?? "no-background", originalMime)}
                               >
                                 <Download className="mr-2 h-4 w-4" />
                                 Download as {getMimeTypeLabel(originalMime)}
