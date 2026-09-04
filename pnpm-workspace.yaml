@@ -161,5 +161,6 @@ overrides:
 
 allowBuilds:
   esbuild: true
+  protobufjs: true
   sharp: true
   tesseract.js: true

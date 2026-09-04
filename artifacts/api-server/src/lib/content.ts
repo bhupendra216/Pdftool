@@ -377,6 +377,66 @@ export const tools: ToolRecord[] = [
     blogSlug: null,
   },
   {
+    slug: "remove-background",
+    name: "Remove Background",
+    shortDescription: "Automatically remove image backgrounds and download transparent PNGs.",
+    category: "Images",
+    icon: "Sparkles",
+    popular: true,
+    status: "available",
+    seoTitle: "Remove Background from Image Online Free | PDFKira",
+    seoDescription:
+      "Remove image backgrounds automatically with PDFKira. Create transparent PNG images online for free without uploading your images to a server.",
+    steps: [
+      "Upload a JPG, JPEG, PNG, or WebP image.",
+      "Wait while the background is removed in your browser.",
+      "Download the transparent PNG and keep editing or start another image.",
+    ],
+    faqs: [
+      {
+        question: "Does this send my image to a server?",
+        answer:
+          "No. The background removal runs in your browser with a lazily loaded model, so your image stays on your device during processing.",
+      },
+      {
+        question: "What file do I get back?",
+        answer:
+          "The result is a PNG with transparency preserved, so it can be placed on any background without a white box around the subject.",
+      },
+    ],
+    blogSlug: null,
+  },
+  {
+    slug: "add-background",
+    name: "Add Background",
+    shortDescription: "Remove the existing background and add a new background to your image.",
+    category: "Image Tools",
+    icon: "Sparkles",
+    popular: false,
+    status: "available",
+    seoTitle: "Add Background to Image Online Free | PDFKira",
+    seoDescription:
+      "Add a new background to any image online for free. Automatically remove the existing background and replace it with a color or custom image.",
+    steps: [
+      "Upload an image with the background you want to replace.",
+      "Choose a transparent, solid-color, or custom background.",
+      "Download the finished image as a PNG or JPG.",
+    ],
+    faqs: [
+      {
+        question: "Does this run in my browser?",
+        answer:
+          "Yes. The foreground is extracted locally in your browser, then composited onto the new background you choose.",
+      },
+      {
+        question: "What output formats are available?",
+        answer:
+          "PNG is always available. JPG is available whenever the chosen background is not transparent.",
+      },
+    ],
+    blogSlug: null,
+  },
+  {
     slug: "rotate-pdf",
     name: "Rotate PDF",
     shortDescription: "Correct page orientation quickly and keep your document presentation polished.",

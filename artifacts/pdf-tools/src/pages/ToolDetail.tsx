@@ -986,12 +986,11 @@ export function ToolDetail(props?: any) {
     // For SVG output (vector), fallback to server-side conversion because canvas cannot produce proper SVG.
     if (outFormat === "svg") {
       const blob = await convertImageOnServer(fileToConvert, outFormat, svgMode);
-      const ext = outFormat === "jpeg" ? "jpg" : outFormat;
-      return { blob, filename: `${stripExtension(fileToConvert.name)}.${ext}` };
+      return { blob, filename: `${stripExtension(fileToConvert.name)}.svg` };
     }
 
     const mime = outFormat === "png" ? "image/png" : outFormat === "webp" ? "image/webp" : "image/jpeg";
-    const ext = outFormat === "jpeg" ? "jpg" : outFormat;
+    const ext = outFormat;
 
     const bitmap = await createImageBitmap(fileToConvert);
     try {
@@ -2290,7 +2289,7 @@ export function ToolDetail(props?: any) {
               let converted: { blob: Blob; filename?: string; outputName?: string };
               if (outputFormat === "svg") {
                 const blobResult = await convertImageOnServer(currentFile, outputFormat, svgMode);
-                const resolvedName = `${stripExtension(currentFile.name)}.${outputFormat === "jpeg" ? "jpg" : outputFormat}`;
+                const resolvedName = `${stripExtension(currentFile.name)}.svg`;
                 converted = { blob: blobResult, outputName: resolvedName };
               } else {
                 const clientResult = await convertImageOnClient(currentFile, outputFormat);

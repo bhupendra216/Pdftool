@@ -80,9 +80,12 @@
   },
   "dependencies": {
     "@embedpdf/pdfium": "^2.15.0",
+    "@imgly/background-removal": "^1.7.0",
     "@tanstack/react-virtual": "^3.14.10",
     "@vercel/analytics": "^2.0.1",
+    "heic2any": "^0.0.4",
     "jszip": "^3.10.0",
+    "onnxruntime-web": "1.21.0",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.1.200",
     "qrcode": "^1.5.4",

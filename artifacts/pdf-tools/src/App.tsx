@@ -17,6 +17,8 @@ import ConvertPdfPage from '@/pages/convert-pdf';
 import PdfOcrPage from '@/pages/pdf-ocr';
 import OrganizePdfPage from '@/pages/organize-pdf';
 import SearchFreePdfsPage from '@/pages/search-free-pdfs';
+import RemoveBackgroundPage from '@/pages/remove-background';
+import AddBackgroundPage from '@/pages/add-background';
 import { BlogIndex } from '@/pages/BlogIndex';
 import { BlogDetail } from '@/pages/BlogDetail';
 import { About } from '@/pages/About';
@@ -55,6 +57,8 @@ function Router() {
         <Route path="/tools/organize-pdf" component={OrganizePdfPage} />
         <Route path="/tools/download-pdf" component={DownloadPdfPage} />
         <Route path="/tools/search-free-pdfs" component={SearchFreePdfsPage} />
+        <Route path="/tools/remove-background" component={RemoveBackgroundPage} />
+        <Route path="/tools/add-background" component={AddBackgroundPage} />
         <Route path="/tools/:slug" component={ToolDetail} />
         {/* Root-level legacy aliases for backward compatibility */}
         <Route path="/merge-pdf" component={MergePdfPage} />
