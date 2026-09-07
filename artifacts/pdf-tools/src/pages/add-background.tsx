@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import ToolSeoSection from '@/components/Content/ToolSeoSection';
+import { getToolSeoContent } from '@/lib/toolSeoContent';
 
 const ACCEPTED_TYPES = "image/jpeg,image/png,image/webp,image/gif,image/bmp,image/avif,image/svg+xml,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.gif,.bmp,.avif,.svg,.heic,.heif";
 const MAX_SAFE_FILE_SIZE_BYTES = 500 * 1024 * 1024;
@@ -1165,6 +1167,7 @@ export default function AddBackgroundPage() {
           </div>
         </div>
       </div>
+      <ToolSeoSection content={getToolSeoContent('add-background')} />
     </div>
   );
 }

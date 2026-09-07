@@ -9,6 +9,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
+import ToolSeoSection from '@/components/Content/ToolSeoSection';
+import { getToolSeoContent } from '@/lib/toolSeoContent';
 
 const SUPPORTED_FORMATS = "JPG, JPEG, PNG, WebP, GIF, BMP, AVIF, SVG, HEIC, HEIF";
 const ACCEPTED_TYPES = "image/jpeg,image/png,image/webp,image/gif,image/bmp,image/avif,image/svg+xml,image/heic,image/heif,.jpg,.jpeg,.png,.webp,.gif,.bmp,.avif,.svg,.heic,.heif";
@@ -456,6 +458,8 @@ export default function RemoveBackgroundPage() {
     </Card>
   );
 
+  const seoContent = getToolSeoContent('remove-background');
+
   return (
     <div className="bg-background pb-20">
       <section className="border-b border-border bg-card">
@@ -655,6 +659,7 @@ export default function RemoveBackgroundPage() {
           </div>
         </div>
       </div>
+      {seoContent && <ToolSeoSection content={seoContent} />}
     </div>
   );
 }

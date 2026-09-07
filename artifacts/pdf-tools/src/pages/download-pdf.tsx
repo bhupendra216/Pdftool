@@ -1,6 +1,9 @@
 import { useState } from 'react';
 import { useSEOAdvanced } from '@/hooks/use-seo';
 import { SITE_URL } from '@/lib/site-config';
+// SEO handled by ToolDetail or separate SEO module; keep this page minimal
+import ToolSeoSection from '@/components/Content/ToolSeoSection';
+import { getToolSeoContent } from '@/lib/toolSeoContent';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Loader2, Download } from 'lucide-react';
@@ -83,6 +86,8 @@ export default function DownloadPdfPage() {
     }
   };
 
+  
+
   return (
     <div className="container mx-auto px-4 py-12 max-w-4xl">
       <div className="text-center mb-10">
@@ -116,27 +121,21 @@ export default function DownloadPdfPage() {
           className="w-full h-11 text-base font-semibold gap-2"
         >
           {loading ? (
-            <>
-              <Loader2 className="h-4 w-4 animate-spin" />
-              Downloading...
-            </>
+            <span className="inline-flex items-center gap-2"><Loader2 className="h-4 w-4 animate-spin" />Downloading...</span>
           ) : (
-            <>
-              <Download className="h-4 w-4" />
-              Download PDF
-            </>
+            <span className="inline-flex items-center gap-2"><Download className="h-4 w-4" />Download PDF</span>
           )}
         </Button>
 
         {error && (
           <div className="w-full p-4 bg-destructive/10 text-destructive rounded-xl border border-destructive/20 text-sm text-center">
-            ⚠️ {error}
+            Error: {error}
           </div>
         )}
 
         {/* Optional: Tips section for users */}
         <div className="mt-6 p-4 bg-muted/30 rounded-xl border border-border/50 text-sm text-muted-foreground space-y-2 w-full">
-          <p className="font-medium text-foreground">💡 How to get a direct PDF link:</p>
+          <p className="font-medium text-foreground">How to get a direct PDF link:</p>
           <ul className="list-disc pl-5 space-y-1">
             <li>Right-click on a "Download" button and select <strong>"Copy Link Address"</strong>.</li>
             <li>Paste the link here. If it doesn't work, the website is blocking direct downloads.</li>
@@ -144,6 +143,7 @@ export default function DownloadPdfPage() {
           </ul>
         </div>
       </div>
+      <ToolSeoSection content={getToolSeoContent('download-pdf')} />
     </div>
   );
 }

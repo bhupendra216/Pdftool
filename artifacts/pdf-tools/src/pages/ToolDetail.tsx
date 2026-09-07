@@ -17,6 +17,7 @@ import { FaqSection } from "@/components/shared/FaqSection";
 import ToolSeoSection from '@/components/Content/ToolSeoSection';
 import { TOOL_SEO_CONTENT } from '@/data/toolSeoContent';
 import { toolContent } from '@/data/toolContent';
+import { getToolSeoContent } from '@/lib/toolSeoContent';
 import { ToolCard } from "@/components/shared/ToolCard";
 import { Button } from "@/components/ui/button";
 import OrganizeGrid from "@/components/organize/OrganizeGrid";
@@ -3876,20 +3877,8 @@ export function ToolDetail(props?: any) {
             const slugToUse = resolveToolSlug(rawSlug, catalogTools) || tool?.slug;
             if (!slugToUse) return null;
 
-            const explicit = TOOL_SEO_CONTENT[slugToUse];
-            if (explicit) return <ToolSeoSection content={explicit} />;
-
-            const raw = (toolContent as any)[slugToUse];
-            const mapped = raw
-              ? {
-                  slug: slugToUse,
-                  howItWorks: (raw.howToSteps || raw.steps || []).slice(0, 3).map((s: any) => ({ title: s.title || s, description: s.description || s })),
-                  whyUse: (raw.features || []).slice(0, 3).map((f: any) => ({ title: f.title || f, description: f.description || '' })),
-                  faq: (raw.faqs || []).slice(0, 6).map((q: any) => ({ question: q.question, answer: q.answer })),
-                }
-              : undefined;
-
-            return <ToolSeoSection content={mapped} />;
+            const content = getToolSeoContent(slugToUse);
+            return <ToolSeoSection content={content} />;
           })()
         }
 

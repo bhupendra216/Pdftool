@@ -9,6 +9,8 @@ import { Textarea } from '@/components/ui/textarea';
 import { useSEOAdvanced } from '@/hooks/use-seo';
 import { SITE_URL } from '@/lib/site-config';
 import { convertLatexToPlainText, stripOuterLatexDelimiters } from '@/lib/latexToPlainText';
+import ToolSeoSection from '@/components/Content/ToolSeoSection';
+import { getToolSeoContent } from '@/lib/toolSeoContent';
 
 const SAMPLE = String.raw`\frac{-b \pm \sqrt{b^2-4ac}}{2a}`;
 
@@ -119,6 +121,7 @@ export default function LatexToTextPage() {
           </CardContent>
         </Card>
       </div>
+      <ToolSeoSection content={getToolSeoContent('latex-to-text')} />
     </div>
   );
 }

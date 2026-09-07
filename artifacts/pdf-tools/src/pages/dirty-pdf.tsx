@@ -1,6 +1,8 @@
 import { useSEOAdvanced } from '@/hooks/use-seo';
 import { SITE_URL } from '@/lib/site-config';
 import DirtyPDF from '@/tools/DirtyPDF';
+import ToolSeoSection from '@/components/Content/ToolSeoSection';
+import { getToolSeoContent } from '@/lib/toolSeoContent';
 
 export default function DirtyPdfPage() {
   const title = 'Transform PDF — Make pages look aged and handwritten';
@@ -20,6 +22,10 @@ export default function DirtyPdfPage() {
       description,
     },
   });
-
-  return <DirtyPDF />;
+  return (
+    <>
+      <DirtyPDF />
+      <ToolSeoSection content={getToolSeoContent('transform-pdf')} />
+    </>
+  );
 }

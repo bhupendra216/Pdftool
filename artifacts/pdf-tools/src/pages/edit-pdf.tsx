@@ -1,6 +1,8 @@
 import { useSEOAdvanced } from '@/hooks/use-seo';
 import { SITE_URL } from '@/lib/site-config';
 import EditPdfMvp from './edit-pdf-mvp';
+import ToolSeoSection from '@/components/Content/ToolSeoSection';
+import { getToolSeoContent } from '@/lib/toolSeoContent';
 
 export default function EditPdfPage() {
   const title = 'Edit PDF Online Free — PDFKira';
@@ -21,5 +23,10 @@ export default function EditPdfPage() {
     },
   });
 
-  return <EditPdfMvp />;
+  return (
+    <>
+      <EditPdfMvp />
+      <ToolSeoSection content={getToolSeoContent('edit-pdf')} />
+    </>
+  );
 }

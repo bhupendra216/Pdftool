@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import { useSEOAdvanced } from '@/hooks/use-seo';
 import { SITE_URL } from '@/lib/site-config';
+import ToolSeoSection from '@/components/Content/ToolSeoSection';
 
 type Item = {
   identifier: string;
@@ -123,4 +124,9 @@ export default function SearchFreePdfsPage() {
       </div>
     </div>
   );
+}
+
+export function SearchFreePdfsSeo() {
+  const content = { slug: 'search-free-pdfs', howItWorks: [], whyUse: [], faq: [] };
+  return <ToolSeoSection content={content} />;
 }
