@@ -1,4 +1,13 @@
-import { PDFPage, rgb, degrees } from 'pdf-lib';
+import type { PDFPage } from 'pdf-lib';
+
+let pdfLibPromise: Promise<typeof import('pdf-lib')> | null = null;
+
+const loadPdfLib = () => {
+  if (!pdfLibPromise) {
+    pdfLibPromise = import('pdf-lib');
+  }
+  return pdfLibPromise;
+};
 
 export const rand = (min: number, max: number) => Math.random() * (max - min) + min;
 export const randInt = (min: number, max: number) => Math.floor(rand(min, max));
@@ -11,6 +20,7 @@ export function setGlobalMarkSizeLimit(limit: number | null) {
 }
 
 export async function addInkSplatter(page: PDFPage, intensity: number = 0.5) {
+  const { rgb } = await loadPdfLib();
   const { width, height } = page.getSize();
   const x = rand(20, width - 20);
   const y = rand(20, height - 20);
@@ -36,6 +46,7 @@ export async function addInkSplatter(page: PDFPage, intensity: number = 0.5) {
 }
 
 export async function addScribble(page: PDFPage, intensity: number = 0.5) {
+  const { rgb } = await loadPdfLib();
   const { width, height } = page.getSize();
   const segments = randInt(4, Math.floor(4 + intensity * 16));
   const thickness = rand(0.5, 0.5 + intensity * 3.5);
@@ -56,6 +67,7 @@ export async function addScribble(page: PDFPage, intensity: number = 0.5) {
 }
 
 export async function addCoffeeRing(page: PDFPage, intensity: number = 0.5) {
+  const { rgb } = await loadPdfLib();
   const { width, height } = page.getSize();
   const x = rand(60, width - 60);
   const y = rand(60, height - 60);
@@ -76,6 +88,7 @@ export async function addCoffeeRing(page: PDFPage, intensity: number = 0.5) {
 }
 
 export async function addDirtSpots(page: PDFPage, intensity: number = 0.5) {
+  const { rgb } = await loadPdfLib();
   const { width, height } = page.getSize();
   const count = randInt(5, Math.min(25, 5 + Math.floor(intensity * 20)));
   const color = rgb(0.2, 0.15, 0.08);
@@ -91,6 +104,7 @@ export async function addDirtSpots(page: PDFPage, intensity: number = 0.5) {
 }
 
 export async function addSmudge(page: PDFPage, intensity: number = 0.5) {
+  const { rgb, degrees } = await loadPdfLib();
   const { width, height } = page.getSize();
   let w = rand(30, 30 + intensity * 120); // 30-150
   let h = rand(10, 10 + intensity * 40); // 10-50
@@ -108,6 +122,7 @@ export async function addSmudge(page: PDFPage, intensity: number = 0.5) {
 }
 
 export async function addFoldLine(page: PDFPage, intensity: number = 0.5) {
+  const { rgb } = await loadPdfLib();
   const { width, height } = page.getSize();
   const horizontal = Math.random() > 0.5;
   const thickness = rand(0.5, 0.5 + intensity * 2.5);
@@ -124,6 +139,7 @@ export async function addFoldLine(page: PDFPage, intensity: number = 0.5) {
 }
 
 export async function addWaterStain(page: PDFPage, intensity: number = 0.5) {
+  const { rgb, degrees } = await loadPdfLib();
   const { width, height } = page.getSize();
   const areaPercent = rand(0.05, 0.05 + intensity * 0.2); // up to ~25%
   const targetArea = width * height * areaPercent;
@@ -139,6 +155,7 @@ export async function addWaterStain(page: PDFPage, intensity: number = 0.5) {
 }
 
 export async function addScratch(page: PDFPage, intensity: number = 0.5) {
+  const { rgb } = await loadPdfLib();
   const { width, height } = page.getSize();
   const points = randInt(3, Math.min(8, 3 + Math.floor(intensity * 5)));
   const color = rgb(0.3, 0.3, 0.3);

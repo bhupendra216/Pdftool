@@ -1,4 +1,3 @@
-import heic2any from "heic2any";
 import { useEffect, useRef, useState, type MutableRefObject } from "react";
 import { AlertCircle, Download, Image as ImageIcon, Loader2, RefreshCw, ShieldCheck, Sparkles } from "lucide-react";
 import { useSEOAdvanced } from "@/hooks/use-seo";
@@ -68,6 +67,7 @@ const isHeicFile = (file: File) => {
 };
 
 async function convertHeicToPng(file: File): Promise<File> {
+  const heic2any = (await import("heic2any")).default;
   const converted = await heic2any({ blob: file, toType: "image/png", quality: 1 });
   const firstResult = Array.isArray(converted) ? converted[0] : converted;
 

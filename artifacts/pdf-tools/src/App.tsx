@@ -1,3 +1,4 @@
+import React, { Suspense, lazy } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -6,33 +7,33 @@ import { Layout } from '@/components/layout/Layout';
 import { ScrollToTop } from '@/components/shared/ScrollToTop';
 
 // Pages
-import { Home } from '@/pages/Home';
-import { ToolsIndex } from '@/pages/ToolsIndex';
-import { ToolDetail } from '@/pages/ToolDetail';
-import MergePdfPage from '@/pages/merge-pdf';
-import SplitPdfPage from '@/pages/split-pdf';
-import CompressPdfPage from '@/pages/compress-pdf';
-import EditPdfPage from '@/pages/edit-pdf';
-import ConvertPdfPage from '@/pages/convert-pdf';
-import PdfOcrPage from '@/pages/pdf-ocr';
-import OrganizePdfPage from '@/pages/organize-pdf';
-import SearchFreePdfsPage from '@/pages/search-free-pdfs';
-import RemoveBackgroundPage from '@/pages/remove-background';
-import AddBackgroundPage from '@/pages/add-background';
-import LatexToTextPage from '@/pages/latex-to-text';
-import { BlogIndex } from '@/pages/BlogIndex';
-import { BlogDetail } from '@/pages/BlogDetail';
-import { About } from '@/pages/About';
-import { Privacy } from '@/pages/Privacy';
-import { Terms } from '@/pages/Terms';
-import { Contact } from '@/pages/Contact';
-import { AiJobs } from '@/pages/AiJobs';
-import { AdminLogin } from '@/pages/admin/AdminLogin';
-import { AdminDashboard } from '@/pages/admin/AdminDashboard';
-import NotFound from '@/pages/not-found';
-import DownloadPdfPage from '@/pages/download-pdf';
-import CompareIlovepdfVsSmallpdfVsPdfkiraPage from '@/pages/compare-ilovepdf-vs-smallpdf-vs-pdfkira';
-import DirtyPdfPage from '@/pages/dirty-pdf';
+const Home = lazy(() => import('@/pages/Home').then((mod) => ({ default: mod.Home })));
+const ToolsIndex = lazy(() => import('@/pages/ToolsIndex').then((mod) => ({ default: mod.ToolsIndex })));
+const ToolDetail = lazy(() => import('@/pages/ToolDetail').then((mod) => ({ default: mod.ToolDetail })));
+const MergePdfPage = lazy(() => import('@/pages/merge-pdf'));
+const SplitPdfPage = lazy(() => import('@/pages/split-pdf'));
+const CompressPdfPage = lazy(() => import('@/pages/compress-pdf'));
+const EditPdfPage = lazy(() => import('@/pages/edit-pdf'));
+const ConvertPdfPage = lazy(() => import('@/pages/convert-pdf'));
+const PdfOcrPage = lazy(() => import('@/pages/pdf-ocr'));
+const OrganizePdfPage = lazy(() => import('@/pages/organize-pdf'));
+const SearchFreePdfsPage = lazy(() => import('@/pages/search-free-pdfs'));
+const RemoveBackgroundPage = lazy(() => import('@/pages/remove-background'));
+const AddBackgroundPage = lazy(() => import('@/pages/add-background'));
+const LatexToTextPage = lazy(() => import('@/pages/latex-to-text'));
+const BlogIndex = lazy(() => import('@/pages/BlogIndex').then((mod) => ({ default: mod.BlogIndex })));
+const BlogDetail = lazy(() => import('@/pages/BlogDetail').then((mod) => ({ default: mod.BlogDetail })));
+const About = lazy(() => import('@/pages/About').then((mod) => ({ default: mod.About })));
+const Privacy = lazy(() => import('@/pages/Privacy').then((mod) => ({ default: mod.Privacy })));
+const Terms = lazy(() => import('@/pages/Terms').then((mod) => ({ default: mod.Terms })));
+const Contact = lazy(() => import('@/pages/Contact').then((mod) => ({ default: mod.Contact })));
+const AiJobs = lazy(() => import('@/pages/AiJobs').then((mod) => ({ default: mod.AiJobs })));
+const AdminLogin = lazy(() => import('@/pages/admin/AdminLogin').then((mod) => ({ default: mod.AdminLogin })));
+const AdminDashboard = lazy(() => import('@/pages/admin/AdminDashboard').then((mod) => ({ default: mod.AdminDashboard })));
+const NotFound = lazy(() => import('@/pages/not-found'));
+const DownloadPdfPage = lazy(() => import('@/pages/download-pdf'));
+const CompareIlovepdfVsSmallpdfVsPdfkiraPage = lazy(() => import('@/pages/compare-ilovepdf-vs-smallpdf-vs-pdfkira'));
+const DirtyPdfPage = lazy(() => import('@/pages/dirty-pdf'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -98,7 +99,9 @@ function App() {
       <TooltipProvider>
         <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
           <ScrollToTop />
-          <Router />
+          <Suspense fallback={<div className="min-h-[50vh]" />}> 
+            <Router />
+          </Suspense>
         </WouterRouter>
         <Toaster />
       </TooltipProvider>

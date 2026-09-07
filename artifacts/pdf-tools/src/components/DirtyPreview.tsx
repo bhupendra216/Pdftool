@@ -1,8 +1,5 @@
 /// <reference types="react" />
 import React, { useEffect, useRef, useState } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
-import 'pdfjs-dist/build/pdf.worker.mjs';
-import { PDFDocument } from 'pdf-lib';
 import { applyDirtyEffect, applyPaperToneToCanvas, drawFoldCreaseOnCanvas, drawTornEdgesOnCanvas, drawDogEarOnCanvas, drawStapleHolesOnCanvas, drawPaperclipMarkOnCanvas, drawTapeResidueOnCanvas } from '@/lib/dirtyEffects';
 import {
   applyPixelFilters,
@@ -109,6 +106,21 @@ export const DirtyPreview: React.FC<DirtyPreviewProps> = ({
   const [retryKey, setRetryKey] = useState(0);
   const modifiedPdfCache = useRef<{ key: string; bytes: Uint8Array | null }>({ key: '', bytes: null });
 
+  const loadPdfRuntime = async () => {
+    const [{ PDFDocument }, pdfjsLib] = await Promise.all([
+      import('pdf-lib'),
+      import('pdfjs-dist'),
+    ]);
+
+    try {
+      await import('pdfjs-dist/build/pdf.worker.mjs');
+    } catch {
+      // optional worker module; not required for initial hydration
+    }
+
+    return { PDFDocument, pdfjsLib };
+  };
+
   useEffect(() => {
     const currentFile = file;
     if (!currentFile) return;
@@ -138,7 +150,7 @@ export const DirtyPreview: React.FC<DirtyPreviewProps> = ({
         if (cachedKeyRef.key === key && cachedKeyRef.bytes) {
           modifiedBytes = cachedKeyRef.bytes;
         } else {
-          // Load original into pdf-lib, apply effects (in-memory) only when file or intensity changed
+          const { PDFDocument } = await loadPdfRuntime();
           const pdfDoc = await PDFDocument.load(arrayBuffer);
           const pages = pdfDoc.getPages();
           for (const p of pages) {
@@ -153,6 +165,7 @@ export const DirtyPreview: React.FC<DirtyPreviewProps> = ({
         // Use pdfjs to render the modified PDF first page to an offscreen canvas
         // pdfjs may transfer/detach ArrayBuffers internally — pass a fresh copy to avoid
         // "ArrayBuffer at index 0 is already detached" errors when reusing cached bytes.
+        const { pdfjsLib } = await loadPdfRuntime();
         const pdf = await pdfjsLib.getDocument({ data: modifiedBytes.slice() }).promise;
         const p = Math.min(Math.max(1, pageNumber), pdf.numPages);
         const page = await pdf.getPage(p);

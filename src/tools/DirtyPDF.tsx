@@ -1,12 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
-import 'pdfjs-dist/build/pdf.worker.mjs';
-import { PDFDocument } from 'pdf-lib';
 import DirtyPreview from '../components/DirtyPreview';
 import { applyDirtyEffect } from '../lib/dirtyEffects';
 
 export function DirtyPDF(): JSX.Element {
   const [file, setFile] = useState<File | null>(null);
+  const modulesRef = useRef<{ PDFDocument?: any }>({});
   const intensity = 0;
   const [processing, setProcessing] = useState<boolean>(false);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
@@ -49,7 +47,14 @@ export function DirtyPDF(): JSX.Element {
 
     try {
       const arrayBuffer = await file.arrayBuffer();
-      const pdfDoc = await PDFDocument.load(arrayBuffer);
+      // load pdf-lib only when processing is requested
+      let PDFDocumentModule = modulesRef.current.PDFDocument;
+      if (!PDFDocumentModule) {
+        const pdfLibModule = await import('pdf-lib');
+        PDFDocumentModule = pdfLibModule.PDFDocument;
+        modulesRef.current.PDFDocument = PDFDocumentModule;
+      }
+      const pdfDoc = await PDFDocumentModule.load(arrayBuffer);
       const pages = pdfDoc.getPages();
 
       for (const page of pages) {

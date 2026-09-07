@@ -1,8 +1,5 @@
 /// <reference types="react" />
 import React, { useEffect, useRef, useState } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
-import 'pdfjs-dist/build/pdf.worker.mjs';
-import { PDFDocument } from 'pdf-lib';
 import { applyDirtyEffect, applyPaperToneToCanvas, drawFoldCreaseOnCanvas, drawTornEdgesOnCanvas, drawDogEarOnCanvas, drawStapleHolesOnCanvas, drawPaperclipMarkOnCanvas, drawTapeResidueOnCanvas, drawSmudgeOnCanvas, drawLinedPaper, drawGridPaper, drawDogEarOnCanvasImproved } from '../lib/dirtyEffects';
 import {
   applyPixelFilters,
@@ -103,6 +100,8 @@ export const DirtyPreview: React.FC<DirtyPreviewProps> = ({
   debounceMs = 300,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  // lazy-loaded modules (avoid pulling heavy pdf libs into initial bundle)
+  const modulesRef = useRef<{ pdfjsLib?: any; PDFDocument?: any; workerLoaded?: boolean }>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [retryKey, setRetryKey] = useState(0);
@@ -136,7 +135,27 @@ export const DirtyPreview: React.FC<DirtyPreviewProps> = ({
         if (cachedKeyRef.key === key && cachedKeyRef.bytes) {
           modifiedBytes = cachedKeyRef.bytes;
         } else {
-          const pdfDoc = await PDFDocument.load(arrayBuffer);
+          // load heavy pdf libs only when rendering is required
+          let PDFDocumentModule = modulesRef.current.PDFDocument;
+          let pdfjsLibModule = modulesRef.current.pdfjsLib;
+          if (!PDFDocumentModule) {
+            const pdfLibModule = await import('pdf-lib');
+            PDFDocumentModule = pdfLibModule.PDFDocument;
+            modulesRef.current.PDFDocument = PDFDocumentModule;
+          }
+          if (!pdfjsLibModule) {
+            pdfjsLibModule = await import('pdfjs-dist');
+            modulesRef.current.pdfjsLib = pdfjsLibModule;
+            // try to also load the worker file (bundler will create a separate chunk)
+            try {
+              await import('pdfjs-dist/build/pdf.worker.mjs');
+              modulesRef.current.workerLoaded = true;
+            } catch (e) {
+              // non-fatal: some dev setups may not expose worker as module
+            }
+          }
+
+          const pdfDoc = await PDFDocumentModule.load(arrayBuffer);
           const pages = pdfDoc.getPages();
           for (const p of pages) {
             applyDirtyEffect(p, intensity);
@@ -147,7 +166,7 @@ export const DirtyPreview: React.FC<DirtyPreviewProps> = ({
           cachedKeyRef.bytes = modifiedBytes;
         }
 
-        const pdf = await pdfjsLib.getDocument({ data: modifiedBytes.slice() }).promise;
+        const pdf = await (pdfjsLibModule as any).getDocument({ data: modifiedBytes.slice() }).promise;
         const p = Math.min(Math.max(1, pageNumber), pdf.numPages);
         const page = await pdf.getPage(p);
         const viewport = page.getViewport({ scale });

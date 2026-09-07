@@ -1,8 +1,5 @@
 /// <reference types="react" />
 import React, { useEffect, useRef, useState } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
-import 'pdfjs-dist/build/pdf.worker.mjs';
-import { PDFDocument } from 'pdf-lib';
 import PDFPreview from '@/components/PDFPreview';
 import DirtyPreview from '@/components/DirtyPreview';
 import { applyPaperToneToCanvas, drawFoldCreaseOnCanvas, drawTornEdgesOnCanvas, drawDogEarOnCanvas, drawStapleHolesOnCanvas, drawPaperclipMarkOnCanvas, drawTapeResidueOnCanvas, setGlobalMarkSizeLimit } from '@/lib/dirtyEffects';
@@ -12,6 +9,18 @@ export default function DirtyPDF() {
   const [file, setFile] = useState<File | null>(null);
   const intensity = 0;
   const [processing, setProcessing] = useState<boolean>(false);
+  const loadPdfRuntime = async () => {
+    const [{ PDFDocument }, pdfjsLib] = await Promise.all([
+      import('pdf-lib'),
+      import('pdfjs-dist'),
+    ]);
+    try {
+      await import('pdfjs-dist/build/pdf.worker.mjs');
+    } catch {
+      // optional worker module; not required for initial hydration
+    }
+    return { PDFDocument, pdfjsLib };
+  };
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
 
   // preview controls
@@ -107,6 +116,7 @@ export default function DirtyPDF() {
       // load to get total pages quickly
       (async () => {
         try {
+          const { PDFDocument } = await loadPdfRuntime();
           const arrayBuffer = await f.arrayBuffer();
           const pdfDoc = await PDFDocument.load(arrayBuffer);
           setTotalPages(pdfDoc.getPageCount());
@@ -123,6 +133,7 @@ export default function DirtyPDF() {
     setDownloadUrl(null);
 
     try {
+      const { PDFDocument, pdfjsLib } = await loadPdfRuntime();
       const arrayBuffer = await file.arrayBuffer();
       const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
       const outPdf = await PDFDocument.create();
