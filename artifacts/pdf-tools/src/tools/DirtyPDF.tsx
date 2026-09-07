@@ -57,6 +57,7 @@ export default function DirtyPDF() {
   const [zoom, setZoom] = useState<number>(1.2);
 
   const [split, setSplit] = useState<number>(50); // percent left pane
+  const [rightMode, setRightMode] = useState<'manual'|'restore'>('manual');
   const handleRef = useRef<HTMLDivElement | null>(null);
   const draggingRef = useRef(false);
   // accordion state
@@ -213,6 +214,42 @@ export default function DirtyPDF() {
     }
   };
 
+  function restoreOriginalSettings() {
+    setBrightness(50);
+    setContrast(50);
+    setSepia(0);
+    setTemperature(0);
+    setVignette(0);
+    setVignetteDarkness(0);
+    setSharpen(0);
+    setPaperTone('white');
+    setPaperGrain(0);
+    setPaperToneAmount(0);
+    setRemoveLines(false);
+    setPaperStyle('auto');
+    setSmallMarks(false);
+    setPageRotation(0);
+    setPerspectiveSkew(0);
+    setFoldCrease(0);
+    setTornEdges(0);
+    setDogEar('none');
+    setDogEarSize(0);
+    setGamma(1.0);
+    setSaturation(0);
+    setHueShift(0);
+    setGlare(0);
+    setStapleHoles(false);
+    setPaperclipMark(false);
+    setTapeResidue(0);
+    setSmudgeIntensity(0);
+    setWaterStainDepth(0);
+    setJpegArtifacts(0);
+    setDpiReduction(0);
+    setInkColor('black');
+    setInkFading(0);
+    setInkBleeding(0);
+  }
+
   const zoomOut = () => setZoom((z) => Math.max(0.5, +(z - 0.1).toFixed(2)));
   const zoomIn = () => setZoom((z) => Math.min(3, +(z + 0.1).toFixed(2)));
 
@@ -255,7 +292,21 @@ export default function DirtyPDF() {
             <div style={{ width: `${100 - split}%` }} className="p-4 bg-gray-50 overflow-auto">
               <div className="flex items-center justify-between mb-2">
                 <div className="text-sm font-medium">Preview (Distressed)</div>
-                <div className="text-sm text-gray-500">Preview only</div>
+                <div className="flex items-center gap-2">
+                  <select value={rightMode} onChange={(e) => {
+                    const v = e.target.value as any;
+                    setRightMode(v);
+                    if (v === 'restore') {
+                      restoreOriginalSettings();
+                      // return to manual after applying
+                      setTimeout(() => setRightMode('manual'), 200);
+                    }
+                  }} className="p-1 border rounded bg-white text-gray-900">
+                    <option value="manual">Change yourself</option>
+                    <option value="restore">Restore original values</option>
+                  </select>
+                  <div className="text-sm text-gray-500">Preview only</div>
+                </div>
               </div>
               <DirtyPreview
                 file={file}

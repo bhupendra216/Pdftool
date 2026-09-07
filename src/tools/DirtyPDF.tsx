@@ -25,6 +25,7 @@ export function DirtyPDF(): JSX.Element {
   const [inkColor, setInkColor] = useState<'black'|'blue'|'brown'|'gray'|'green'|'red'>('black');
   const [inkFading, setInkFading] = useState<number>(0);
   const [inkBleeding, setInkBleeding] = useState<number>(0);
+  const [rightMode, setRightMode] = useState<'manual'|'restore'>('manual');
 
   useEffect(() => {
     return () => {
@@ -67,6 +68,16 @@ export function DirtyPDF(): JSX.Element {
       setProcessing(false);
     }
   };
+
+  function restoreOriginalSettings() {
+    setBrightness(50);
+    setContrast(50);
+    setPaperTone('white');
+    setDogEar('none');
+    setInkColor('black');
+    setInkFading(0);
+    setInkBleeding(0);
+  }
 
   return (
     <div className="max-w-6xl mx-auto p-6">
@@ -186,7 +197,20 @@ export function DirtyPDF(): JSX.Element {
           <div className="p-4 bg-gray-50 overflow-auto">
             <div className="flex items-center justify-between mb-2">
               <div className="text-sm font-medium">Preview (Distressed)</div>
-              <div className="text-sm text-gray-500">Preview only</div>
+              <div className="flex items-center gap-2">
+                <select value={rightMode} onChange={(e) => {
+                  const v = e.target.value as any;
+                  setRightMode(v);
+                  if (v === 'restore') {
+                    restoreOriginalSettings();
+                    setTimeout(() => setRightMode('manual'), 200);
+                  }
+                }} className="p-1 border rounded bg-white text-gray-900">
+                  <option value="manual">Change yourself</option>
+                  <option value="restore">Restore original values</option>
+                </select>
+                <div className="text-sm text-gray-500">Preview only</div>
+              </div>
             </div>
             <DirtyPreview
               file={file}

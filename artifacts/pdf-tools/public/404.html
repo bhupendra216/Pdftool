@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>404 - Page Not Found | PDFKira</title>
+    <meta
+      name="description"
+      content="The page you were looking for could not be found on PDFKira."
+    />
+    <link rel="icon" type="image/png" href="/logo.png" />
+    <style>
+      :root {
+        --bg: #020817;
+        --panel: rgba(15, 23, 42, 0.9);
+        --panel-border: rgba(148, 163, 184, 0.18);
+        --text: #e2e8f0;
+        --muted: #94a3b8;
+        --primary: #b8c3ff;
+        --primary-strong: #a5b4fc;
+        --button-bg: rgba(148, 163, 184, 0.14);
+      }
+
+      * { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        min-height: 100%;
+        font-family: Inter, "Segoe UI", sans-serif;
+        background: var(--bg);
+        color: var(--text);
+      }
+
+      body {
+        background:
+          radial-gradient(circle at top, rgba(59, 130, 246, 0.14), transparent 25%),
+          #020817;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 18px 20px 0;
+      }
+
+      .brand {
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        font-weight: 700;
+        letter-spacing: 0.02em;
+      }
+
+      .brand-mark {
+        width: 38px;
+        height: 38px;
+        display: grid;
+        place-items: center;
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        background: rgba(148, 163, 184, 0.08);
+        color: #fff;
+        font-size: 18px;
+        font-weight: 700;
+      }
+
+      .nav {
+        display: flex;
+        gap: 20px;
+        font-size: 14px;
+        color: rgba(226, 232, 240, 0.84);
+      }
+
+      .nav a {
+        opacity: 0.8;
+      }
+
+      .nav a:hover { opacity: 1; }
+
+      .page {
+        min-height: calc(100vh - 110px);
+        display: grid;
+        place-items: center;
+        padding: 48px 20px 64px;
+      }
+
+      .card {
+        width: min(100%, 760px);
+        background: rgba(15, 23, 42, 0.72);
+        border: 1px solid var(--panel-border);
+        border-radius: 28px;
+        padding: 46px 28px 32px;
+        box-shadow: 0 16px 40px rgba(2, 6, 23, 0.35);
+      }
+
+      .brand-wrap {
+        display: flex;
+        justify-content: center;
+        margin-bottom: 18px;
+      }
+
+      .brand-wrap .brand-mark {
+        width: 58px;
+        height: 58px;
+        font-size: 26px;
+      }
+
+      .eyebrow {
+        text-align: center;
+        margin: 0 0 12px;
+        letter-spacing: 0.35em;
+        text-transform: uppercase;
+        font-size: 12px;
+        font-weight: 700;
+        color: var(--primary);
+      }
+
+      h1 {
+        margin: 0;
+        text-align: center;
+        font-size: clamp(3rem, 7vw, 6rem);
+        line-height: 0.96;
+        letter-spacing: -0.06em;
+        font-weight: 900;
+      }
+
+      .subtext {
+        max-width: 620px;
+        margin: 24px auto 0;
+        text-align: center;
+        color: var(--muted);
+        font-size: clamp(1.05rem, 2vw, 1.25rem);
+        line-height: 1.6;
+      }
+
+      .actions {
+        display: flex;
+        justify-content: center;
+        gap: 14px;
+        flex-wrap: wrap;
+        margin-top: 28px;
+      }
+
+      .button {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-width: 190px;
+        min-height: 52px;
+        border-radius: 999px;
+        padding: 0 22px;
+        font-size: 1rem;
+        font-weight: 600;
+        transition: transform 0.2s ease, border-color 0.2s ease, background 0.2s ease;
+      }
+
+      .button:hover {
+        transform: translateY(-1px);
+      }
+
+      .button.primary {
+        background: linear-gradient(135deg, #dfe7ff, #c7d2fe);
+        color: #0f172a;
+        border: 1px solid rgba(255,255,255,0.35);
+      }
+
+      .button.secondary {
+        background: rgba(148, 163, 184, 0.08);
+        color: var(--text);
+        border: 1px solid rgba(148, 163, 184, 0.18);
+      }
+
+      .popular {
+        margin-top: 32px;
+        text-align: center;
+      }
+
+      .popular p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 0.9rem;
+        font-weight: 500;
+      }
+
+      .tool-chips {
+        margin-top: 16px;
+        display: flex;
+        justify-content: center;
+        flex-wrap: wrap;
+        gap: 10px;
+      }
+
+      .chip {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        min-height: 34px;
+        padding: 0 12px;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.7);
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        color: var(--text);
+        font-size: 0.85rem;
+        font-weight: 500;
+      }
+
+      .footer {
+        max-width: 1280px;
+        margin: 0 auto;
+        padding: 10px 20px 48px;
+        display: flex;
+        justify-content: space-between;
+        gap: 28px;
+        flex-wrap: wrap;
+        border-top: 1px solid rgba(148, 163, 184, 0.12);
+      }
+
+      .footer .left {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+
+      .footer-copy {
+        max-width: 300px;
+        color: var(--muted);
+        font-size: 0.95rem;
+        line-height: 1.6;
+      }
+
+      .footer-grid {
+        display: flex;
+        gap: 72px;
+        flex-wrap: wrap;
+      }
+
+      .footer-grid h3 {
+        margin: 0 0 12px;
+        color: var(--text);
+        font-size: 1.02rem;
+      }
+
+      .footer-grid a {
+        display: block;
+        color: var(--muted);
+        margin-bottom: 10px;
+      }
+
+      @media (max-width: 700px) {
+        .nav {
+          display: none;
+        }
+
+        .card {
+          padding-left: 18px;
+          padding-right: 18px;
+        }
+
+        .button {
+          width: 100%;
+        }
+
+        .footer {
+          flex-direction: column;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand" aria-label="PDFKira home">
+        <span class="brand-mark">R</span>
+        <span>PDFKira</span>
+      </div>
+      <nav class="nav" aria-label="Main navigation">
+        <a href="/">All Tools</a>
+        <a href="/tools/merge-pdf">PDF to Markdown</a>
+        <a href="/tools">Add Page Numbers</a>
+        <a href="/tools">Blog</a>
+        <a href="/tools">AI Jobs</a>
+      </nav>
+    </header>
+
+    <main class="page">
+      <section class="card" aria-live="polite">
+        <div class="brand-wrap">
+          <div class="brand-mark" aria-hidden="true">R</div>
+        </div>
+
+        <p class="eyebrow">404 Error</p>
+        <h1>Page not found</h1>
+
+        <p class="subtext">
+          The page you were looking for doesn’t exist, may have moved, or may not be available right now.
+        </p>
+
+        <div class="actions">
+          <a class="button primary" href="/">Go to Homepage</a>
+          <a class="button secondary" href="/tools">Browse all tools</a>
+        </div>
+
+        <div class="popular">
+          <p>Popular tools</p>
+          <div class="tool-chips">
+            <a class="chip" href="/tools/merge-pdf">Merge PDF</a>
+            <a class="chip" href="/tools/compress-pdf">Compress PDF</a>
+            <a class="chip" href="/tools/split-pdf">Split PDF</a>
+            <a class="chip" href="/tools/image-converter">Image Converter</a>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="footer">
+      <div class="left">
+        <div class="brand-mark" aria-hidden="true">R</div>
+        <div class="footer-copy">
+          Premium, fast, and secure document tools for modern professionals. No clutter, no ads, just tools that work.
+        </div>
+      </div>
+
+      <div class="footer-grid">
+        <div>
+          <h3>Product</h3>
+          <a href="/tools">All Tools</a>
+          <a href="/tools/merge-pdf">PDF to Markdown</a>
+          <a href="/tools/add-page-numbers">Add Page Numbers</a>
+        </div>
+
+        <div>
+          <h3>Company</h3>
+          <a href="/about">About Us</a>
+          <a href="/blog">Blog</a>
+          <a href="/ai-jobs">AI Jobs</a>
+        </div>
+
+        <div>
+          <h3>Legal</h3>
+          <a href="/privacy">Privacy Policy</a>
+          <a href="/terms">Terms of Service</a>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>
