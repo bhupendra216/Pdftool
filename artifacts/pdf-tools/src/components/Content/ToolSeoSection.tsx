@@ -49,22 +49,24 @@ export function ToolSeoSection({ content }: { content?: ToolSeoContent }) {
         </div>
       </section>
 
-      <section className="py-20">
-        <div className="container mx-auto max-w-5xl px-4 md:px-6">
-          <div className="mx-auto mb-12 max-w-2xl text-center">
-            <h2 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">Why use this tool</h2>
-            <p className="mt-4 text-base text-muted-foreground md:text-lg">Practical benefits and typical use cases.</p>
+      {content.whyUse.length > 0 && (
+        <section className="py-20">
+          <div className="container mx-auto max-w-5xl px-4 md:px-6">
+            <div className="mx-auto mb-12 max-w-2xl text-center">
+              <h2 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">Why use this tool</h2>
+              <p className="mt-4 text-base text-muted-foreground md:text-lg">Practical benefits and typical use cases.</p>
+            </div>
+            <div className="grid gap-6 md:grid-cols-3">
+              {content.whyUse.map((f, i) => (
+                <div key={i} className="rounded-3xl border border-border/70 bg-card/90 p-6 shadow-sm">
+                  <h3 className="mb-3 text-lg font-semibold text-foreground">{f.title}</h3>
+                  <p className="text-sm leading-relaxed text-muted-foreground">{f.description}</p>
+                </div>
+              ))}
+            </div>
           </div>
-          <div className="grid gap-6 md:grid-cols-3">
-            {content.whyUse.map((f, i) => (
-              <div key={i} className="rounded-3xl border border-border/70 bg-card/90 p-6 shadow-sm">
-                <h3 className="mb-3 text-lg font-semibold text-foreground">{f.title}</h3>
-                <p className="text-sm leading-relaxed text-muted-foreground">{f.description}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* FAQ: keep interactive accordion plus crawlable h3 markup + JSON-LD */}
       <FAQPageSchema faqs={content.faq} />
