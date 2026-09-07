@@ -227,6 +227,25 @@ export const toolContent = {
     ],
     relatedTools: ['ocr-pdf', 'pdf-to-word', 'compress-pdf', 'pdf-to-excel'],
   },
+  'latex-to-text': {
+    howToSteps: [
+      { title: 'Paste LaTeX', description: 'Drop in a fraction, root, sum, or other formula and preview it immediately.', icon: 'Upload' },
+      { title: 'Review the Output', description: 'Check the live KaTeX preview before copying anything.', icon: 'Wand2' },
+      { title: 'Copy the Right Format', description: 'Use plain text for editing, MathML for Word, or PNG fallback for Google Docs.', icon: 'Download' },
+    ],
+    features: [
+      { icon: 'Zap', title: 'Readable Output', description: 'Convert LaTeX to plain Unicode text suitable for everyday editing.' },
+      { icon: 'ShieldCheck', title: 'Word-Ready Option', description: 'Keep a MathML-specific path when the document needs a native equation.' },
+      { icon: 'Clock3', title: 'Instant Preview', description: 'See the equation render in real time while you type.' },
+      { icon: 'Smartphone', title: 'Browser-Only', description: 'Everything runs client-side without server dependencies.' },
+    ],
+    useCases: [
+      { title: 'Notes', description: 'Paste equations into docs, notes, or chat messages without raw LaTeX noise.', audience: 'Students' },
+      { title: 'Reports', description: 'Use plain text for clear equations in reports and email drafts.', audience: 'Researchers' },
+      { title: 'Collaboration', description: 'Move formulas into Notion, Slack, Docs, and Word without formatting issues.', audience: 'Teams' },
+    ],
+    relatedTools: ['pdf-to-text', 'ocr-pdf', 'pdf-to-word'],
+  },
   'ocr-pdf': {
     howToSteps: [
       { title: 'Upload Scanned PDF', description: 'Choose a scanned document or image-heavy PDF to OCR.', icon: 'Upload' },

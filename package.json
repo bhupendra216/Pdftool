@@ -20,6 +20,8 @@
     "react-helmet-async": "^3.0.0"
   },
   "devDependencies": {
+    "@types/react": "catalog:",
+    "@types/react-dom": "catalog:",
     "playwright": "^1.62.1",
     "prettier": "^3.9.4",
     "typescript": "~5.9.3"

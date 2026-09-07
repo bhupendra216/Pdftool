@@ -2,6 +2,7 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { tools, type ToolRecord } from '../artifacts/api-server/src/lib/content.ts';
+import { TOOL_SEO_CONTENT } from '../artifacts/pdf-tools/src/data/toolSeoContent.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -49,13 +50,23 @@ function getAssetPaths(outDir: string): { jsPath: string; cssPath: string } {
 }
 
 function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath: string }) {
-  const steps = tool.steps
-    .map((step) => `<li>${escapeHtml(step)}</li>`)
+  // Prefer explicit TOOL_SEO_CONTENT for richer, prerendered SEO copy.
+  const seoEntry = TOOL_SEO_CONTENT[tool.slug];
+
+  const steps = (seoEntry?.howItWorks || tool.steps || [])
+    .map((step: any) => {
+      const text = typeof step === 'string' ? step : step.description || step.title || '';
+      return `<li>${escapeHtml(text)}</li>`;
+    })
     .join('');
 
-  const faqs = tool.faqs
+  const whyUseHtml = (seoEntry?.whyUse || [])
+    .map((w: any) => `<div><h3>${escapeHtml(w.title)}</h3><p>${escapeHtml(w.description)}</p></div>`)
+    .join('');
+
+  const faqs = (seoEntry?.faq?.length ? seoEntry.faq : tool.faqs)
     .map(
-      (item) => `
+      (item: any) => `
         <li>
           <h3>${escapeHtml(item.question)}</h3>
           <p>${escapeHtml(item.answer)}</p>
@@ -105,7 +116,7 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
   </head>
   <body>
     <!-- SEO Fallback Content (visible to bots, hidden after React hydration) -->
-    <div id="seo-fallback" style="display: none;">
+    <div id="seo-fallback" style="display: block;">
       <main>
         <header>
           <p>PDFKira</p>
@@ -116,6 +127,11 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
         <section>
           <h2>How it works</h2>
           <ol>${steps}</ol>
+        </section>
+
+        <section>
+          <h2>Why use this tool</h2>
+          ${whyUseHtml}
         </section>
 
         <section>
@@ -136,23 +152,33 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
     <!-- Hide SEO fallback after React hydration -->
     <script>
       (function() {
-        // If React hydrates successfully, it will render into #root
-        // This script ensures SEO fallback is hidden once React takes over
+        // Wait until the client has rendered a ToolSeoSection (it sets
+        // window.__renderedToolSeo = true before hiding the prerendered
+        // SEO fallback. This prevents hiding the SEO copy when the SPA
+        // navigates to a prerendered page but fails to render the content.
         var checkInterval = setInterval(function() {
-          var root = document.getElementById('root');
-          if (root && root.childNodes.length > 0) {
-            var fallback = document.getElementById('seo-fallback');
-            if (fallback) fallback.style.display = 'none';
-            clearInterval(checkInterval);
+          try {
+            var root = document.getElementById('root');
+            var rendered = window.__renderedToolSeo === true;
+            if (rendered) {
+              var fallback = document.getElementById('seo-fallback');
+              if (fallback) fallback.style.display = 'none';
+              clearInterval(checkInterval);
+              return;
+            }
+            // If React populated the root but didn't render the SEO section,
+            // keep the fallback visible so users still see content.
+            if (root && root.childNodes.length > 0 && window.__renderedToolSeo !== false) {
+              // do nothing yet; wait for explicit flag or the timeout
+            }
+          } catch (e) {
+            // ignore
           }
         }, 100);
-        
-        // Fallback: hide after 5 seconds regardless
-        setTimeout(function() {
-          var fallback = document.getElementById('seo-fallback');
-          if (fallback) fallback.style.display = 'none';
-          clearInterval(checkInterval);
-        }, 5000);
+
+        // NOTE: do not hide the prerendered SEO fallback automatically here.
+        // The fallback should remain visible until the client explicitly
+        // renders the ToolSeoSection component and sets window.__renderedToolSeo = true.
       })();
     </script>
     
@@ -217,7 +243,7 @@ function renderToolsIndexHtml(assets: { jsPath: string; cssPath: string }) {
   </head>
   <body>
     <!-- SEO Fallback -->
-    <div id="seo-fallback" style="display: none;">
+    <div id="seo-fallback" style="display: block;">
       <main>
         <h1>PDFKira Tools</h1>
         <p>Free online PDF tools for merging, splitting, compressing, converting, organizing, and editing PDF files.</p>

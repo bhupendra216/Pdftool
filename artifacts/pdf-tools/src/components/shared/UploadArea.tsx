@@ -11,6 +11,10 @@ interface UploadAreaProps {
   label?: string;
   description?: string;
   compact?: boolean;
+  // number of files currently selected by the parent (optional)
+  selectedCount?: number;
+  // explicit max files allowed (optional). If omitted, derives from `multiple`.
+  maxFiles?: number;
 }
 
 export function UploadArea({
@@ -22,6 +26,8 @@ export function UploadArea({
   label = "PDF file",
   description = "or drop PDF here.",
   compact = false,
+  selectedCount,
+  maxFiles,
 }: UploadAreaProps) {
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -90,6 +96,18 @@ export function UploadArea({
     }
   };
 
+  // Determine effective maximum files for UI decisions
+  const effectiveMax = typeof maxFiles === 'number' ? maxFiles : (multiple ? Infinity : 1);
+
+  // If parent provided `selectedCount`, adjust UI:
+  // - single-file tools (effectiveMax === 1): hide the dropzone when a file is selected
+  // - multi-file tools: when at least one file exists, render a compact "Add more files" UI
+  const hasSelected = typeof selectedCount === 'number' ? selectedCount > 0 : false;
+  const shouldHideForSingle = hasSelected && effectiveMax === 1;
+  const renderAsAddMore = hasSelected && effectiveMax > 1;
+
+  if (shouldHideForSingle) return null;
+
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -127,19 +145,19 @@ export function UploadArea({
         <UploadCloud className={compact ? 'w-6 h-6 md:w-7 md:h-7' : 'w-10 h-10'} />
       </div>
       
-      <h3 className={`font-semibold tracking-tight text-foreground ${compact ? 'text-lg md:text-xl mb-2' : 'text-2xl md:text-3xl mb-3'}`}>
-        Select {label}{multiple ? 's' : ''}
+      <h3 className={`font-semibold tracking-tight text-foreground ${compact || renderAsAddMore ? 'text-lg md:text-xl mb-2' : 'text-2xl md:text-3xl mb-3'}`}>
+        {renderAsAddMore ? `Add more ${label}${effectiveMax > 1 ? 's' : ''}` : `Select ${label}${multiple ? 's' : ''}`}
       </h3>
-      <p className={`text-muted-foreground leading-relaxed max-w-md ${compact ? 'text-xs md:text-sm mb-4' : 'text-sm md:text-base mb-8'}`}>
-        {description} Maximum file size is {maxSizeMB}MB.
+      <p className={`text-muted-foreground leading-relaxed max-w-md ${compact || renderAsAddMore ? 'text-xs md:text-sm mb-4' : 'text-sm md:text-base mb-8'}`}>
+        {renderAsAddMore ? `Add another ${label}` : description} Maximum file size is {maxSizeMB}MB.
       </p>
       
       <Button 
-        size={compact ? 'default' : 'lg'} 
-        className={compact ? 'h-10 rounded-full px-5 text-sm' : 'rounded-full px-8 text-base md:text-lg h-12 md:h-14 shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/25 transition-all'}
+        size={compact || renderAsAddMore ? 'default' : 'lg'} 
+        className={compact || renderAsAddMore ? 'h-10 rounded-full px-5 text-sm' : 'rounded-full px-8 text-base md:text-lg h-12 md:h-14 shadow-lg shadow-primary/20 hover:shadow-xl hover:shadow-primary/25 transition-all'}
         onClick={() => fileInputRef.current?.click()}
       >
-        Select Files
+        {renderAsAddMore ? 'Add files' : 'Select Files'}
       </Button>
     </div>
   );

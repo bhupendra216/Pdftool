@@ -528,6 +528,8 @@ export default function RemoveBackgroundPage() {
                     maxSizeMB={500}
                     label="image"
                     description="or drop a JPG, JPEG, PNG, WebP, GIF, BMP, AVIF, SVG, HEIC, or HEIF file here."
+                    selectedCount={selectedFile ? 1 : 0}
+                    maxFiles={1}
                   />
                 </div>
               </CardContent>

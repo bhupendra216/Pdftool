@@ -19,6 +19,7 @@ import OrganizePdfPage from '@/pages/organize-pdf';
 import SearchFreePdfsPage from '@/pages/search-free-pdfs';
 import RemoveBackgroundPage from '@/pages/remove-background';
 import AddBackgroundPage from '@/pages/add-background';
+import LatexToTextPage from '@/pages/latex-to-text';
 import { BlogIndex } from '@/pages/BlogIndex';
 import { BlogDetail } from '@/pages/BlogDetail';
 import { About } from '@/pages/About';
@@ -31,6 +32,7 @@ import { AdminDashboard } from '@/pages/admin/AdminDashboard';
 import NotFound from '@/pages/not-found';
 import DownloadPdfPage from '@/pages/download-pdf';
 import CompareIlovepdfVsSmallpdfVsPdfkiraPage from '@/pages/compare-ilovepdf-vs-smallpdf-vs-pdfkira';
+import DirtyPdfPage from '@/pages/dirty-pdf';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -51,6 +53,9 @@ function Router() {
         <Route path="/tools/merge-pdf" component={MergePdfPage} />
         <Route path="/tools/split-pdf" component={SplitPdfPage} />
         <Route path="/tools/compress-pdf" component={CompressPdfPage} />
+        <Route path="/tools/transform-pdf" component={DirtyPdfPage} />
+        <Route path="/tools/transformpdf" component={DirtyPdfPage} />
+        <Route path="/transformpdf" component={DirtyPdfPage} />
         <Route path="/tools/edit-pdf" component={EditPdfPage} />
         <Route path="/tools/convert-pdf" component={ConvertPdfPage} />
         <Route path="/tools/pdf-ocr" component={PdfOcrPage} />
@@ -59,6 +64,7 @@ function Router() {
         <Route path="/tools/search-free-pdfs" component={SearchFreePdfsPage} />
         <Route path="/tools/remove-background" component={RemoveBackgroundPage} />
         <Route path="/tools/add-background" component={AddBackgroundPage} />
+        <Route path="/tools/latex-to-text" component={LatexToTextPage} />
         <Route path="/tools/:slug" component={ToolDetail} />
         {/* Root-level legacy aliases for backward compatibility */}
         <Route path="/merge-pdf" component={MergePdfPage} />
@@ -69,6 +75,7 @@ function Router() {
         <Route path="/pdf-ocr" component={PdfOcrPage} />
         <Route path="/organize-pdf" component={OrganizePdfPage} />
         <Route path="/download-pdf" component={DownloadPdfPage} />
+        <Route path="/latex-to-text" component={LatexToTextPage} />
         <Route path="/blog" component={BlogIndex} />
         <Route path="/blog/:slug" component={BlogDetail} />
         <Route path="/about" component={About} />

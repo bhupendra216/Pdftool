@@ -904,6 +904,8 @@ export default function AddBackgroundPage() {
               label="background image"
               description="or drop a JPG, JPEG, PNG, WebP, GIF, BMP, AVIF, or SVG background here."
               compact
+              selectedCount={backgroundFile ? 1 : 0}
+              maxFiles={1}
             />
             {backgroundPreviewUrl && (
               <div className="overflow-hidden rounded-2xl border border-border/70 bg-background">

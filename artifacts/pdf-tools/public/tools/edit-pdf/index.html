@@ -17,7 +17,7 @@
     <meta name="twitter:description" content="Make safe, client-side PDF edits in your browser. Remove pages and adjust the document without uploading files outside your device." />
     
     <!-- React SPA CSS -->
-    <link rel="stylesheet" href="/assets/index-Y_t7Z-ZT.css" />
+    <link rel="stylesheet" href="/assets/index-pqen0ImW.css" />
     
     <script type="application/ld+json">
       {"@context":"https://schema.org","@type":"SoftwareApplication","name":"Edit PDF","description":"Make safe, client-side PDF edits in your browser. Remove pages and adjust the document without uploading files outside your device.","operatingSystem":"Web","applicationCategory":"Utility","url":"https://pdfkira.com/tools/edit-pdf","offers":{"@type":"Offer","price":0,"priceCurrency":"USD"}}
@@ -25,7 +25,7 @@
   </head>
   <body>
     <!-- SEO Fallback Content (visible to bots, hidden after React hydration) -->
-    <div id="seo-fallback" style="display: none;">
+    <div id="seo-fallback" style="display: block;">
       <main>
         <header>
           <p>PDFKira</p>
@@ -36,6 +36,11 @@
         <section>
           <h2>How it works</h2>
           <ol><li>Upload the PDF you want to edit.</li><li>Choose the page range or edit operations you want to apply.</li><li>Download the updated PDF directly from your browser.</li></ol>
+        </section>
+
+        <section>
+          <h2>Why use this tool</h2>
+          
         </section>
 
         <section>
@@ -59,28 +64,38 @@
     <div id="root"></div>
     
     <!-- React SPA Bundle -->
-    <script type="module" src="/assets/index-ByzNXRfK.js"></script>
+    <script type="module" src="/assets/index-DGw6AHny.js"></script>
     
     <!-- Hide SEO fallback after React hydration -->
     <script>
       (function() {
-        // If React hydrates successfully, it will render into #root
-        // This script ensures SEO fallback is hidden once React takes over
+        // Wait until the client has rendered a ToolSeoSection (it sets
+        // window.__renderedToolSeo = true before hiding the prerendered
+        // SEO fallback. This prevents hiding the SEO copy when the SPA
+        // navigates to a prerendered page but fails to render the content.
         var checkInterval = setInterval(function() {
-          var root = document.getElementById('root');
-          if (root && root.childNodes.length > 0) {
-            var fallback = document.getElementById('seo-fallback');
-            if (fallback) fallback.style.display = 'none';
-            clearInterval(checkInterval);
+          try {
+            var root = document.getElementById('root');
+            var rendered = window.__renderedToolSeo === true;
+            if (rendered) {
+              var fallback = document.getElementById('seo-fallback');
+              if (fallback) fallback.style.display = 'none';
+              clearInterval(checkInterval);
+              return;
+            }
+            // If React populated the root but didn't render the SEO section,
+            // keep the fallback visible so users still see content.
+            if (root && root.childNodes.length > 0 && window.__renderedToolSeo !== false) {
+              // do nothing yet; wait for explicit flag or the timeout
+            }
+          } catch (e) {
+            // ignore
           }
         }, 100);
-        
-        // Fallback: hide after 5 seconds regardless
-        setTimeout(function() {
-          var fallback = document.getElementById('seo-fallback');
-          if (fallback) fallback.style.display = 'none';
-          clearInterval(checkInterval);
-        }, 5000);
+
+        // NOTE: do not hide the prerendered SEO fallback automatically here.
+        // The fallback should remain visible until the client explicitly
+        // renders the ToolSeoSection component and sets window.__renderedToolSeo = true.
       })();
     </script>
     

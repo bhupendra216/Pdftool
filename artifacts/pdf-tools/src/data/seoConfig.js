@@ -186,6 +186,18 @@ export const toolsSEO = {
       { q: 'Do I need software?', a: 'No. Everything runs directly in the browser.' },
     ],
   },
+  'latex-to-text': {
+    title: 'LaTeX to Plain Equation Text Online Free | PDFKira',
+    description: 'Convert LaTeX equations to readable plain text, copy MathML for Word, and export a PNG fallback for Google Docs workflows.',
+    keywords: ['latex to text', 'latex equation plain text', 'mathml to word', 'latex to unicode equation', 'equation converter'],
+    ogImage: '/og/latex-to-text.jpg',
+    faqs: [
+      { q: 'What does the default output do?', a: 'The default option converts LaTeX to readable plain Unicode text that works well in Word, Docs, Notion, and other editors.' },
+      { q: 'Why is there a separate Word option?', a: 'Word-specific MathML paste is useful when you want a native equation object, but the plain-text output is the best default for editable content.' },
+      { q: 'Is the conversion browser-only?', a: 'Yes. All conversion and export logic runs client-side in the browser with KaTeX and custom conversion logic.' },
+      { q: 'When should I use the PNG fallback?', a: 'Use the image export for Google Docs when you need a quick visual equation and the default plain-text option is not the right fit.' },
+    ],
+  },
   'ocr-pdf': {
     title: 'OCR PDF Online Free - Extract Text from Scanned PDFs | PDFKira',
     description: 'OCR PDF online for free. Extract text from scanned PDFs and images with secure, browser-based recognition.',

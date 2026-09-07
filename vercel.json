@@ -58,4 +58,8 @@
       ]
     }
   ]
+  ,
+  "redirects": [
+    { "source": "/tools/dirty-pdf", "destination": "/tools/transform-pdf", "permanent": true }
+  ]
 }

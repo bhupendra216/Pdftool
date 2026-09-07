@@ -14,6 +14,9 @@ import SearchFreePdfsPage from '@/pages/search-free-pdfs';
 import JSZip from "jszip";
 import { FilePreviewList } from "@/components/shared/FilePreviewList";
 import { FaqSection } from "@/components/shared/FaqSection";
+import ToolSeoSection from '@/components/Content/ToolSeoSection';
+import { TOOL_SEO_CONTENT } from '@/data/toolSeoContent';
+import { toolContent } from '@/data/toolContent';
 import { ToolCard } from "@/components/shared/ToolCard";
 import { Button } from "@/components/ui/button";
 import OrganizeGrid from "@/components/organize/OrganizeGrid";
@@ -1910,8 +1913,14 @@ export function ToolDetail(props?: any) {
     );
   }
 
+  // If the API errored or tool data is missing, only show the NotFound page
+  // when we have no static SEO fallback content for the requested slug.
   if (isError || !tool) {
-    return <NotFoundPage />;
+    const fallbackSlug = resolveToolSlug(rawSlug, catalogTools) || tool?.slug;
+    const hasStaticFallback = !!(fallbackSlug && TOOL_SEO_CONTENT[fallbackSlug]);
+    const prerenderedFallbackExists = typeof window !== 'undefined' && !!document.getElementById('seo-fallback');
+    if (!hasStaticFallback && !prerenderedFallbackExists) return <NotFoundPage />;
+    // otherwise continue rendering so the static `ToolSeoSection` or prerendered fallback can show SEO content
   }
 
   const isComingSoon = tool.status === "comingSoon";
@@ -2613,35 +2622,7 @@ export function ToolDetail(props?: any) {
                     </div>
                   </div>
 
-                  <div className="flex flex-wrap gap-2">
-                    {trustedPoints.map((point) => (
-                      <Badge key={point} variant="outline" className="rounded-full border-border/70 bg-background/80 px-3 py-1.5 text-xs font-medium text-foreground">
-                        {point}
-                      </Badge>
-                    ))}
-                  </div>
-
-                  <div className="grid gap-3 sm:grid-cols-3">
-                    {highlights.map((highlight) => (
-                      <div key={highlight} className="rounded-2xl border border-border/70 bg-background/80 p-4 shadow-sm">
-                        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                          <Sparkles className="h-5 w-5" />
-                        </div>
-                        <p className="text-sm font-medium text-foreground">{highlight}</p>
-                      </div>
-                    ))}
-                  </div>
-
-                  <div className="grid gap-3 md:grid-cols-3">
-                    {landingSteps.map((step, index) => (
-                      <div key={step} className="rounded-2xl border border-border/70 bg-background/80 p-4 shadow-sm transition-transform duration-200 hover:-translate-y-0.5">
-                        <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
-                          {index + 1}
-                        </div>
-                        <p className="text-sm leading-relaxed text-muted-foreground">{step}</p>
-                      </div>
-                    ))}
-                  </div>
+                  {/* Above-the-fold kept intentionally minimal: title + short description only. */}
                 </div>
 
                 <div className="space-y-4 rounded-[28px] border border-border/70 bg-background/90 p-5 shadow-sm backdrop-blur-sm order-1 lg:order-2 min-w-0">
@@ -2656,6 +2637,8 @@ export function ToolDetail(props?: any) {
                       maxSizeMB={uploadConfig.maxSizeMB}
                       label={uploadConfig.label}
                       description={uploadConfig.description}
+                      selectedCount={files.length}
+                      maxFiles={allowsMultipleFiles ? Infinity : 1}
                     />
                   )}
 
@@ -2718,6 +2701,8 @@ export function ToolDetail(props?: any) {
                       label={uploadConfig.label}
                       description={uploadConfig.description}
                       compact={showCompactUploadLayout}
+                      selectedCount={files.length}
+                      maxFiles={allowsMultipleFiles ? Infinity : 1}
                     />
                   )}
 
@@ -3860,53 +3845,9 @@ export function ToolDetail(props?: any) {
         )}
       </div>
 
-      {/* How it works */}
-      <section className="border-t border-border/70 bg-card/60 py-20">
-        <div className="container mx-auto max-w-5xl px-4 md:px-6">
-          <div className="mx-auto mb-12 max-w-2xl text-center">
-            <h2 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">How it works</h2>
-            <p className="mt-4 text-base text-muted-foreground md:text-lg">Three simple steps to get from upload to finished file.</p>
-          </div>
-          <div className="grid gap-4 md:grid-cols-3">
-            {landingSteps.map((step, index) => (
-              <div key={step} className="rounded-3xl border border-border/70 bg-background/90 p-6 shadow-sm">
-                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary text-base font-semibold text-primary-foreground">
-                  {index + 1}
-                </div>
-                <h3 className="mb-3 text-lg font-semibold text-foreground">Step {index + 1}</h3>
-                <p className="leading-relaxed text-muted-foreground">{step}</p>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      <section className="py-20">
-        <div className="container mx-auto max-w-5xl px-4 md:px-6">
-          <div className="mx-auto mb-12 max-w-2xl text-center">
-            <h2 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">Feature highlights</h2>
-            <p className="mt-4 text-base text-muted-foreground md:text-lg">Built to be fast, clean, and comfortable in both light and dark mode.</p>
-          </div>
-          <div className="grid gap-4 md:grid-cols-3">
-            {highlights.map((highlight) => (
-              <Card key={highlight} className="border-border/70 bg-card/90 shadow-sm">
-                <CardContent className="p-6">
-                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                    <Sparkles className="h-5 w-5" />
-                  </div>
-                  <h3 className="mb-2 text-lg font-semibold text-foreground">{highlight}</h3>
-                  <p className="text-sm leading-relaxed text-muted-foreground">Optimized for a focused document workflow with clear states and simple actions.</p>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* FAQ */}
-      {faqsToShow.length > 0 && (
-        <FaqSection faqs={faqsToShow} title={`${tool.name} FAQ`} />
-      )}
+      {/* SEO / instructional section: render near the page bottom so it appears above the footer.
+          Prefer explicit per-tool SEO content; fall back to `toolContent` shape so the page
+          still shows steps/features/faqs even if the API `tool` data isn't ready. */}
 
       {relatedTools.length > 0 && (
         <section className="border-t border-border/70 bg-background py-20">
@@ -3928,6 +3869,29 @@ export function ToolDetail(props?: any) {
           </div>
         </section>
       )}
+
+        {/* Render SEO content just above related blog post / footer */}
+        {
+          (() => {
+            const slugToUse = resolveToolSlug(rawSlug, catalogTools) || tool?.slug;
+            if (!slugToUse) return null;
+
+            const explicit = TOOL_SEO_CONTENT[slugToUse];
+            if (explicit) return <ToolSeoSection content={explicit} />;
+
+            const raw = (toolContent as any)[slugToUse];
+            const mapped = raw
+              ? {
+                  slug: slugToUse,
+                  howItWorks: (raw.howToSteps || raw.steps || []).slice(0, 3).map((s: any) => ({ title: s.title || s, description: s.description || s })),
+                  whyUse: (raw.features || []).slice(0, 3).map((f: any) => ({ title: f.title || f, description: f.description || '' })),
+                  faq: (raw.faqs || []).slice(0, 6).map((q: any) => ({ question: q.question, answer: q.answer })),
+                }
+              : undefined;
+
+            return <ToolSeoSection content={mapped} />;
+          })()
+        }
 
       {/* Related Blog Post */}
       {blogPost && (

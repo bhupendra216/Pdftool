@@ -178,6 +178,30 @@ export const tools: ToolRecord[] = [
     blogSlug: null,
   },
   {
+    slug: "transform-pdf",
+    name: "Transform Handwritten PDF",
+    shortDescription: "Apply handwritten-looking distress and paper texture to PDFs.",
+    category: "Edit & Sign",
+    icon: "Droplet",
+    popular: false,
+    status: "available",
+    seoTitle: "Transform Handwritten PDF — Make pages look aged and handwritten",
+    seoDescription:
+      "Make a PDF look aged and handwritten with paper texture, smudges and natural marks. Processing happens entirely in the browser.",
+    steps: [
+      "Upload a PDF file.",
+      "Use the available controls to adjust paper texture and marks.",
+      "Download the modified PDF — everything runs in your browser.",
+    ],
+    faqs: [
+      {
+        question: "Does this upload my file to a server?",
+        answer: "No. All effects are applied client-side in your browser using pdf-lib.",
+      },
+    ],
+    blogSlug: null,
+  },
+  {
     slug: "image-converter",
     name: "Image Converter",
     shortDescription: "Convert JPG, PNG, WEBP, and other image files in a fast browser-based workflow.",
