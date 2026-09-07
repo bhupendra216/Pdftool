@@ -285,14 +285,23 @@ function writeStaticFiles() {
     );
 
     // Write sitemap.xml
+    const rootAliasSet = new Set<string>();
+    for (const tool of tools) {
+      rootAliasSet.add(tool.slug);
+      const alias = tool.slug.replace(/-pdf$/, '');
+      if (alias && alias !== tool.slug) rootAliasSet.add(alias);
+    }
+
     const sitemapItems = [
       { loc: `${siteUrl}/`, changefreq: 'weekly' },
       { loc: `${siteUrl}/tools`, changefreq: 'weekly' },
       { loc: `${siteUrl}/compare/ilovepdf-vs-smallpdf-vs-pdfkira`, changefreq: 'weekly' },
-      ...tools.map((tool) => ({
-        loc: `${siteUrl}/tools/${tool.slug}`,
-        changefreq: 'weekly' as const,
-      })),
+      ...Array.from(
+        new Set([
+          ...tools.map((tool) => `${siteUrl}/tools/${tool.slug}`),
+          ...Array.from(rootAliasSet).map((alias) => `${siteUrl}/${alias}`),
+        ]),
+      ).map((loc) => ({ loc, changefreq: 'weekly' as const })),
     ];
 
     const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${sitemapItems
@@ -314,13 +323,6 @@ function writeStaticFiles() {
     }
 
     // Write root aliases (e.g., /merge-pdf -> /tools/merge-pdf)
-    const rootAliasSet = new Set<string>();
-    for (const tool of tools) {
-      rootAliasSet.add(tool.slug);
-      const alias = tool.slug.replace(/-pdf$/, '');
-      if (alias && alias !== tool.slug) rootAliasSet.add(alias);
-    }
-
     for (const alias of rootAliasSet) {
       const aliasDir = path.join(outDir, alias);
       ensureDir(aliasDir);
