@@ -96,6 +96,20 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
     
     <!-- React SPA CSS -->
     <link rel="stylesheet" href="${assets.cssPath}" />
+
+    <script>
+      (function() {
+        try {
+          document.documentElement.classList.add('js');
+        } catch (e) {
+          // ignore
+        }
+      })();
+    </script>
+    <style>
+      html.js #seo-fallback { display: none !important; }
+      html:not(.js) #seo-fallback { display: block !important; }
+    </style>
     
     <script type="application/ld+json">
       ${JSON.stringify({
@@ -115,7 +129,7 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
     </script>
   </head>
   <body>
-    <!-- SEO Fallback Content (visible to bots, hidden after React hydration) -->
+    <!-- SEO Fallback Content (visible to bots, hidden immediately when JS is enabled) -->
     <div id="seo-fallback" style="display: block;">
       <main>
         <header>
@@ -148,38 +162,8 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
     
     <!-- React SPA Bundle -->
     <script type="module" src="${assets.jsPath}"></script>
-    
-    <!-- Hide SEO fallback after React hydration -->
-    <script>
-      (function() {
-        var fallback = document.getElementById('seo-fallback');
-        var checkInterval = setInterval(function() {
-          try {
-            var rendered = window.__renderedToolSeo === true;
-            if (rendered) {
-              if (fallback) fallback.style.display = 'none';
-              clearInterval(checkInterval);
-              return;
-            }
-          } catch (e) {
-            // ignore
-          }
-        }, 100);
 
-        setTimeout(function() {
-          try {
-            if (fallback && fallback.style.display !== 'none') {
-              fallback.style.display = 'none';
-            }
-            clearInterval(checkInterval);
-          } catch (e) {
-            // ignore
-          }
-        }, 1500);
-      })();
-    </script>
-    
-    <!-- No-JS fallback: show SEO content if JavaScript is disabled -->
+    <!-- Keep the SEO content visible for bots / no-JS, but hide it immediately when JS is available. -->
     <noscript>
       <style>#seo-fallback { display: block !important; }</style>
     </noscript>
