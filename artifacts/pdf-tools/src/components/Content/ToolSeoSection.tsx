@@ -69,7 +69,7 @@ export function ToolSeoSection({ content }: { content?: ToolSeoContent }) {
       )}
 
       {/* FAQ: keep interactive accordion plus crawlable h3 markup + JSON-LD */}
-      <FAQPageSchema faqs={content.faq} />
+      <FAQPageSchema faqs={content.faq as any} />
       <FaqSection faqs={content.faq as any} title={undefined} />
 
       <div className="sr-only">

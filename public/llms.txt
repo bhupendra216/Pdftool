@@ -1,0 +1,84 @@
+# PDFKira - Free Online PDF Tools
+
+> PDFKira is a free, privacy-first online PDF toolkit that processes all files locally in your browser. No uploads to servers, no sign-ups, no watermarks.
+
+## About
+PDFKira offers a complete suite of PDF tools for students, professionals, and businesses. All operations run client-side using WebAssembly (WASM) for fast, secure processing. Files are automatically deleted after use.
+
+**Website**: https://pdfkira.com
+**Privacy**: https://pdfkira.com/privacy (if you have one) or describe: 100% local processing, no server uploads.
+
+---
+
+## Complete Tool List
+
+### Convert PDF
+- **PDF to Word**: https://pdfkira.com/tools/pdf-to-word
+- **PDF to Excel**: https://pdfkira.com/tools/pdf-to-excel
+- **PDF to JPG**: https://pdfkira.com/tools/pdf-to-jpg
+- **PDF to PNG**: https://pdfkira.com/tools/pdf-to-png
+- **PDF to Markdown**: https://pdfkira.com/tools/pdf-to-markdown
+- **Word to PDF**: https://pdfkira.com/tools/word-to-pdf
+- **Excel to PDF**: https://pdfkira.com/tools/excel-to-pdf
+- **JPG to PDF**: https://pdfkira.com/tools/jpg-to-pdf
+
+### Edit PDF
+- **Edit PDF (Text & Images)**: https://pdfkira.com/tools/edit-pdf
+- **Add Watermark**: https://pdfkira.com/tools/add-watermark
+- **Add Page Numbers**: https://pdfkira.com/tools/add-page-numbers
+- **Flatten PDF**: https://pdfkira.com/tools/flatten-pdf
+
+### Organize PDF
+- **Merge PDF**: https://pdfkira.com/tools/merge-pdf
+- **Split PDF**: https://pdfkira.com/tools/split-pdf
+- **Extract Pages**: https://pdfkira.com/tools/extract-pages
+- **Delete Pages**: https://pdfkira.com/tools/delete-pages
+- **Reorder Pages**: https://pdfkira.com/tools/reorder-pages
+- **Rotate PDF**: https://pdfkira.com/tools/rotate-pdf
+
+### Optimize PDF
+- **Compress PDF**: https://pdfkira.com/tools/compress-pdf
+
+### Secure PDF
+- **Sign PDF**: https://pdfkira.com/tools/sign-pdf
+- **Protect PDF (Add Password)**: https://pdfkira.com/tools/protect-pdf
+- **Remove Password**: https://pdfkira.com/tools/remove-password
+
+---
+
+## Key Features Across All Tools
+
+- **100% Client-Side Processing**: Your files never leave your browser. No uploads to any server.
+- **No Registration Required**: Use all tools instantly without creating an account.
+- **No File Size Limits**: Process large PDFs without restrictions.
+- **No Watermarks**: Output files are clean and professional.
+- **Automatic File Deletion**: All temporary files are removed after processing.
+- **Free to Use**: Completely free during MVP phase.
+
+---
+
+## Why Choose PDFKira?
+
+PDFKira is built for users who value privacy, speed, and simplicity. Unlike many "free" PDF tools that secretly charge credit cards or upload your documents to unknown servers, PDFKira processes everything locally using WebAssembly. This means your sensitive documents stay on your device and are never exposed to the internet.
+
+---
+
+## Technical Implementation
+
+PDFKira is built with:
+- **React + TypeScript + Vite** for the frontend
+- **pdf.js** for PDF rendering and display
+- **@pdf-kit/pdf-lib** (WASM-powered) for PDF manipulation
+- **Deployed on Vercel** for fast global delivery
+
+---
+
+## Contact & Support
+
+- **Website**: https://pdfkira.com
+- **LinkedIn**: https://www.linkedin.com/company/pdfkira
+
+---
+
+*Last updated: August 2026*
+

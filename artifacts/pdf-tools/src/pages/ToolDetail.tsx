@@ -272,7 +272,18 @@ export function ToolDetail(props?: any) {
   const rawSlug = forcedSlug ?? params.slug ?? props?.params?.slug;
   const { data: catalogTools = [] } = useListTools();
   const slug = resolveToolSlug(rawSlug, catalogTools);
-  const { data: tool, isLoading, isError } = useGetTool(slug ?? "", {
+  const fallbackTool = {
+    slug: slug ?? "",
+    name: "",
+    status: "comingSoon",
+    icon: "",
+    shortDescription: "",
+    seoTitle: "",
+    seoDescription: "",
+    blogSlug: "",
+    description: "",
+  } as any;
+  const { data: tool = fallbackTool, isLoading, isError } = useGetTool(slug ?? "", {
     query: { enabled: !!slug, queryKey: ["getTool", slug ?? ""] },
   });
   const { data: siteFaqs } = useListFaqs();
@@ -2588,7 +2599,7 @@ export function ToolDetail(props?: any) {
                   </div>
 
                   <div className="mt-6 grid gap-3 md:grid-cols-3">
-                    {landingSteps.map((step, index) => (
+                    {landingSteps.map((step: string, index: number) => (
                       <div key={step} className="rounded-2xl border border-border/70 bg-background/80 p-4 shadow-sm transition-transform duration-200 hover:-translate-y-0.5">
                         <div className="mb-3 flex h-10 w-10 items-center justify-center rounded-full bg-primary text-sm font-semibold text-primary-foreground">
                           {index + 1}

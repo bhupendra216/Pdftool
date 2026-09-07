@@ -76,38 +76,35 @@
     <div id="root"></div>
     
     <!-- React SPA Bundle -->
-    <script type="module" src="/assets/index-CGmk3m-i.js"></script>
+    <script type="module" src="/assets/index-zGfwBxlT.js"></script>
     
     <!-- Hide SEO fallback after React hydration -->
     <script>
       (function() {
-        // Wait until the client has rendered a ToolSeoSection (it sets
-        // window.__renderedToolSeo = true before hiding the prerendered
-        // SEO fallback. This prevents hiding the SEO copy when the SPA
-        // navigates to a prerendered page but fails to render the content.
+        var fallback = document.getElementById('seo-fallback');
         var checkInterval = setInterval(function() {
           try {
-            var root = document.getElementById('root');
             var rendered = window.__renderedToolSeo === true;
             if (rendered) {
-              var fallback = document.getElementById('seo-fallback');
               if (fallback) fallback.style.display = 'none';
               clearInterval(checkInterval);
               return;
-            }
-            // If React populated the root but didn't render the SEO section,
-            // keep the fallback visible so users still see content.
-            if (root && root.childNodes.length > 0 && window.__renderedToolSeo !== false) {
-              // do nothing yet; wait for explicit flag or the timeout
             }
           } catch (e) {
             // ignore
           }
         }, 100);
 
-        // NOTE: do not hide the prerendered SEO fallback automatically here.
-        // The fallback should remain visible until the client explicitly
-        // renders the ToolSeoSection component and sets window.__renderedToolSeo = true.
+        setTimeout(function() {
+          try {
+            if (fallback && fallback.style.display !== 'none') {
+              fallback.style.display = 'none';
+            }
+            clearInterval(checkInterval);
+          } catch (e) {
+            // ignore
+          }
+        }, 1500);
       })();
     </script>
     
