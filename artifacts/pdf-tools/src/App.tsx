@@ -77,7 +77,6 @@ function Router() {
         <Route path="/organize-pdf" component={OrganizePdfPage} />
         <Route path="/download-pdf" component={DownloadPdfPage} />
         <Route path="/latex-to-text" component={LatexToTextPage} />
-        <Route path="/handwriting-converter" component={HandwritingConverterPage} />
         <Route path="/blog" component={BlogIndex} />
         <Route path="/blog/:slug" component={BlogDetail} />
         <Route path="/about" component={About} />
