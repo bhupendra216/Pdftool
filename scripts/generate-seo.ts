@@ -287,6 +287,15 @@ function patchHomepageHtml(outDir: string) {
   let content = fs.readFileSync(indexPath, 'utf-8');
   if (content.indexOf('id="seo-fallback"') !== -1) return; // already patched
 
+  // Inject the instant hide JS + CSS into <head> so #seo-fallback is hidden before first paint
+  const headCloseIndex = content.search(/<\/head>/i);
+  if (headCloseIndex !== -1) {
+    const headInjection = `\n    <script>\n      (function() {\n        try { document.documentElement.classList.add('js'); } catch (e) { }\n      })();\n    </script>\n    <style>\n      html.js #seo-fallback { display: none !important; }\n      html:not(.js) #seo-fallback { display: block !important; }\n    </style>\n`;
+    content = content.slice(0, headCloseIndex) + headInjection + content.slice(headCloseIndex);
+  } else {
+    console.warn(`Could not find </head> in ${indexPath}; skipping head injection.`);
+  }
+
   // Find the root mount point (<div ... id="root" ...>...</div>) without assuming exact whitespace
   const openTagMatch = content.match(/<div[^>]*id\s*=\s*["']root["'][^>]*>/i);
   if (!openTagMatch) {
@@ -306,9 +315,7 @@ function patchHomepageHtml(outDir: string) {
 
   const seoBlock = renderHomeSeoBlock();
 
-  const hideScript = `\n    <script>\n      (function() {\n        var checkInterval = setInterval(function() {\n          var root = document.getElementById('root');\n          if (root && root.childNodes.length > 0) {\n            var fallback = document.getElementById('seo-fallback');\n            if (fallback) fallback.style.display = 'none';\n            clearInterval(checkInterval);\n          }\n        }, 100);\n        setTimeout(function() {\n          var fallback = document.getElementById('seo-fallback');\n          if (fallback) fallback.style.display = 'none';\n          clearInterval(checkInterval);\n        }, 5000);\n      })();\n    </script>\n`;
-
-  const patched = content.slice(0, insertPos) + '\n' + seoBlock + '\n' + hideScript + content.slice(insertPos);
+  const patched = content.slice(0, insertPos) + '\n' + seoBlock + content.slice(insertPos);
   fs.writeFileSync(indexPath, patched, 'utf-8');
   console.log(`Patched homepage index.html with SEO fallback: ${indexPath}`);
 }
