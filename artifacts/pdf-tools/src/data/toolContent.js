@@ -417,6 +417,7 @@ export const toolContent = {
     ],
     relatedTools: ['compress-pdf', 'protect-pdf', 'merge-pdf', 'pdf-to-word'],
   },
+  
   'compress-images': {
     howToSteps: [
       { title: 'Upload Images', description: 'Choose JPG, PNG, or WebP files to compress.', icon: 'Upload' },

@@ -681,6 +681,7 @@ export const tools: ToolRecord[] = [
     blogSlug: null,
   },
   
+  
 ];
 
 export const blogPosts: BlogPostRecord[] = [

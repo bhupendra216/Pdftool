@@ -264,6 +264,55 @@ function renderToolsIndexHtml(assets: { jsPath: string; cssPath: string }) {
 </html>`;
 }
 
+function renderHomeSeoBlock() {
+  const cards = tools
+    .map(
+      (tool) => `
+        <li>
+          <a href="${siteUrl}/tools/${tool.slug}" aria-label="Use ${escapeHtml(tool.name)}">
+            <h2>${escapeHtml(tool.name)}</h2>
+            <p>${escapeHtml(tool.shortDescription)}</p>
+          </a>
+        </li>`,
+    )
+    .join('');
+
+  return `<!-- SEO Fallback -->\n<div id="seo-fallback" style="display: block;">\n  <main>\n    <h1>PDFKira</h1>\n    <p>Free online PDF tools for merging, splitting, compressing, converting, organizing, and editing PDF files.</p>\n    <p><a href="/tools">Browse all PDF tools</a></p>\n    <ul>${cards}</ul>\n  </main>\n</div>`;
+}
+
+function patchHomepageHtml(outDir: string) {
+  const indexPath = path.join(outDir, 'index.html');
+  if (!fs.existsSync(indexPath)) return;
+
+  let content = fs.readFileSync(indexPath, 'utf-8');
+  if (content.indexOf('id="seo-fallback"') !== -1) return; // already patched
+
+  // Find the root mount point (<div ... id="root" ...>...</div>) without assuming exact whitespace
+  const openTagMatch = content.match(/<div[^>]*id\s*=\s*["']root["'][^>]*>/i);
+  if (!openTagMatch) {
+    console.warn(`Could not find a root mount point in ${indexPath}; skipping homepage SEO patch.`);
+    return;
+  }
+
+  const openTagEnd = content.indexOf(openTagMatch[0]) + openTagMatch[0].length;
+  // Find the closing </div> for that root node after the opening tag
+  const closeTagIndex = content.indexOf('</div>', openTagEnd);
+  if (closeTagIndex === -1) {
+    console.warn(`Could not find closing </div> for root in ${indexPath}; skipping homepage SEO patch.`);
+    return;
+  }
+
+  const insertPos = closeTagIndex + '</div>'.length;
+
+  const seoBlock = renderHomeSeoBlock();
+
+  const hideScript = `\n    <script>\n      (function() {\n        var checkInterval = setInterval(function() {\n          var root = document.getElementById('root');\n          if (root && root.childNodes.length > 0) {\n            var fallback = document.getElementById('seo-fallback');\n            if (fallback) fallback.style.display = 'none';\n            clearInterval(checkInterval);\n          }\n        }, 100);\n        setTimeout(function() {\n          var fallback = document.getElementById('seo-fallback');\n          if (fallback) fallback.style.display = 'none';\n          clearInterval(checkInterval);\n        }, 5000);\n      })();\n    </script>\n`;
+
+  const patched = content.slice(0, insertPos) + '\n' + seoBlock + '\n' + hideScript + content.slice(insertPos);
+  fs.writeFileSync(indexPath, patched, 'utf-8');
+  console.log(`Patched homepage index.html with SEO fallback: ${indexPath}`);
+}
+
 function writeStaticFiles() {
   // Prefer extracting asset paths from the built `dist/public` (first outDir).
   const preferredOut = outDirs[0];
@@ -272,6 +321,8 @@ function writeStaticFiles() {
   for (const outDir of outDirs) {
     ensureDir(outDir);
     ensureDir(path.join(outDir, 'tools'));
+    // Inject SEO fallback into the built homepage index.html if needed
+    patchHomepageHtml(outDir);
 
     // Use the preferred assets (hashed) for all generated pages so we don't
     // accidentally write fallback /assets/index.js/css into any output dir.

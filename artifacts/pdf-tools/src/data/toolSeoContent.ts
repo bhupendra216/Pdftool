@@ -21,6 +21,7 @@ export const TOOL_SEO_CONTENT: Record<string, ToolSeoContent> = {
       { question: 'Is this really free?', answer: 'Yes — basic conversions are free. We may offer paid tiers for larger files, faster processing, or priority handling.' },
     ],
   },
+  
 };
 
 export default TOOL_SEO_CONTENT;
