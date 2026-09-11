@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
 import { SITE_URL, SITE_IMAGE, SITE_NAME } from '@/lib/site-config';
 
-const logo = SITE_IMAGE;
 const siteName = SITE_NAME;
+const defaultSocialImage = SITE_IMAGE;
 
 function updateMeta(selector: string, value: string) {
   let metaTag = document.querySelector(selector);
@@ -22,21 +22,34 @@ function updateMeta(selector: string, value: string) {
   metaTag.setAttribute("content", value);
 }
 
+function resolveSocialImage(image?: string) {
+  if (!image) return defaultSocialImage;
+  if (image.startsWith('http')) return image;
+  return `${SITE_URL}${image.startsWith('/') ? image : `/${image}`}`;
+}
+
 export function useSEO({
   title,
   description,
+  ogImage = defaultSocialImage,
+  twitterImage,
 }: {
   title: string;
   description?: string;
+  ogImage?: string;
+  twitterImage?: string;
 }) {
   useEffect(() => {
     const pageTitle = title.includes(siteName) ? title : `${title} | ${siteName}`;
+    const resolvedOgImage = resolveSocialImage(ogImage);
+    const resolvedTwitterImage = resolveSocialImage(twitterImage || ogImage || defaultSocialImage);
+
     document.title = pageTitle;
 
     updateMeta('meta[property="og:title"]', pageTitle);
     updateMeta('meta[name="twitter:title"]', pageTitle);
-    updateMeta('meta[property="og:image"]', logo);
-    updateMeta('meta[name="twitter:image"]', logo);
+    updateMeta('meta[property="og:image"]', resolvedOgImage);
+    updateMeta('meta[name="twitter:image"]', resolvedTwitterImage);
 
     if (description) {
       let metaDescription = document.querySelector('meta[name="description"]');
@@ -50,7 +63,7 @@ export function useSEO({
       updateMeta('meta[property="og:description"]', description);
       updateMeta('meta[name="twitter:description"]', description);
     }
-  }, [title, description]);
+  }, [title, description, ogImage, twitterImage]);
 }
 
 export function useSEOAdvanced({
@@ -59,14 +72,18 @@ export function useSEOAdvanced({
   canonical,
   jsonLd,
   robots,
+  ogImage,
+  twitterImage,
 }: {
   title: string;
   description?: string;
   canonical?: string;
   jsonLd?: Record<string, unknown> | Array<Record<string, unknown>> | string;
   robots?: string;
+  ogImage?: string;
+  twitterImage?: string;
 }) {
-  useSEO({ title, description });
+  useSEO({ title, description, ogImage, twitterImage });
 
   useEffect(() => {
     // Prefer explicit canonical, otherwise build from SITE_URL + current path

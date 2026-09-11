@@ -911,7 +911,7 @@ export default function AddBackgroundPage() {
             />
             {backgroundPreviewUrl && (
               <div className="overflow-hidden rounded-2xl border border-border/70 bg-background">
-                <img src={backgroundPreviewUrl} alt="Background preview" className="max-h-44 w-full object-cover" />
+                <img src={backgroundPreviewUrl} alt="Add Background tool preview showing the selected custom background image on the editing canvas" className="max-h-44 w-full object-cover" />
               </div>
             )}
           </div>

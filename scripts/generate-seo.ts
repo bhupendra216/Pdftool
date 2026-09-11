@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { tools, type ToolRecord } from '../artifacts/api-server/src/lib/content.ts';
 import { TOOL_SEO_CONTENT } from '../artifacts/pdf-tools/src/data/toolSeoContent.ts';
+import { resolveToolOgImage, toolsSEO } from '../artifacts/pdf-tools/src/data/seoConfig.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -49,9 +50,17 @@ function getAssetPaths(outDir: string): { jsPath: string; cssPath: string } {
   return { jsPath, cssPath };
 }
 
+function resolveAbsoluteImageUrl(image: string | undefined, fallback = `${siteUrl}/logo.png`) {
+  if (!image) return fallback;
+  if (image.startsWith('http')) return image;
+  return `${siteUrl}${image.startsWith('/') ? image : `/${image}`}`;
+}
+
 function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath: string }) {
   // Prefer explicit TOOL_SEO_CONTENT for richer, prerendered SEO copy.
   const seoEntry = TOOL_SEO_CONTENT[tool.slug];
+  const toolOgImage = resolveToolOgImage(tool.slug, `${siteUrl}/logo.png`);
+  const ogImageUrl = resolveAbsoluteImageUrl(toolOgImage);
 
   const steps = (seoEntry?.howItWorks || tool.steps || [])
     .map((step: any) => {
@@ -89,10 +98,11 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
     <meta property="og:description" content="${escapeHtml(tool.seoDescription)}" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="${toolUrl}" />
-    <meta property="og:image" content="${siteUrl}/logo.png" />
+    <meta property="og:image" content="${ogImageUrl}" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${escapeHtml(tool.seoTitle)}" />
     <meta name="twitter:description" content="${escapeHtml(tool.seoDescription)}" />
+    <meta name="twitter:image" content="${ogImageUrl}" />
     
     <!-- React SPA CSS -->
     <link rel="stylesheet" href="${assets.cssPath}" />

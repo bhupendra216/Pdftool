@@ -5,6 +5,15 @@ export const defaultDescription = 'Free online PDF tools for merging, splitting,
 export const defaultOGImage = 'https://pdfkira.com/og/default.jpg';
 export const twitterHandle = '@pdfkira';
 
+export function resolveToolOgImage(slug, fallback = defaultOGImage) {
+  if (!slug) return fallback;
+  const explicit = toolsSEO[slug]?.ogImage;
+  if (explicit) {
+    return explicit.startsWith('http') ? explicit : `${siteUrl}${explicit.startsWith('/') ? explicit : `/${explicit}`}`;
+  }
+  return `${siteUrl}/logo.png?tool=${encodeURIComponent(slug)}`;
+}
+
 export const homepageSEO = {
   title: 'PDFKira – Free Online PDF Tools | 22+ Tools, No Signup',
   description: 'Free online PDF tools for merging, splitting, compressing, and converting. 22+ tools, 100% privacy-first, no ads, no signup required.',

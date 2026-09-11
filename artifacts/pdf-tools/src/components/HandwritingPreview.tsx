@@ -31,7 +31,7 @@ export function HandwritingPreview({ text, style = 'caveat', className = '' }: {
     setLoading((s) => s || true);
 
     if (!rendererPromise) {
-      rendererPromise = import('tegaki').then((mod) => mod.TegakiRenderer || mod.default || null);
+      rendererPromise = import('tegaki').then((mod: any) => mod?.TegakiRenderer || mod?.default || null);
     }
 
     rendererPromise
@@ -63,8 +63,8 @@ export function HandwritingPreview({ text, style = 'caveat', className = '' }: {
       }
 
       try {
-        const m = await import(/* @vite-ignore */ `tegaki/fonts/${s}`);
-        const f = m.default || m;
+        const m = await import(/* @vite-ignore */ `tegaki/fonts/${s}`) as { default?: any } | Record<string, any>;
+        const f = (m as any).default ?? m;
         fontCache[s] = f;
         if (mounted) {
           setFont(f);

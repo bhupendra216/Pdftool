@@ -290,7 +290,7 @@ export function QrCodeGeneratorTool() {
               <div className="mx-auto flex max-w-[320px] flex-col items-center justify-center gap-4">
                 <div className="flex w-full items-center justify-center rounded-2xl bg-white p-4 shadow-inner">
                   {previewUrl ? (
-                    <img src={previewUrl} alt="Generated QR code preview" className="h-full w-full max-w-[260px] rounded-xl object-contain" />
+                    <img src={previewUrl} alt="Generated QR code for the entered URL and project name" className="h-full w-full max-w-[260px] rounded-xl object-contain" />
                   ) : (
                     <div className="flex h-[260px] w-[260px] items-center justify-center rounded-2xl border border-dashed border-border/70 bg-muted/40 text-center text-sm text-muted-foreground">
                       Enter a valid URL to create your QR code.

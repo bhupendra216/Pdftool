@@ -17,6 +17,7 @@ import { FaqSection } from "@/components/shared/FaqSection";
 import ToolSeoSection from '@/components/Content/ToolSeoSection';
 import { TOOL_SEO_CONTENT } from '@/data/toolSeoContent';
 import { toolContent } from '@/data/toolContent';
+import { resolveToolOgImage } from '@/data/seoConfig';
 import { getToolSeoContent } from '@/lib/toolSeoContent';
 import { ToolCard } from "@/components/shared/ToolCard";
 import { Button } from "@/components/ui/button";
@@ -1907,10 +1908,13 @@ export function ToolDetail(props?: any) {
     offers: { '@type': 'Offer', price: 0, priceCurrency: 'USD' },
   }), [tool?.name, tool?.seoDescription, tool?.shortDescription, toolUrl]);
 
+  const toolOgImage = tool?.slug ? resolveToolOgImage(tool.slug) : `${SITE_URL}/logo.png`;
+
   useSEOAdvanced({
     title: tool?.seoTitle || "Loading...",
     description: tool?.seoDescription || "PDF tool",
     canonical: toolUrl,
+    ogImage: toolOgImage,
     jsonLd: [applicationJsonLd, breadcrumbJsonLd],
   });
 
@@ -2946,7 +2950,7 @@ export function ToolDetail(props?: any) {
                               </div>
                             </div>
                           ) : imagePreviewUrl ? (
-                            <img src={imagePreviewUrl} alt="preview" className="h-full max-h-[320px] w-full object-contain" />
+                            <img src={imagePreviewUrl} alt={`${tool.name} preview showing the generated output before download`} className="h-full max-h-[320px] w-full object-contain" />
                           ) : (
                             <div className="flex h-[240px] items-center justify-center rounded-2xl bg-muted/60 text-sm text-muted-foreground">
                               Preview unavailable
