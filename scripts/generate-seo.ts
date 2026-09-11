@@ -23,6 +23,28 @@ const escapeHtml = (value: string) =>
     .replace(/"/g, '&amp;quot;')
     .replace(/'/g, '&amp;#39;');
 
+const GOOGLE_TAG_SNIPPET = `
+    <!-- Google tag (gtag.js) -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-K58M67QSPV"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+
+      gtag('config', 'G-K58M67QSPV');
+    </script>`;
+
+const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+
+function injectGoogleTagIntoHtml(html: string) {
+  const headMatch = html.match(/<head\b[^>]*>/i);
+  if (!headMatch) return html;
+
+  const headTag = headMatch[0];
+  const deduped = html.replace(new RegExp(escapeRegex(GOOGLE_TAG_SNIPPET), 'gi'), '');
+  return deduped.replace(headTag, `${headTag}${GOOGLE_TAG_SNIPPET}`);
+}
+
 function ensureDir(dir: string) {
   fs.mkdirSync(dir, { recursive: true });
 }
@@ -179,6 +201,8 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
     </noscript>
   </body>
 </html>`;
+
+  return injectGoogleTagIntoHtml(html);
 }
 
 function renderToolsIndexHtml(assets: { jsPath: string; cssPath: string }) {
@@ -194,7 +218,7 @@ function renderToolsIndexHtml(assets: { jsPath: string; cssPath: string }) {
     )
     .join('');
 
-  return `<!DOCTYPE html>
+  const html = `<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
@@ -272,6 +296,8 @@ function renderToolsIndexHtml(assets: { jsPath: string; cssPath: string }) {
     </noscript>
   </body>
 </html>`;
+
+  return injectGoogleTagIntoHtml(html);
 }
 
 function renderHomeSeoBlock() {
@@ -296,6 +322,8 @@ function patchHomepageHtml(outDir: string) {
 
   let content = fs.readFileSync(indexPath, 'utf-8');
   if (content.indexOf('id="seo-fallback"') !== -1) return; // already patched
+
+  content = injectGoogleTagIntoHtml(content);
 
   // Inject the instant hide JS + CSS into <head> so #seo-fallback is hidden before first paint
   const headCloseIndex = content.search(/<\/head>/i);
@@ -328,6 +356,29 @@ function patchHomepageHtml(outDir: string) {
   const patched = content.slice(0, insertPos) + '\n' + seoBlock + content.slice(insertPos);
   fs.writeFileSync(indexPath, patched, 'utf-8');
   console.log(`Patched homepage index.html with SEO fallback: ${indexPath}`);
+}
+
+function injectGoogleTagIntoAllHtmlFiles(outDir: string) {
+  const stack = [outDir];
+
+  while (stack.length > 0) {
+    const current = stack.pop();
+    if (!current || !fs.existsSync(current)) continue;
+
+    const entries = fs.readdirSync(current, { withFileTypes: true });
+    for (const entry of entries) {
+      const fullPath = path.join(current, entry.name);
+      if (entry.isDirectory()) {
+        stack.push(fullPath);
+      } else if (entry.isFile() && fullPath.endsWith('.html')) {
+        const original = fs.readFileSync(fullPath, 'utf-8');
+        const patched = injectGoogleTagIntoHtml(original);
+        if (patched !== original) {
+          fs.writeFileSync(fullPath, patched, 'utf-8');
+        }
+      }
+    }
+  }
 }
 
 function writeStaticFiles() {
@@ -405,6 +456,10 @@ function writeStaticFiles() {
     console.log(`  - tools/index.html`);
     console.log(`  - ${tools.length} tool pages`);
     console.log(`  - ${rootAliasSet.size} root aliases`);
+  }
+
+  for (const outDir of outDirs) {
+    injectGoogleTagIntoAllHtmlFiles(outDir);
   }
 
   // After writing, verify every generated HTML references real asset files.
