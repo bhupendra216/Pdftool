@@ -20,7 +20,7 @@ export default function DownloadPdfPage() {
   useSEOAdvanced({
     title,
     description,
-    canonical: `${SITE_URL}/download-pdf`,
+    canonical: `${SITE_URL}/tools/download-pdf`,
     robots: 'noindex, nofollow',
     jsonLd: {
       '@context': 'https://schema.org',

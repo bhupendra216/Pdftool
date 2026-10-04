@@ -12,7 +12,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 export function Home() {
   useSEO({
     title: "PDFKira – Free Online PDF Tools",
-    description: "Merge, split, compress, convert, organize, protect, and edit PDF files online for free with PDFKira."
+    description: "Use PDFKira to merge, split, compress, convert, and organize PDF files online for free. Choose a tool and finish your document task in minutes."
   });
 
   const { data: tools, isLoading: loadingTools } = useListTools();

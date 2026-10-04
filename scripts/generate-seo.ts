@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { tools, type ToolRecord } from '../artifacts/api-server/src/lib/content.ts';
 import { TOOL_SEO_CONTENT } from '../artifacts/pdf-tools/src/data/toolSeoContent.ts';
+import { ensureToolFaqs } from '../artifacts/pdf-tools/src/lib/toolSeoContent.ts';
 import { resolveToolOgImage, toolsSEO } from '../artifacts/pdf-tools/src/data/seoConfig.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -95,7 +96,13 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
     .map((w: any) => `<div><h3>${escapeHtml(w.title)}</h3><p>${escapeHtml(w.description)}</p></div>`)
     .join('');
 
-  const faqs = (seoEntry?.faq?.length ? seoEntry.faq : tool.faqs)
+  const pageFaqs = ensureToolFaqs(
+    tool.name,
+    tool.slug,
+    seoEntry?.faq?.length ? seoEntry.faq : tool.faqs,
+  );
+
+  const faqs = pageFaqs
     .map(
       (item: any) => `
         <li>
@@ -206,6 +213,8 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
 }
 
 function renderToolsIndexHtml(assets: { jsPath: string; cssPath: string }) {
+  const description =
+    'Browse free online PDF tools to merge, split, compress, convert, and organize documents. Pick a secure browser-based workflow and get started with PDFKira.';
   const cards = tools
     .map(
       (tool) => `
@@ -224,11 +233,11 @@ function renderToolsIndexHtml(assets: { jsPath: string; cssPath: string }) {
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>PDF Tools | PDFKira</title>
-    <meta name="description" content="Free online PDF tools from PDFKira: merge, split, compress, convert, organize, and edit PDFs in your browser." />
+    <meta name="description" content="${description}" />
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href="${siteUrl}/tools" />
     <meta property="og:title" content="PDF Tools | PDFKira" />
-    <meta property="og:description" content="Free online PDF tools from PDFKira: merge, split, compress, convert, organize, and edit PDFs in your browser." />
+    <meta property="og:description" content="${description}" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="${siteUrl}/tools" />
     <meta property="og:image" content="${siteUrl}/logo.png" />
@@ -300,6 +309,63 @@ function renderToolsIndexHtml(assets: { jsPath: string; cssPath: string }) {
   return injectGoogleTagIntoHtml(html);
 }
 
+function renderComparisonPageHtml(assets: { jsPath: string; cssPath: string }) {
+  const title = 'iLovePDF vs Smallpdf vs PDFKira';
+  const description =
+    'Compare iLovePDF, Smallpdf, and PDFKira by features, free access, and privacy to find the right PDF workflow for you. Review options and choose a tool.';
+  const canonical = `${siteUrl}/compare/ilovepdf-vs-smallpdf-vs-pdfkira`;
+
+  return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${title}</title>
+    <meta name="description" content="${description}" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="${canonical}" />
+    <meta property="og:title" content="${title}" />
+    <meta property="og:description" content="${description}" />
+    <meta property="og:type" content="article" />
+    <meta property="og:url" content="${canonical}" />
+    <link rel="stylesheet" href="${assets.cssPath}" />
+    <script>
+      document.documentElement.classList.add('js');
+    </script>
+    <style>
+      html.js #seo-fallback { display: none !important; }
+      html:not(.js) #seo-fallback { display: block !important; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <div id="seo-fallback">
+      <main>
+        <h1>${title}</h1>
+        <p>${description}</p>
+        <h2>Compare PDF tools for your workflow</h2>
+        <p>Consider the tools you need, whether free use meets your needs, how each service handles files, and whether you prefer a quick browser-based task or a larger platform. Features and limits can change, so review each provider's current terms before choosing.</p>
+        <ul>
+          <li>iLovePDF offers a broad collection of PDF utilities.</li>
+          <li>Smallpdf focuses on common document workflows and a polished interface.</li>
+          <li>PDFKira provides free core tools for common browser-based tasks without a required account.</li>
+        </ul>
+        <h2>Frequently asked questions</h2>
+        <h3>Is PDFKira free?</h3>
+        <p>PDFKira's core tools are currently free to use for common document workflows.</p>
+        <h3>Do I need an account to use PDFKira?</h3>
+        <p>No account is required for the core browser-based workflows.</p>
+        <h3>Which PDF service should I choose?</h3>
+        <p>Choose the service that supports your file format, features, privacy needs, and expected usage.</p>
+        <p><a href="/tools">Browse PDF tools</a> or try <a href="/tools/merge-pdf">Merge PDF</a>.</p>
+      </main>
+    </div>
+    <script type="module" src="${assets.jsPath}"></script>
+    <noscript><style>#seo-fallback { display: block !important; }</style></noscript>
+  </body>
+</html>`;
+}
+
 function renderHomeSeoBlock() {
   const cards = tools
     .map(
@@ -321,7 +387,18 @@ function patchHomepageHtml(outDir: string) {
   if (!fs.existsSync(indexPath)) return;
 
   let content = fs.readFileSync(indexPath, 'utf-8');
-  if (content.indexOf('id="seo-fallback"') !== -1) return; // already patched
+  content = content.replace(
+    /<link\s+rel=["']canonical["']\s+href=["'][^"']*["']\s*\/?>/i,
+    `<link rel="canonical" href="${siteUrl}/" />`,
+  );
+  content = content.replace(
+    /<meta\s+property=["']og:url["']\s+content=["'][^"']*["']\s*\/?>/i,
+    `<meta property="og:url" content="${siteUrl}/" />`,
+  );
+  if (content.indexOf('id="seo-fallback"') !== -1) {
+    fs.writeFileSync(indexPath, content, 'utf-8');
+    return;
+  }
 
   content = injectGoogleTagIntoHtml(content);
 
@@ -404,23 +481,13 @@ function writeStaticFiles() {
     );
 
     // Write sitemap.xml
-    const rootAliasSet = new Set<string>();
-    for (const tool of tools) {
-      rootAliasSet.add(tool.slug);
-      const alias = tool.slug.replace(/-pdf$/, '');
-      if (alias && alias !== tool.slug) rootAliasSet.add(alias);
-    }
-
     const sitemapItems = [
       { loc: `${siteUrl}/`, changefreq: 'weekly' },
       { loc: `${siteUrl}/tools`, changefreq: 'weekly' },
       { loc: `${siteUrl}/compare/ilovepdf-vs-smallpdf-vs-pdfkira`, changefreq: 'weekly' },
-      ...Array.from(
-        new Set([
-          ...tools.map((tool) => `${siteUrl}/tools/${tool.slug}`),
-          ...Array.from(rootAliasSet).map((alias) => `${siteUrl}/${alias}`),
-        ]),
-      ).map((loc) => ({ loc, changefreq: 'weekly' as const })),
+      ...tools
+        .filter((tool) => tool.status === 'available')
+        .map((tool) => ({ loc: `${siteUrl}/tools/${tool.slug}`, changefreq: 'weekly' as const })),
     ];
 
     const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${sitemapItems
@@ -433,6 +500,9 @@ function writeStaticFiles() {
     fs.writeFileSync(path.join(outDir, 'sitemap.xml'), sitemapXml, 'utf-8');
     // Write tools index page
     fs.writeFileSync(path.join(outDir, 'tools', 'index.html'), renderToolsIndexHtml(assets), 'utf-8');
+    const comparisonDir = path.join(outDir, 'compare', 'ilovepdf-vs-smallpdf-vs-pdfkira');
+    ensureDir(comparisonDir);
+    fs.writeFileSync(path.join(comparisonDir, 'index.html'), renderComparisonPageHtml(assets), 'utf-8');
 
     // Write individual tool pages
     for (const tool of tools) {
@@ -441,21 +511,12 @@ function writeStaticFiles() {
       fs.writeFileSync(path.join(toolDir, 'index.html'), renderToolPageHtml(tool, assets), 'utf-8');
     }
 
-    // Write root aliases (e.g., /merge-pdf -> /tools/merge-pdf)
-    for (const alias of rootAliasSet) {
-      const aliasDir = path.join(outDir, alias);
-      ensureDir(aliasDir);
-      const targetTool = tools.find((tool) => tool.slug === alias || tool.slug.replace(/-pdf$/, '') === alias);
-      if (!targetTool) continue;
-      fs.writeFileSync(path.join(aliasDir, 'index.html'), renderToolPageHtml(targetTool, assets), 'utf-8');
-    }
-
     console.log(`Generated static files in ${outDir}:`);
     console.log(`  - robots.txt`);
     console.log(`  - sitemap.xml (${sitemapItems.length} URLs)`);
     console.log(`  - tools/index.html`);
     console.log(`  - ${tools.length} tool pages`);
-    console.log(`  - ${rootAliasSet.size} root aliases`);
+    console.log(`  - comparison page`);
   }
 
   for (const outDir of outDirs) {

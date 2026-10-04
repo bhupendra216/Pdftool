@@ -41,12 +41,23 @@ export function useSEO({
 }) {
   useEffect(() => {
     const pageTitle = title.includes(siteName) ? title : `${title} | ${siteName}`;
+    const pathname = window.location.pathname.toLowerCase().replace(/\/+$/, '') || '/';
+    const canonical = `${SITE_URL}${pathname}`;
     const resolvedOgImage = resolveSocialImage(ogImage);
     const resolvedTwitterImage = resolveSocialImage(twitterImage || ogImage || defaultSocialImage);
 
     document.title = pageTitle;
 
+    let canonicalLink = document.querySelector('link[rel="canonical"]') as HTMLLinkElement | null;
+    if (!canonicalLink) {
+      canonicalLink = document.createElement('link');
+      canonicalLink.setAttribute('rel', 'canonical');
+      document.head.appendChild(canonicalLink);
+    }
+    canonicalLink.href = canonical;
+
     updateMeta('meta[property="og:title"]', pageTitle);
+    updateMeta('meta[property="og:url"]', canonical);
     updateMeta('meta[name="twitter:title"]', pageTitle);
     updateMeta('meta[property="og:image"]', resolvedOgImage);
     updateMeta('meta[name="twitter:image"]', resolvedTwitterImage);

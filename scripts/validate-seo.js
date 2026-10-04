@@ -1,183 +1,112 @@
 #!/usr/bin/env node
 
-const fs = require('fs');
-const path = require('path');
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
-const projectRoot = path.resolve(__dirname, '..');
-const publicDir = path.join(projectRoot, 'artifacts', 'pdf-tools', 'public');
+const projectRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const distPublicDir = path.join(projectRoot, 'artifacts', 'pdf-tools', 'dist', 'public');
+const sourcePublicDir = path.join(projectRoot, 'artifacts', 'pdf-tools', 'public');
+const publicDir = fs.existsSync(distPublicDir) ? distPublicDir : sourcePublicDir;
 const sitemapPath = path.join(publicDir, 'sitemap.xml');
 const robotsPath = path.join(publicDir, 'robots.txt');
-
 const errors = [];
-const warnings = [];
 
-function checkFile(filePath, label) {
+function readFile(filePath, label) {
   if (!fs.existsSync(filePath)) {
     errors.push(`${label} is missing: ${filePath}`);
+    return '';
   }
+  return fs.readFileSync(filePath, 'utf8');
 }
 
-checkFile(sitemapPath, 'Sitemap');
-checkFile(robotsPath, 'Robots');
-
-if (!fs.existsSync(sitemapPath)) {
-  console.error('Sitemap missing.');
-  process.exit(1);
+function getAttribute(tag, name) {
+  return tag.match(new RegExp(`\\b${name}=["']([^"']*)["']`, 'i'))?.[1];
 }
 
-const sitemapText = fs.readFileSync(sitemapPath, 'utf8');
-if (!sitemapText.includes('<urlset')) {
-  errors.push('sitemap.xml is not valid XML');
+function decodeHtml(value) {
+  return value.replace(/&amp;/g, '&').replace(/&#39;/g, "'");
+}
+
+const sitemapText = readFile(sitemapPath, 'Sitemap');
+const robotsText = readFile(robotsPath, 'Robots');
+
+if (sitemapText && !sitemapText.includes('<urlset')) {
+  errors.push('sitemap.xml is not a valid URL set');
 }
 
 const urls = [...sitemapText.matchAll(/<loc>(.*?)<\/loc>/g)].map((match) => match[1]);
-if (urls.length !== new Set(urls).size) {
-  errors.push('Duplicate URLs detected in sitemap.xml');
+if (!urls.length) errors.push('sitemap.xml contains no URLs');
+if (urls.length !== new Set(urls).size) errors.push('Duplicate URLs detected in sitemap.xml');
+
+let sitemapOrigin;
+try {
+  sitemapOrigin = new URL(urls[0]).origin;
+} catch {
+  errors.push(`Invalid sitemap URL: ${urls[0] || '(none)'}`);
 }
 
-const titlePattern = /<title>(.*?)<\/title>/gi;
-const titles = [...sitemapText.matchAll(titlePattern)].map((match) => match[1]);
-if (titles.length) {
-  const duplicateTitles = titles.filter((title, index) => titles.indexOf(title) !== index);
-  if (duplicateTitles.length) errors.push('Duplicate titles found');
+if (!robotsText.includes('User-agent: *') || !robotsText.includes(`Sitemap: ${sitemapOrigin}/sitemap.xml`)) {
+  errors.push('robots.txt is missing the matching sitemap directive');
 }
 
-const robotsText = fs.readFileSync(robotsPath, 'utf8');
-if (!robotsText.includes('User-agent: *') || !robotsText.includes('Sitemap: https://pdfkira.com/sitemap.xml')) {
-  errors.push('robots.txt is invalid or missing the sitemap directive');
-}
+for (const url of urls) {
+  let parsedUrl;
+  try {
+    parsedUrl = new URL(url);
+  } catch {
+    errors.push(`Invalid absolute sitemap URL: ${url}`);
+    continue;
+  }
 
-const lines = robotsText.split(/
-?
-/).filter(Boolean);
-if (lines.length < 2) errors.push('robots.txt is missing required lines');
+  if (parsedUrl.protocol !== 'https:') errors.push(`Sitemap URL must use HTTPS: ${url}`);
+  if (parsedUrl.search || parsedUrl.hash) errors.push(`Sitemap URL must not contain a query or fragment: ${url}`);
+  if (parsedUrl.pathname !== '/' && (parsedUrl.pathname !== parsedUrl.pathname.toLowerCase() || parsedUrl.pathname.endsWith('/'))) {
+    errors.push(`Sitemap URL does not use the canonical lowercase slash format: ${url}`);
+  }
 
-const canonicalTags = [...sitemapText.matchAll(/<loc>(https?:\/\/[^<]+)<\/loc>/g)].map((match) => match[1]);
-for (const url of canonicalTags) {
-  if (!url.startsWith('https://pdfkira.com/')) {
-    errors.push(`Absolute canonical URL required: ${url}`);
+  const relativePath = parsedUrl.pathname === '/' ? 'index.html' : `${parsedUrl.pathname.slice(1)}/index.html`;
+  const pagePath = path.join(publicDir, relativePath);
+  const html = readFile(pagePath, `Sitemap page for ${url}`);
+  if (!html) continue;
+
+  const canonicalTag = html.match(/<link\b[^>]*\brel=["']canonical["'][^>]*>/i)?.[0];
+  const canonical = canonicalTag && getAttribute(canonicalTag, 'href');
+  if (canonical !== url) errors.push(`Canonical mismatch for ${url}: ${canonical || 'missing canonical'}`);
+
+  const descriptionTag = html.match(/<meta\b[^>]*\bname=["']description["'][^>]*>/i)?.[0];
+  const description = descriptionTag && getAttribute(descriptionTag, 'content');
+  const descriptionLength = description ? decodeHtml(description).length : 0;
+  if (descriptionLength < 120 || descriptionLength > 160) {
+    errors.push(`Meta description must be 120-160 characters for ${url}; found ${descriptionLength}`);
+  }
+
+  const robotsTag = html.match(/<meta\b[^>]*\bname=["']robots["'][^>]*>/i)?.[0];
+  if (getAttribute(robotsTag || '', 'content') !== 'index, follow') {
+    errors.push(`Sitemap page is not explicitly indexable: ${url}`);
+  }
+
+  if (parsedUrl.pathname.startsWith('/tools/')) {
+    const faqSection = html.match(/<h2>Frequently asked questions<\/h2>([\s\S]*?)<\/section>/i)?.[1] || '';
+    const faqCount = [...faqSection.matchAll(/<li>/gi)].length;
+    if (faqCount < 3 || faqCount > 5) errors.push(`Tool page must have 3-5 FAQs: ${url} (found ${faqCount})`);
+
+    const mainContent = html.match(/<main>([\s\S]*?)<\/main>/i)?.[1] || '';
+    const wordCount = mainContent
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&[^;\s]+;/g, ' ')
+      .trim()
+      .split(/\s+/)
+      .filter(Boolean).length;
+    if (wordCount < 100) errors.push(`Tool page content is too short: ${url} (${wordCount} words)`);
   }
 }
 
 if (errors.length) {
   console.error('SEO validation failed.');
-  for (const msg of errors) console.error(`- ${msg}`);
+  for (const error of errors) console.error(`- ${error}`);
   process.exit(1);
 }
 
 console.log('SEO validation passed.');
-console.log(`Checked ${urls.length} URLs in sitemap.xml.`);
-if (warnings.length) {
-  #!/usr/bin/env node
-
-  const fs = require('fs');
-  const path = require('path');
-
-  const projectRoot = path.resolve(__dirname, '..');
-  // Check both public and dist/public directories
-  const publicDir = path.join(projectRoot, 'artifacts', 'pdf-tools', 'public');
-  const distPublicDir = path.join(projectRoot, 'artifacts', 'pdf-tools', 'dist', 'public');
-
-  // Use dist/public if it exists (after build), otherwise fall back to public
-  const checkDir = fs.existsSync(distPublicDir) ? distPublicDir : publicDir;
-
-  const sitemapPath = path.join(checkDir, 'sitemap.xml');
-  const robotsPath = path.join(checkDir, 'robots.txt');
-
-  const errors = [];
-  const warnings = [];
-
-  function checkFile(filePath, label) {
-    if (!fs.existsSync(filePath)) {
-      errors.push(`${label} is missing: ${filePath}`);
-      return false;
-    }
-    return true;
-  }
-
-  // Check sitemap
-  const hasSitemap = checkFile(sitemapPath, 'Sitemap');
-  const hasRobots = checkFile(robotsPath, 'Robots');
-
-  if (!hasSitemap) {
-    console.error('❌ Sitemap missing. Run "npm run build" first, then "npx tsx scripts/generate-seo.ts"');
-    process.exit(1);
-  }
-
-  const sitemapText = fs.readFileSync(sitemapPath, 'utf8');
-  if (!sitemapText.includes('<urlset')) {
-    errors.push('sitemap.xml is not valid XML');
-  }
-
-  const urls = [...sitemapText.matchAll(/<loc>(.*?)<\/loc>/g)].map((match) => match[1]);
-  if (urls.length === 0) {
-    errors.push('sitemap.xml contains no URLs');
-  }
-  if (urls.length !== new Set(urls).size) {
-    errors.push('Duplicate URLs detected in sitemap.xml');
-  }
-
-  // Check robots.txt
-  if (hasRobots) {
-    const robotsText = fs.readFileSync(robotsPath, 'utf8');
-    if (!robotsText.includes('User-agent: *') || !robotsText.includes('Sitemap: https://pdfkira.com/sitemap.xml')) {
-      errors.push('robots.txt is invalid or missing the sitemap directive');
-    }
-
-    const lines = robotsText.split(/\r?\n/).filter(Boolean);
-    if (lines.length < 2) errors.push('robots.txt is missing required lines');
-  }
-
-  // Check canonical URLs
-  const canonicalTags = [...sitemapText.matchAll(/<loc>(https?:\/\/[^<]+)<\/loc>/g)].map((match) => match[1]);
-  for (const url of canonicalTags) {
-    if (!url.startsWith('https://pdfkira.com/')) {
-      errors.push(`Absolute canonical URL required: ${url}`);
-    }
-  }
-
-  // NEW: Check that generated tool pages have React bundles
-  const toolsDir = path.join(checkDir, 'tools');
-  if (fs.existsSync(toolsDir)) {
-    const toolDirs = fs.readdirSync(toolsDir).filter(f => fs.statSync(path.join(toolsDir, f)).isDirectory());
-  
-    for (const toolSlug of toolDirs) {
-      const toolPagePath = path.join(toolsDir, toolSlug, 'index.html');
-      if (!fs.existsSync(toolPagePath)) {
-        errors.push(`Tool page missing: tools/${toolSlug}/index.html`);
-        continue;
-      }
-    
-      const toolPageContent = fs.readFileSync(toolPagePath, 'utf8');
-    
-      if (!toolPageContent.includes('id="root"')) {
-        errors.push(`Tool page missing React mount point: tools/${toolSlug}/index.html`);
-      }
-    
-      if (!toolPageContent.includes('src="/assets/')) {
-        errors.push(`Tool page missing React JS bundle: tools/${toolSlug}/index.html`);
-      }
-    
-      if (!toolPageContent.includes('href="/assets/')) {
-        warnings.push(`Tool page may be missing CSS bundle: tools/${toolSlug}/index.html`);
-      }
-    }
-  } else {
-    warnings.push('tools/ directory not found in build output');
-  }
-
-  // Report results
-  if (errors.length) {
-    console.error('❌ SEO validation failed.');
-    for (const msg of errors) console.error(`   - ${msg}`);
-    process.exit(1);
-  }
-
-  console.log('✅ SEO validation passed.');
-  console.log(`   Checked ${urls.length} URLs in sitemap.xml.`);
-  console.log(`   Checked ${fs.readdirSync(toolsDir).length} tool pages for React bundles.`);
-
-  if (warnings.length) {
-    console.warn('⚠️  Warnings:');
-    for (const msg of warnings) console.warn(`   - ${msg}`);
-  }
+console.log(`Checked ${urls.length} sitemap URLs for static pages, canonicals, indexability, and descriptions.`);

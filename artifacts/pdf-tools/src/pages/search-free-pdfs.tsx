@@ -28,7 +28,7 @@ export default function SearchFreePdfsPage() {
   useSEOAdvanced({
     title: 'Search Free PDFs — PDFKira',
     description: 'Discover public-domain and openly-licensed PDFs from the Internet Archive.',
-    canonical: `${SITE_URL}/search-free-pdfs`,
+    canonical: `${SITE_URL}/tools/search-free-pdfs`,
     robots: 'noindex, nofollow',
   });
 

@@ -11,7 +11,7 @@ import { Button } from "@/components/ui/button";
 export function ToolsIndex() {
   useSEO({
     title: "All PDF Tools",
-    description: "Browse our complete collection of free, secure PDF tools for merging, splitting, compressing, and editing with PDFKira."
+    description: "Browse free online PDF tools to merge, split, compress, convert, and organize documents. Pick a secure browser-based workflow and get started with PDFKira."
   });
 
   const { data: tools, isLoading } = useListTools();

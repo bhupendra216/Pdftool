@@ -61,14 +61,14 @@ export default function CompareIlovepdfVsSmallpdfVsPdfkiraPage() {
 
   useSEOAdvanced({
     title: 'iLovePDF vs Smallpdf vs PDFKira',
-    description: 'Compare iLovePDF, Smallpdf, and PDFKira to choose the right free PDF tool for your workflow.',
+    description: 'Compare iLovePDF, Smallpdf, and PDFKira by features, free access, and privacy to find the right PDF workflow for you. Review options and choose a tool.',
     canonical: canonicalUrl,
     jsonLd: [
       {
         '@context': 'https://schema.org',
         '@type': 'WebPage',
         name: 'iLovePDF vs Smallpdf vs PDFKira',
-        description: 'Compare iLovePDF, Smallpdf, and PDFKira to choose the right free PDF tool for your workflow.',
+        description: 'Compare iLovePDF, Smallpdf, and PDFKira by features, free access, and privacy to find the right PDF workflow for you. Review options and choose a tool.',
         url: canonicalUrl,
       },
       faqJsonLd,
