@@ -1,7 +1,10 @@
 import { useSEO } from "@/hooks/use-seo";
 
 export function Privacy() {
-  useSEO({ title: "Privacy Policy" });
+  useSEO({
+    title: "Privacy Policy",
+    description: "How PDFKira handles uploaded files, analytics, cookies, and personal information.",
+  });
   return (
     <div className="bg-background min-h-screen pb-24">
       <div className="bg-card border-b border-border pt-20 pb-16 mb-16">
@@ -15,16 +18,16 @@ export function Privacy() {
         <p>At PDFKira, we treat your documents as private information. This Privacy Policy explains how we handle files and related data when you use our services.</p>
         
         <h3>1. File Processing and Storage</h3>
-        <p>Most of our tools process files locally in your browser. For tools that require server-side processing, files are uploaded securely via HTTPS. Once processing is complete, all uploaded and generated files are automatically and permanently deleted from our servers within 1 hour.</p>
+        <p>Many tools process files locally in your browser. For tools that require server-side processing, files are transmitted over HTTPS. Uploaded and generated temporary files are automatically deleted from our servers within one hour after processing.</p>
         
         <h3>2. Data Collection</h3>
-        <p>We collect minimal usage data (such as page views and tool usage frequencies) to help us improve the platform. We do not sell your personal information or data to third parties.</p>
+        <p>We use Google Analytics to understand site usage and improve the platform. Google Analytics may process technical usage information such as page views, device/browser data, and approximate location. We do not sell personal information.</p>
         
         <h3>3. Analytics and Cookies</h3>
-        <p>We use essential cookies to remember your preferences. We use privacy-friendly analytics that do not track you across the internet or collect personally identifiable information without your consent.</p>
+        <p>Google Analytics may use cookies or similar technologies subject to Google's privacy policies. PDFKira also stores limited preferences in your browser, including local storage or essential interface cookies. You can manage or clear cookies and browser storage in your browser settings.</p>
         
         <h3>4. Contact Us</h3>
-        <p>If you have any questions about this Privacy Policy, please contact us via our Contact page.</p>
+        <p>If you have questions about this Privacy Policy, email <a href="mailto:contact@pdfkira.com">contact@pdfkira.com</a>.</p>
       </div>
     </div>
   );

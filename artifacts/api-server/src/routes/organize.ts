@@ -13,13 +13,18 @@ async function rotatePdfPages(file: Express.Multer.File, rawRotation: unknown) {
   preservePdfMetadata(srcPdf, outPdf);
 
   const totalPages = srcPdf.getPageCount();
-  const rotation = parseSingleRotationValue(rawRotation);
   const pageIndices = buildDefaultPageOrder(totalPages).map((pageNumber) => pageNumber - 1);
+  const rotations = Array.isArray(rawRotation)
+    || (typeof rawRotation === "string" && rawRotation.trim().startsWith("["))
+    ? parseRotationValues(rawRotation, totalPages)
+    : Array(totalPages).fill(parseSingleRotationValue(rawRotation));
   const copiedPages = await outPdf.copyPages(srcPdf, pageIndices);
 
-  copiedPages.forEach((page) => {
+  copiedPages.forEach((page, index) => {
+    const rotation = rotations[index] ?? 0;
+    const originalRotation = srcPdf.getPages()[pageIndices[index]].getRotation().angle;
     if (rotation !== 0) {
-      page.setRotation(degrees(rotation));
+      page.setRotation(degrees((originalRotation + rotation) % 360));
     }
     outPdf.addPage(page);
   });
@@ -55,8 +60,9 @@ router.post("/organize-pdf", upload.single("files"), async (req, res) => {
     const copiedPages = await outPdf.copyPages(srcPdf, pageIndices);
     copiedPages.forEach((page, idx) => {
       const rotation = rotations[idx] ?? 0;
+      const originalRotation = srcPdf.getPages()[pageIndices[idx]].getRotation().angle;
       if (rotation !== 0) {
-        page.setRotation(degrees(rotation));
+        page.setRotation(degrees((originalRotation + rotation) % 360));
       }
       outPdf.addPage(page);
     });

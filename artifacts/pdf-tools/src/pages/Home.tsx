@@ -8,6 +8,7 @@ import { BlogCard } from "@/components/shared/BlogCard";
 import { FaqSection } from "@/components/shared/FaqSection";
 import { ArrowRight, ShieldCheck, Zap, HeartHandshake } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { tools as toolCatalog } from "../../../api-server/src/lib/content";
 
 export function Home() {
   useSEO({
@@ -26,14 +27,17 @@ export function Home() {
     "qr-code-generator",
   ];
 
-  const featuredTools = Array.isArray(tools)
+  const catalogTools = Array.isArray(tools) && tools.length > 0 ? tools : toolCatalog;
+  const visibleTools = catalogTools.filter((tool) => tool.status === "available" && tool.slug !== "edit-pdf");
+
+  const featuredTools = Array.isArray(catalogTools)
     ? featuredToolSlugs
-        .map((slug) => tools.find((tool) => tool.slug === slug))
+        .map((slug) => catalogTools.find((tool) => tool.slug === slug))
         .filter((tool): tool is NonNullable<typeof tool> => Boolean(tool))
     : [];
 
-  const popularTools = Array.isArray(tools)
-    ? tools.filter((tool) => tool.slug !== "edit-pdf" && tool.popular).slice(0, 6)
+  const popularTools = Array.isArray(catalogTools)
+    ? visibleTools.filter((tool) => tool.popular).slice(0, 6)
     : [];
 
   const latestPosts = Array.isArray(posts)
@@ -76,13 +80,13 @@ export function Home() {
             </div>
             <Button variant="ghost" asChild className="group text-primary hover:text-primary hover:bg-primary/10">
               <Link href="/tools">
-                View all {tools?.length || 0} tools
+                View all {visibleTools.length} tools
                 <ArrowRight className="ml-2 w-4 h-4 transition-transform group-hover:translate-x-1" />
               </Link>
             </Button>
           </div>
 
-          {loadingTools ? (
+          {loadingTools && Array.isArray(tools) ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
               {[1, 2, 3, 4].map(i => (
                 <Skeleton key={i} className="h-48 w-full rounded-2xl" />
@@ -107,7 +111,7 @@ export function Home() {
             </div>
           </div>
 
-          {loadingTools ? (
+          {loadingTools && Array.isArray(tools) ? (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
               {[1, 2, 3, 4, 5, 6].map(i => (
                 <Skeleton key={i} className="h-48 w-full rounded-2xl" />

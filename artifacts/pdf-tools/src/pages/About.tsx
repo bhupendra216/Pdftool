@@ -29,7 +29,7 @@ export function About() {
 
         <h2>Why We're Different</h2>
         <ul>
-          <li><strong>Privacy First:</strong> Your documents are your business. When you upload a file to our servers for processing, it is automatically and permanently deleted immediately after your task is complete. No lingering data, no training AI models.</li>
+          <li><strong>Privacy First:</strong> Your documents are your business. When server-side processing is required, temporary files are transmitted over HTTPS and automatically deleted within one hour after processing.</li>
           <li><strong>Zero Clutter:</strong> We believe in calm, focused interfaces. You won't find banner ads, auto-playing videos, or aggressive upsells here.</li>
           <li><strong>Modern Engineering:</strong> We leverage the latest web technologies to process as much as possible directly in your browser, saving you time and bandwidth.</li>
         </ul>

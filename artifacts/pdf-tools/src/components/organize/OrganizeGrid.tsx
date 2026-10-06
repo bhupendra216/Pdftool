@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 type Page = {
   id: string;
   pageNumber: number;
+  sourcePageIndex: number;
   rotation: number;
   selected: boolean;
   thumbnailUrl?: string | null;
@@ -42,7 +43,7 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [dragIndex, setDragIndex] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
-  const [selectionAnchor, setSelectionAnchor] = useState<number | null>(null);
+  const [selectionAnchor, setSelectionAnchor] = useState<string | null>(null);
   const [supportsHover, setSupportsHover] = useState(false);
   const [zoomedPageId, setZoomedPageId] = useState<string | null>(null);
   const previewCloseTimerRef = useRef<number | null>(null);
@@ -128,22 +129,25 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
       const next = [...pages];
       next[index].selected = !next[index].selected;
       onUpdate(next);
-      setSelectionAnchor(index);
+      setSelectionAnchor(pages[index]?.id ?? null);
       return;
     }
 
     if (e && e.shiftKey && selectionAnchor !== null) {
-      const a = Math.min(selectionAnchor, index);
-      const b = Math.max(selectionAnchor, index);
-      const next = [...pages];
-      for (let i = a; i <= b; i++) next[i].selected = true;
-      onUpdate(next);
-      return;
+      const anchorIndex = pages.findIndex((page) => page.id === selectionAnchor);
+      if (anchorIndex >= 0) {
+        const a = Math.min(anchorIndex, index);
+        const b = Math.max(anchorIndex, index);
+        const next = [...pages];
+        for (let i = a; i <= b; i++) next[i].selected = true;
+        onUpdate(next);
+        return;
+      }
     }
 
     const next = pages.map((p, i) => ({ ...p, selected: i === index ? !p.selected : p.selected }));
     onUpdate(next);
-    setSelectionAnchor(index);
+    setSelectionAnchor(pages[index]?.id ?? null);
   }, [pages, onUpdate, selectionAnchor]);
 
   const onDragStart = (index: number, e: React.DragEvent) => {

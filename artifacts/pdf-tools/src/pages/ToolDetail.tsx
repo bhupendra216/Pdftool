@@ -33,6 +33,7 @@ import { QrCodeGeneratorTool } from "@/components/shared/QrCodeGeneratorTool";
 import { SignPdfTool } from "@/components/shared/SignPdfTool";
 import NotFoundPage from "@/pages/not-found";
 import { removePagesById } from "@/lib/page-state";
+import { parsePageRanges } from "@workspace/pdf-pages";
 
 GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
 
@@ -313,10 +314,9 @@ export function ToolDetail(props?: any) {
   const [totalPages, setTotalPages] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const [pdfPages, setPdfPages] = useState<Array<{ id: string; pageNumber: number; rotation: number; selected: boolean; thumbnailUrl?: string | null }>>([]);
+  const [pdfPages, setPdfPages] = useState<Array<{ id: string; pageNumber: number; sourcePageIndex: number; rotation: number; selected: boolean; thumbnailUrl?: string | null }>>([]);
   const thumbnailCacheRef = useRef<Map<string, Array<string | null>>>(new Map());
   const [thumbnailZoom, setThumbnailZoom] = useState<number>(100);
-  const [documentRotation, setDocumentRotation] = useState<number>(0);
   const [draggedPageIndex, setDraggedPageIndex] = useState<number | null>(null);
 
   const [imagePreviewUrl, setImagePreviewUrl] = useState<string | null>(null);
@@ -647,41 +647,6 @@ export function ToolDetail(props?: any) {
     return await response.blob();
   };
 
-  const parsePageRangeInput = (input: string, total: number): number[] => {
-    if (!input || input.trim() === "") throw new Error("Empty input");
-    const parts = input.split(",").map((p) => p.trim()).filter(Boolean);
-    if (parts.length === 0) throw new Error("Empty input");
-
-    const indices: number[] = [];
-    for (const part of parts) {
-      const rangeMatch = part.match(/^(\d+)-(\d+)$/);
-      if (rangeMatch) {
-        const a = parseInt(rangeMatch[1], 10);
-        const b = parseInt(rangeMatch[2], 10);
-        if (isNaN(a) || isNaN(b)) throw new Error("Invalid syntax");
-        if (a < 1) throw new Error("Page numbers must be >= 1");
-        if (b < a) throw new Error("Range start must be <= range end");
-        if (b > total) throw new Error("Page number exceeds total pages");
-        for (let i = a; i <= b; i++) indices.push(i - 1);
-        continue;
-      }
-
-      const numMatch = part.match(/^(\d+)$/);
-      if (numMatch) {
-        const n = parseInt(numMatch[1], 10);
-        if (isNaN(n)) throw new Error("Invalid syntax");
-        if (n < 1) throw new Error("Page numbers must be >= 1");
-        if (n > total) throw new Error("Page number exceeds total pages");
-        indices.push(n - 1);
-        continue;
-      }
-
-      throw new Error("Invalid syntax");
-    }
-
-    return indices;
-  };
-
   const normalizeRotation = (value: number) => (value % 360 + 360) % 360;
   const getThumbnailCacheKey = (file: File) => `${file.name}:${file.size}:${file.lastModified}`;
 
@@ -689,12 +654,12 @@ export function ToolDetail(props?: any) {
     const cacheKey = getThumbnailCacheKey(file);
     const cached = thumbnailCacheRef.current.get(cacheKey);
     if (cached) {
-      setPdfPages((currentPages) => currentPages.map((page, index) => ({ ...page, thumbnailUrl: cached[index] ?? page.thumbnailUrl ?? null })));
+      setPdfPages((currentPages) => currentPages.map((page) => ({ ...page, thumbnailUrl: cached[page.sourcePageIndex] ?? page.thumbnailUrl ?? null })));
       return;
     }
 
     const placeholders: Array<string | null> = Array.from({ length: pageCount }, () => null);
-    setPdfPages((currentPages) => currentPages.map((page, index) => ({ ...page, thumbnailUrl: placeholders[index] ?? page.thumbnailUrl ?? null })));
+    setPdfPages((currentPages) => currentPages.map((page) => ({ ...page, thumbnailUrl: placeholders[page.sourcePageIndex] ?? page.thumbnailUrl ?? null })));
 
     try {
       const bytes = await file.arrayBuffer();
@@ -716,14 +681,14 @@ export function ToolDetail(props?: any) {
         context.fillRect(0, 0, canvas.width, canvas.height);
         await page.render({ canvas, canvasContext: context, viewport: page.getViewport({ scale: 1.8 * targetScale }) }).promise;
         thumbnails[index] = canvas.toDataURL("image/png");
-        setPdfPages((currentPages) => currentPages.map((pageItem, pageIndex) => pageIndex === index ? { ...pageItem, thumbnailUrl: thumbnails[pageIndex] ?? pageItem.thumbnailUrl ?? null } : pageItem));
+        setPdfPages((currentPages) => currentPages.map((pageItem) => pageItem.sourcePageIndex === index ? { ...pageItem, thumbnailUrl: thumbnails[index] } : pageItem));
       }
 
       thumbnailCacheRef.current.set(cacheKey, thumbnails);
-      setPdfPages((currentPages) => currentPages.map((page, index) => ({ ...page, thumbnailUrl: thumbnails[index] ?? page.thumbnailUrl ?? null })));
+      setPdfPages((currentPages) => currentPages.map((page) => ({ ...page, thumbnailUrl: thumbnails[page.sourcePageIndex] ?? page.thumbnailUrl ?? null })));
     } catch (error) {
       console.error("Unable to render page thumbnails", error);
-      setPdfPages((currentPages) => currentPages.map((page, index) => ({ ...page, thumbnailUrl: placeholders[index] ?? page.thumbnailUrl ?? null })));
+      setPdfPages((currentPages) => currentPages.map((page) => ({ ...page, thumbnailUrl: placeholders[page.sourcePageIndex] ?? page.thumbnailUrl ?? null })));
     }
   };
 
@@ -734,11 +699,11 @@ export function ToolDetail(props?: any) {
       const pageCount = pdf.getPageCount();
 
       setTotalPages(pageCount);
-      setDocumentRotation(0);
       setPdfPages(
         Array.from({ length: pageCount }, (_, index) => ({
           id: `${file.name}-${index + 1}`,
           pageNumber: index + 1,
+          sourcePageIndex: index,
           rotation: 0,
           selected: false,
           thumbnailUrl: null,
@@ -1261,15 +1226,10 @@ export function ToolDetail(props?: any) {
     return postFormDataForBlob(apiUrl("/api/organize-pdf"), formData, "Organize PDF");
   };
 
-  const rotatePdfOnServer = async (fileToRotate: File, rotationOrRotations: number | number[]): Promise<Blob> => {
+  const rotatePdfOnServer = async (fileToRotate: File, rotations: number[]): Promise<Blob> => {
     const formData = new FormData();
     formData.append("files", fileToRotate);
-
-    if (Array.isArray(rotationOrRotations)) {
-      formData.append("rotations", JSON.stringify(rotationOrRotations));
-    } else {
-      formData.append("rotation", String(rotationOrRotations));
-    }
+    formData.append("rotations", JSON.stringify(rotations));
 
     return postFormDataForBlob(apiUrl("/api/rotate-pdf"), formData, "Rotate PDF");
   };
@@ -1341,7 +1301,7 @@ export function ToolDetail(props?: any) {
   };
 
   const applyWholeDocumentRotation = (delta: number) => {
-    setDocumentRotation((current) => normalizeRotation(current + delta));
+    setPdfPages((pages) => pages.map((page) => ({ ...page, rotation: normalizeRotation(page.rotation + delta) })));
   };
 
   const rotateSelectedPages = (delta: number) => {
@@ -1364,7 +1324,6 @@ export function ToolDetail(props?: any) {
 
   const resetAllPages = () => {
     setPdfPages((pages) => pages.map((page) => ({ ...page, rotation: 0 })));
-    setDocumentRotation(0);
   };
 
   const togglePageSelection = (index: number) => {
@@ -2380,7 +2339,7 @@ export function ToolDetail(props?: any) {
         try {
           if (!pageRange || pageRange.trim() === "") throw new Error("Empty input");
           if (!totalPages) throw new Error("Unable to read PDF pages");
-          parsePageRangeInput(pageRange, totalPages);
+          parsePageRanges(pageRange, totalPages);
         } catch (err: any) {
           setPageRangeError(err.message || "Invalid page range");
           setStatus("options");
@@ -2390,7 +2349,15 @@ export function ToolDetail(props?: any) {
         blob = await splitPdfOnServer(files[0], pageRange);
         outputName = stripExtension(files[0].name) + `-split.pdf`;
       } else if (tool.slug === "edit-pdf") {
-        const pagesToDelete = pdfPages.filter((page) => page.selected).map((page) => page.pageNumber);
+        if (!totalPages) throw new Error("Unable to read PDF pages.");
+        const visiblePageIndexes = new Set(pdfPages.map((page) => page.sourcePageIndex));
+        const selectedPageIndexes = new Set(pdfPages.filter((page) => page.selected).map((page) => page.sourcePageIndex));
+        const pagesToDelete = Array.from({ length: totalPages }, (_, index) => index)
+          .filter((index) => !visiblePageIndexes.has(index) || selectedPageIndexes.has(index))
+          .map((index) => index + 1);
+        if (pagesToDelete.length >= totalPages) {
+          throw new Error("Cannot delete all pages from the PDF.");
+        }
         blob = await editPdfOnClient(files[0], pagesToDelete);
         outputName = stripExtension(files[0].name) + "-edited.pdf";
       } else if (tool.slug === "image-converter") {
@@ -2479,19 +2446,19 @@ export function ToolDetail(props?: any) {
         blob = await addPageNumbersOnServer(files[0], Number.isFinite(startNumber) ? startNumber : 1, pageNumberPosition);
         outputName = stripExtension(files[0].name) + "-numbered.pdf";
       } else if (tool.slug === "rotate-pdf") {
-        blob = await rotatePdfOnServer(files[0], documentRotation);
+        blob = await rotatePdfOnServer(files[0], pdfPages.map((page) => page.rotation));
         outputName = stripExtension(files[0].name) + "-rotated.pdf";
       } else if (tool.slug === "organize-pdf") {
-        const pageOrder = pdfPages.map((page) => page.pageNumber);
+        const pageOrder = pdfPages.map((page) => page.sourcePageIndex + 1);
         const rotations = pdfPages.map((page) => page.rotation);
         blob = await organizePdfOnServer(files[0], pageOrder, rotations);
         outputName = stripExtension(files[0].name) + "-organized.pdf";
       } else if (tool.slug === "delete-pages") {
-        const pagesToDelete = pdfPages.filter((page) => page.selected).map((page) => page.pageNumber);
+        const pagesToDelete = pdfPages.filter((page) => page.selected).map((page) => page.sourcePageIndex + 1);
         blob = await deletePagesOnServer(files[0], pagesToDelete);
         outputName = stripExtension(files[0].name) + "-deleted-pages.pdf";
       } else if (tool.slug === "extract-pages") {
-        const pages = pdfPages.filter((page) => page.selected).map((page) => page.pageNumber);
+        const pages = pdfPages.filter((page) => page.selected).map((page) => page.sourcePageIndex + 1);
         blob = await extractPagesOnServer(files[0], pages);
         outputName = stripExtension(files[0].name) + "-extracted-pages.pdf";
       } else if (tool.slug === "ocr-image-to-text") {

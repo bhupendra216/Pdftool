@@ -12,7 +12,7 @@ const popularLinks = [
 
 export default function NotFound() {
   useSEO({
-    title: "404 - Page Not Found",
+    title: "Page Not Found | PDFKira",
     description: "The page you were looking for could not be found on PDFKira.",
   });
 

@@ -6,6 +6,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { BrandMark } from "@/components/brand/BrandMark";
+import { resolvedApiBase } from "@/lib/api-base";
 
 type Overview = {
   totalVisitors: number;
@@ -74,7 +75,7 @@ export function AdminDashboard() {
   useEffect(() => {
     const load = async () => {
       setLoading(true);
-      const response = await fetch(`/api/admin/dashboard?range=${range}`, { credentials: "include" });
+      const response = await fetch(`${resolvedApiBase}/api/admin/dashboard?range=${range}`, { credentials: "include" });
       if (!response.ok) {
         if (response.status === 401) {
           setLocation("/admin/login");
@@ -93,16 +94,16 @@ export function AdminDashboard() {
       setReferrals((payload.referrals || []).slice(0, 10));
       setPopularPages((payload.popularPages || []).slice(0, 10));
       setMostUsedTools(payload.mostUsedTools || []);
-      const logsResponse = await fetch("/api/admin/logs?limit=20", { credentials: "include" });
+      const logsResponse = await fetch(`${resolvedApiBase}/api/admin/logs?limit=20`, { credentials: "include" });
       if (logsResponse.ok) {
         const logsPayload = await logsResponse.json();
         setLogs(logsPayload.logs || []);
       }
-      const errorsResponse = await fetch("/api/admin/errors", { credentials: "include" });
+      const errorsResponse = await fetch(`${resolvedApiBase}/api/admin/errors`, { credentials: "include" });
       if (errorsResponse.ok) {
         setErrors(await errorsResponse.json());
       }
-      const performanceResponse = await fetch("/api/admin/performance", { credentials: "include" });
+      const performanceResponse = await fetch(`${resolvedApiBase}/api/admin/performance`, { credentials: "include" });
       if (performanceResponse.ok) {
         setPerformance(await performanceResponse.json());
       }
@@ -116,7 +117,7 @@ export function AdminDashboard() {
   useEffect(() => {
     void (async () => {
       setLoading(true);
-      const response = await fetch(`/api/admin/dashboard?range=${range}`, { credentials: "include" });
+      const response = await fetch(`${resolvedApiBase}/api/admin/dashboard?range=${range}`, { credentials: "include" });
       if (!response.ok) {
         setLoading(false);
         return;
@@ -151,7 +152,7 @@ export function AdminDashboard() {
   const [mostUsedTools, setMostUsedTools] = useState<Array<{ name: string; today?: number; week?: number; month?: number; all?: number }>>([]);
 
   const handleLogout = async () => {
-    await fetch("/api/admin/logout", { method: "POST", credentials: "include" });
+    await fetch(`${resolvedApiBase}/api/admin/logout`, { method: "POST", credentials: "include" });
     setLocation("/admin/login");
   };
 

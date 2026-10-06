@@ -1,16 +1,10 @@
 import { Router, type IRouter } from "express";
-import { categories, companies, jobs, locations } from "../lib/ai-jobs-seed";
+import { companies } from "../lib/ai-jobs-seed";
 
 const router: IRouter = Router();
 
 router.get("/ai-jobs", (_req, res) => {
-  res.json({
-    refreshedAt: new Date().toISOString(),
-    categories,
-    locations,
-    companies,
-    jobs,
-  });
+  res.json({ companies });
 });
 
 export default router;

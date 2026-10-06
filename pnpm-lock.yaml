@@ -188,6 +188,9 @@ importers:
       '@workspace/db':
         specifier: workspace:*
         version: link:../../lib/db
+      '@workspace/pdf-pages':
+        specifier: workspace:*
+        version: link:../../lib/pdf-pages
       cookie-parser:
         specifier: ^1.4.7
         version: 1.4.7
@@ -462,6 +465,9 @@ importers:
       '@vercel/analytics':
         specifier: ^2.0.1
         version: 2.0.1(react@19.1.0)
+      '@workspace/pdf-pages':
+        specifier: workspace:*
+        version: link:../../lib/pdf-pages
       heic2any:
         specifier: ^0.0.4
         version: 0.0.4
@@ -734,6 +740,8 @@ importers:
       drizzle-kit:
         specifier: ^0.31.10
         version: 0.31.10
+
+  lib/pdf-pages: {}
 
   scripts:
     devDependencies:

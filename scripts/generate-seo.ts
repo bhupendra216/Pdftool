@@ -1,15 +1,15 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { tools, type ToolRecord } from '../artifacts/api-server/src/lib/content.ts';
-import { TOOL_SEO_CONTENT } from '../artifacts/pdf-tools/src/data/toolSeoContent.ts';
-import { ensureToolFaqs } from '../artifacts/pdf-tools/src/lib/toolSeoContent.ts';
+import { blogPosts, tools, type ToolRecord } from '../artifacts/api-server/src/lib/content.ts';
+import { getToolSeoContent } from '../artifacts/pdf-tools/src/lib/toolSeoContent.ts';
 import { resolveToolOgImage, toolsSEO } from '../artifacts/pdf-tools/src/data/seoConfig.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const siteUrl = (process.env.VITE_SITE_URL || 'https://pdfkira.com').replace(/\/+$/, '');
+const siteUrl = 'https://pdfkira.com';
+const aiJobsCachePath = path.resolve(__dirname, '../artifacts/api-server/src/lib/ai-jobs-cache.json');
 // Prefer the built `dist/public` (hashed assets) first, then the legacy `public`.
 const outDirs = [
   path.resolve(__dirname, '../artifacts/pdf-tools/dist/public'),
@@ -18,11 +18,11 @@ const outDirs = [
 
 const escapeHtml = (value: string) =>
   value
-    .replace(/&amp;/g, '&amp;amp;')
-    .replace(/&lt;/g, '&amp;lt;')
-    .replace(/&gt;/g, '&amp;gt;')
-    .replace(/"/g, '&amp;quot;')
-    .replace(/'/g, '&amp;#39;');
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 
 const GOOGLE_TAG_SNIPPET = `
     <!-- Google tag (gtag.js) -->
@@ -80,8 +80,7 @@ function resolveAbsoluteImageUrl(image: string | undefined, fallback = `${siteUr
 }
 
 function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath: string }) {
-  // Prefer explicit TOOL_SEO_CONTENT for richer, prerendered SEO copy.
-  const seoEntry = TOOL_SEO_CONTENT[tool.slug];
+  const seoEntry = getToolSeoContent(tool.slug);
   const toolOgImage = resolveToolOgImage(tool.slug, `${siteUrl}/logo.png`);
   const ogImageUrl = resolveAbsoluteImageUrl(toolOgImage);
 
@@ -96,11 +95,7 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
     .map((w: any) => `<div><h3>${escapeHtml(w.title)}</h3><p>${escapeHtml(w.description)}</p></div>`)
     .join('');
 
-  const pageFaqs = ensureToolFaqs(
-    tool.name,
-    tool.slug,
-    seoEntry?.faq?.length ? seoEntry.faq : tool.faqs,
-  );
+  const pageFaqs = seoEntry?.faq?.length ? seoEntry.faq : tool.faqs;
 
   const faqs = pageFaqs
     .map(
@@ -153,18 +148,33 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
     <script type="application/ld+json">
       ${JSON.stringify({
         '@context': 'https://schema.org',
-        '@type': 'SoftwareApplication',
-        name: tool.name,
-        description: tool.seoDescription,
-        operatingSystem: 'Web',
-        applicationCategory: 'Utility',
-        url: toolUrl,
-        offers: {
-          '@type': 'Offer',
-          price: 0,
-          priceCurrency: 'USD',
-        },
-      })}
+        '@graph': [
+          {
+            '@type': 'SoftwareApplication',
+            name: tool.name,
+            description: tool.seoDescription,
+            operatingSystem: 'Web',
+            applicationCategory: 'Utility',
+            url: toolUrl,
+            offers: {
+              '@type': 'Offer',
+              price: 0,
+              priceCurrency: 'USD',
+            },
+          },
+          {
+            '@type': 'FAQPage',
+            mainEntity: pageFaqs.map((faq: any) => ({
+              '@type': 'Question',
+              name: faq.question,
+              acceptedAnswer: {
+                '@type': 'Answer',
+                text: faq.answer,
+              },
+            })),
+          },
+        ],
+      }).replace(/</g, '\\u003c')}
     </script>
   </head>
   <body>
@@ -177,20 +187,9 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
           <p>${escapeHtml(tool.shortDescription)}</p>
         </header>
 
-        <section>
-          <h2>How it works</h2>
-          <ol>${steps}</ol>
-        </section>
-
-        <section>
-          <h2>Why use this tool</h2>
-          ${whyUseHtml}
-        </section>
-
-        <section>
-          <h2>Frequently asked questions</h2>
-          <ul>${faqs}</ul>
-        </section>
+        ${steps ? `<section><h2>How it works</h2><ol>${steps}</ol></section>` : ''}
+        ${whyUseHtml ? `<section><h2>Why use this tool</h2>${whyUseHtml}</section>` : ''}
+        ${faqs ? `<section><h2>Frequently asked questions</h2><ul>${faqs}</ul></section>` : ''}
 
         <p><a href="/tools">Browse all PDF tools</a></p>
       </main>
@@ -328,6 +327,7 @@ function renderComparisonPageHtml(assets: { jsPath: string; cssPath: string }) {
     <meta property="og:description" content="${description}" />
     <meta property="og:type" content="article" />
     <meta property="og:url" content="${canonical}" />
+    <meta property="og:image" content="${siteUrl}/logo.png" />
     <link rel="stylesheet" href="${assets.cssPath}" />
     <script>
       document.documentElement.classList.add('js');
@@ -366,20 +366,183 @@ function renderComparisonPageHtml(assets: { jsPath: string; cssPath: string }) {
 </html>`;
 }
 
-function renderHomeSeoBlock() {
-  const cards = tools
-    .map(
-      (tool) => `
-        <li>
-          <a href="${siteUrl}/tools/${tool.slug}" aria-label="Use ${escapeHtml(tool.name)}">
-            <h2>${escapeHtml(tool.name)}</h2>
-            <p>${escapeHtml(tool.shortDescription)}</p>
-          </a>
-        </li>`,
-    )
-    .join('');
+function renderEditorialPageHtml(
+  page: { path: string; title: string; description: string; body: string },
+  assets: { jsPath: string; cssPath: string },
+) {
+  const canonical = `${siteUrl}${page.path}`;
+  const title = page.title.endsWith('| PDFKira') ? page.title : `${page.title} | PDFKira`;
+  return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${escapeHtml(title)}</title>
+    <meta name="description" content="${escapeHtml(page.description)}" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="${canonical}" />
+    <meta property="og:title" content="${escapeHtml(title)}" />
+    <meta property="og:description" content="${escapeHtml(page.description)}" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="${canonical}" />
+    <meta property="og:image" content="${siteUrl}/logo.png" />
+    <link rel="stylesheet" href="${assets.cssPath}" />
+    <script>document.documentElement.classList.add('js');</script>
+    <style>html.js #seo-fallback { display: none !important; } html:not(.js) #seo-fallback { display: block !important; }</style>
+  </head>
+  <body>
+    <div id="seo-fallback" style="display:block"><main><h1>${escapeHtml(page.title)}</h1>${page.body}</main></div>
+    <div id="root"></div>
+    <script type="module" src="${assets.jsPath}"></script>
+    <noscript><style>#seo-fallback { display:block !important; }</style></noscript>
+  </body>
+</html>`;
+}
 
-  return `<!-- SEO Fallback -->\n<div id="seo-fallback" style="display: block;">\n  <main>\n    <h1>PDFKira</h1>\n    <p>Free online PDF tools for merging, splitting, compressing, converting, organizing, and editing PDF files.</p>\n    <p><a href="/tools">Browse all PDF tools</a></p>\n    <ul>${cards}</ul>\n  </main>\n</div>`;
+function renderAiJobsSnapshot() {
+  const cache = JSON.parse(fs.readFileSync(aiJobsCachePath, 'utf-8')) as {
+    fetchedAt: string;
+    jobs: Array<{
+      id: string;
+      url: string;
+      title: string;
+      companyName: string;
+      companyLogo: string | null;
+      location: string;
+      salary: string | null;
+      jobType: string;
+      publicationDate: string;
+    }>;
+  };
+
+  const parseDate = (value: string) => {
+    const iso = /(?:Z|[+-]\d{2}:\d{2})$/i.test(value) ? value : `${value}Z`;
+    return new Date(iso);
+  };
+  const formatPostedDate = (value: string) => {
+    const date = parseDate(value);
+    const hours = Math.floor(Math.max(0, Date.now() - date.getTime()) / (60 * 60 * 1000));
+    if (hours < 24) return `New · Posted ${hours < 1 ? 'less than 1h ago' : `${hours}h ago`}`;
+    return new Intl.DateTimeFormat('en', {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      timeZone: 'UTC',
+    }).format(date);
+  };
+  const jobs = cache.jobs
+    .slice()
+    .sort((left, right) => parseDate(right.publicationDate).getTime() - parseDate(left.publicationDate).getTime());
+
+  const jobCards = jobs.map((job) => {
+    const logo = job.companyLogo
+      ? `<img src="${escapeHtml(job.companyLogo)}" alt="${escapeHtml(job.companyName)} logo" width="48" height="48" />`
+      : `<span aria-hidden="true">${escapeHtml(job.companyName.slice(0, 2).toUpperCase())}</span>`;
+    const salary = job.salary ? `<span> · ${escapeHtml(job.salary)}</span>` : '';
+    return `<article>
+  ${logo}
+  <h2>${escapeHtml(job.title)}</h2>
+  <p>${escapeHtml(job.companyName)}</p>
+  <p>${escapeHtml(job.location)} · ${escapeHtml(job.jobType)}${salary}</p>
+  <p><time>${escapeHtml(formatPostedDate(job.publicationDate))}</time></p>
+  <p><a href="${escapeHtml(job.url)}" target="_blank" rel="noopener noreferrer">Apply</a></p>
+</article>`;
+  }).join('\n');
+
+  // JobPosting JSON-LD is omitted: these cached listings can expire between scheduled refreshes,
+  // and Google requires each structured job to be current and removed promptly when no longer open.
+  return `<p><strong>Remotive listings may be delayed by up to 24 hours; confirm availability on the original listing.</strong></p>
+<p>Jobs via <a href="https://remotive.com" target="_blank" rel="noopener noreferrer">Remotive</a> — the source for these remote job listings.</p>
+${jobs.length ? jobCards : '<p>No AI jobs found right now — check back soon.</p>'}
+<p>Jobs via <a href="https://remotive.com" target="_blank" rel="noopener noreferrer">Remotive</a>. Applications open on the original listing.</p>`;
+}
+
+function getStaticPages() {
+  const pages = [
+    {
+      path: '/about',
+      title: 'About Us',
+      description: 'Learn about PDFKira and our commitment to useful, privacy-conscious PDF tools.',
+      body: '<h2>Our Mission</h2><p>PDFKira provides a focused set of PDF tools designed to make document work straightforward and accessible.</p><h2>Privacy First</h2><p>Many tools work directly in your browser. For server-assisted processing, files are transferred securely and temporary copies are removed within one hour.</p><h2>Free for Everyone</h2><p>Core PDFKira tools are available without an account.</p>',
+    },
+    {
+      path: '/blog',
+      title: 'Blog and Guides',
+      description: 'Guides and practical advice for working with PDFs and document tools.',
+      body: `<ul>${blogPosts.map((post) => `<li><a href="${siteUrl}/blog/${encodeURIComponent(post.slug)}">${escapeHtml(post.title)}</a><p>${escapeHtml(post.excerpt)}</p></li>`).join('')}</ul>`,
+    },
+    {
+      path: '/ai-jobs',
+      title: 'AI Jobs – Latest Remote AI & Machine Learning Jobs',
+      description: 'Browse remote AI and machine learning jobs from Remotive, updated three times daily. Search by role or location and apply on the original listing.',
+      body: renderAiJobsSnapshot(),
+    },
+    {
+      path: '/contact',
+      title: 'Contact Us',
+      description: 'Contact PDFKira for support, feedback, or business inquiries.',
+      body: '<p>For general questions, feedback, or business inquiries, email <a href="mailto:contact@pdfkira.com">contact@pdfkira.com</a>. For support with tools and document processing, email <a href="mailto:support@pdfkira.com">support@pdfkira.com</a>.</p>',
+    },
+    {
+      path: '/privacy',
+      title: 'Privacy Policy',
+      description: 'How PDFKira handles uploaded files, analytics, cookies, and personal information.',
+      body: '<h2>File processing and storage</h2><p>Many PDFKira tools process files locally in your browser. Where a tool requires server-side processing, files are transmitted over HTTPS. Uploaded and generated temporary files are automatically deleted from our servers within one hour after processing.</p><h2>Analytics and cookies</h2><p>PDFKira uses Google Analytics to understand site usage and improve the service. Google Analytics may use cookies or similar technologies under its own policies. The site also stores limited preferences in your browser. You can manage or delete cookies and browser storage through your browser settings.</p><h2>Personal information</h2><p>PDFKira does not sell personal information. Do not upload documents unless you have the right to process them and are comfortable using the selected tool.</p><h2>Contact</h2><p>Questions about this policy can be sent to <a href="mailto:contact@pdfkira.com">contact@pdfkira.com</a>.</p>',
+    },
+    {
+      path: '/terms',
+      title: 'Terms of Service',
+      description: 'Terms that apply when using PDFKira tools and services.',
+      body: '<h2>Acceptance and lawful use</h2><p>By using PDFKira, you agree to these terms and to use the service only for lawful purposes without infringing others’ rights or disrupting their use.</p><h2>Your files</h2><p>You retain ownership of your documents. You are responsible for having the rights and permissions needed to process files you provide.</p><h2>Availability and results</h2><p>The service is provided “as is” and “as available.” Access may be interrupted, and outputs should be reviewed for accuracy and suitability before use.</p><h2>Changes</h2><p>PDFKira may update, suspend, or discontinue features. Continued use after updated terms are posted constitutes acceptance of the updated terms.</p><h2>Contact</h2><p>Questions about these terms can be sent to <a href="mailto:contact@pdfkira.com">contact@pdfkira.com</a>.</p>',
+    },
+  ];
+
+  const articles = blogPosts.map((post) => ({
+    path: `/blog/${encodeURIComponent(post.slug)}`,
+    title: post.title,
+    description: post.excerpt,
+    body: `<p>${escapeHtml(post.excerpt)}</p><p><a href="${siteUrl}/blog">Browse all PDFKira guides</a></p>`,
+  }));
+
+  return [...pages, ...articles];
+}
+
+function renderHomeSeoBlock() {
+  const visibleTools = tools.filter((tool) => tool.status === 'available' && tool.slug !== 'edit-pdf');
+  const featuredSlugs = ['pdf-to-markdown', 'add-page-numbers', 'image-converter', 'qr-code-generator'];
+  const featuredTools = featuredSlugs
+    .map((slug) => visibleTools.find((tool) => tool.slug === slug))
+    .filter((tool): tool is ToolRecord => Boolean(tool));
+  const popularTools = visibleTools.filter((tool) => tool.popular).slice(0, 6);
+  const renderCards = (items: ToolRecord[], label: string) =>
+    items
+      .map(
+        (tool) => `
+          <li>
+            <a href="${siteUrl}/tools/${tool.slug}" aria-label="Use ${escapeHtml(tool.name)}">
+              <h3>${escapeHtml(tool.name)}</h3>
+              <p>${escapeHtml(tool.shortDescription)}</p>
+            </a>
+          </li>`,
+      )
+      .join('') || `<li>${escapeHtml(label)} are being updated. Browse <a href="${siteUrl}/tools">all tools</a>.</li>`;
+
+  return `<!-- SEO Fallback -->
+<div id="seo-fallback" style="display: block;">
+  <main>
+    <h1>PDFKira — Free Online PDF Tools</h1>
+    <p>Free online PDF tools for merging, splitting, compressing, converting, organizing, and editing PDF files.</p>
+    <section>
+      <h2>Featured Tools</h2>
+      <ul>${renderCards(featuredTools, 'Featured tools')}</ul>
+    </section>
+    <section>
+      <h2>Most Popular Tools</h2>
+      <ul>${renderCards(popularTools, 'Popular tools')}</ul>
+    </section>
+    <p><a href="/tools">View all ${visibleTools.length} tools</a></p>
+  </main>
+</div>`;
 }
 
 function patchHomepageHtml(outDir: string) {
@@ -396,6 +559,7 @@ function patchHomepageHtml(outDir: string) {
     `<meta property="og:url" content="${siteUrl}/" />`,
   );
   if (content.indexOf('id="seo-fallback"') !== -1) {
+    content = content.replace(/<!-- SEO Fallback -->[\s\S]*?<\/div>/, renderHomeSeoBlock());
     fs.writeFileSync(indexPath, content, 'utf-8');
     return;
   }
@@ -458,6 +622,122 @@ function injectGoogleTagIntoAllHtmlFiles(outDir: string) {
   }
 }
 
+function collectHtmlFiles(dir: string): string[] {
+  const results: string[] = [];
+  const entries = fs.readdirSync(dir, { withFileTypes: true });
+  for (const entry of entries) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) {
+      results.push(...collectHtmlFiles(full));
+    } else if (entry.isFile() && full.endsWith('.html')) {
+      results.push(full);
+    }
+  }
+  return results;
+}
+
+function verifyGeneratedSeo(
+  outDir: string,
+  sitemapItems: Array<{ loc: string; changefreq: string }>,
+  requireHomepage: boolean,
+) {
+  const vercelConfigPath = path.resolve(__dirname, '../vercel.json');
+  const vercelConfig = JSON.parse(fs.readFileSync(vercelConfigPath, 'utf-8'));
+  const wwwRedirect = vercelConfig.redirects.find(
+    (redirect: any) =>
+      redirect.has?.some((condition: any) => condition.type === 'host' && condition.value === 'www.pdfkira.com'),
+  );
+  if (wwwRedirect?.destination !== `${siteUrl}/:path*` || wwwRedirect.statusCode !== 301) {
+    throw new Error('Vercel must permanently redirect www.pdfkira.com to the canonical HTTPS host.');
+  }
+
+  const sitemapPath = path.join(outDir, 'sitemap.xml');
+  const sitemap = fs.readFileSync(sitemapPath, 'utf-8');
+  if (!sitemap.startsWith('<?xml') || !sitemap.includes('<urlset') || !sitemap.includes('</urlset>')) {
+    throw new Error(`Generated sitemap is not a valid urlset: ${sitemapPath}`);
+  }
+  if ((sitemap.match(/<url>/g) || []).length !== sitemapItems.length) {
+    throw new Error(`Generated sitemap URL count does not match its route list: ${sitemapPath}`);
+  }
+
+  for (const { loc } of sitemapItems) {
+    if (new URL(loc).origin !== siteUrl) {
+      throw new Error(`Sitemap URL does not use the canonical origin: ${loc}`);
+    }
+    const pathname = new URL(loc).pathname;
+    const routePath = pathname.endsWith('/') ? pathname : `${pathname}/`;
+    const htmlPath = path.join(outDir, routePath, 'index.html');
+    if (!fs.existsSync(htmlPath)) {
+      if (pathname === '/' && !requireHomepage) continue;
+      throw new Error(`Sitemap route has no generated HTML (would be a static-host 404): ${loc}`);
+    }
+
+    const html = fs.readFileSync(htmlPath, 'utf-8');
+    const title = html.match(/<title>([\s\S]*?)<\/title>/i)?.[1] || '';
+    if (!title || /404\s*-\s*Page Not Found/i.test(title)) {
+      throw new Error(`Valid sitemap route has an empty or 404 title: ${loc}`);
+    }
+    const canonical = html.match(/<link\s+rel="canonical"\s+href="([^"]+)"/i)?.[1];
+    if (canonical !== loc) {
+      throw new Error(`Canonical mismatch on ${loc}; received ${canonical || 'none'}`);
+    }
+  }
+
+  const robots = fs.readFileSync(path.join(outDir, 'robots.txt'), 'utf-8');
+  if (!robots.includes(`Sitemap: ${siteUrl}/sitemap.xml`)) {
+    throw new Error(`robots.txt does not reference the canonical sitemap: ${outDir}`);
+  }
+
+  for (const tool of tools.filter((entry) => entry.status === 'available')) {
+    const aliasRedirect = vercelConfig.redirects.find(
+      (redirect: any) => redirect.source === `/${tool.slug}` && redirect.destination === `/tools/${tool.slug}`,
+    );
+    if (!aliasRedirect) {
+      throw new Error(`Missing legacy route redirect for tool: ${tool.slug}`);
+    }
+
+    const aiJobsPage = fs.readFileSync(path.join(outDir, 'ai-jobs', 'index.html'), 'utf-8');
+    const aiJobsCache = JSON.parse(fs.readFileSync(aiJobsCachePath, 'utf-8')) as {
+      jobs: Array<{ title: string; url: string }>;
+    };
+    if (!aiJobsPage.includes('Jobs via <a href="https://remotive.com"')) {
+      throw new Error('AI Jobs static page is missing Remotive attribution.');
+    }
+    for (const job of aiJobsCache.jobs) {
+      if (!aiJobsPage.includes(escapeHtml(job.title)) || !aiJobsPage.includes(escapeHtml(job.url))) {
+        throw new Error(`AI Jobs static page is missing cached listing: ${job.title}`);
+      }
+    }
+
+    const htmlPath = path.join(outDir, 'tools', tool.slug, 'index.html');
+    const html = fs.readFileSync(htmlPath, 'utf-8');
+    const faqScript = html.match(/<script type="application\/ld\+json">\s*([\s\S]*?)\s*<\/script>/i)?.[1];
+    if (!faqScript) throw new Error(`Missing structured data for tool route: ${tool.slug}`);
+
+    let structuredData: any;
+    try {
+      structuredData = JSON.parse(faqScript);
+    } catch {
+      throw new Error(`Invalid JSON-LD on tool route: ${tool.slug}`);
+    }
+    const faqPage = structuredData['@graph']?.find((entry: any) => entry['@type'] === 'FAQPage');
+    if (!faqPage || faqPage.mainEntity.length < 4 || faqPage.mainEntity.length > 6) {
+      throw new Error(`Tool route must have 4-6 structured FAQ entries: ${tool.slug}`);
+    }
+    if (!html.includes('<h2>Why use this tool</h2>') || (html.match(/<div><h3>/g) || []).length < 3) {
+      throw new Error(`Tool route is missing its three benefit blocks: ${tool.slug}`);
+    }
+  }
+
+  for (const htmlPath of collectHtmlFiles(outDir)) {
+    const html = fs.readFileSync(htmlPath, 'utf-8');
+    const title = html.match(/<title>([\s\S]*?)<\/title>/i)?.[1] || '';
+    if (/404\s*-\s*Page Not Found/i.test(title)) {
+      throw new Error(`Generated HTML contains a 404 title: ${htmlPath}`);
+    }
+  }
+}
+
 function writeStaticFiles() {
   // Prefer extracting asset paths from the built `dist/public` (first outDir).
   const preferredOut = outDirs[0];
@@ -481,6 +761,7 @@ function writeStaticFiles() {
     );
 
     // Write sitemap.xml
+    const editorialPages = getStaticPages();
     const sitemapItems = [
       { loc: `${siteUrl}/`, changefreq: 'weekly' },
       { loc: `${siteUrl}/tools`, changefreq: 'weekly' },
@@ -488,12 +769,13 @@ function writeStaticFiles() {
       ...tools
         .filter((tool) => tool.status === 'available')
         .map((tool) => ({ loc: `${siteUrl}/tools/${tool.slug}`, changefreq: 'weekly' as const })),
+      ...editorialPages.map((page) => ({ loc: `${siteUrl}${page.path}`, changefreq: 'monthly' as const })),
     ];
 
     const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${sitemapItems
       .map(
         (item) =>
-          `  <url>\n    <loc>${item.loc}</loc>\n    <lastmod>${new Date().toISOString().slice(0, 10)}</lastmod>\n    <changefreq>${item.changefreq}</changefreq>\n  </url>`,
+          `  <url>\n    <loc>${escapeHtml(item.loc)}</loc>\n    <lastmod>${new Date().toISOString().slice(0, 10)}</lastmod>\n    <changefreq>${item.changefreq}</changefreq>\n  </url>`,
       )
       .join('\n')}\n</urlset>`;
 
@@ -504,6 +786,12 @@ function writeStaticFiles() {
     ensureDir(comparisonDir);
     fs.writeFileSync(path.join(comparisonDir, 'index.html'), renderComparisonPageHtml(assets), 'utf-8');
 
+    for (const page of editorialPages) {
+      const pagePath = path.join(outDir, page.path.replace(/^\//, ''), 'index.html');
+      ensureDir(path.dirname(pagePath));
+      fs.writeFileSync(pagePath, renderEditorialPageHtml(page, assets), 'utf-8');
+    }
+
     // Write individual tool pages
     for (const tool of tools) {
       const toolDir = path.join(outDir, 'tools', tool.slug);
@@ -511,11 +799,14 @@ function writeStaticFiles() {
       fs.writeFileSync(path.join(toolDir, 'index.html'), renderToolPageHtml(tool, assets), 'utf-8');
     }
 
+    verifyGeneratedSeo(outDir, sitemapItems, outDir === preferredOut);
+
     console.log(`Generated static files in ${outDir}:`);
     console.log(`  - robots.txt`);
     console.log(`  - sitemap.xml (${sitemapItems.length} URLs)`);
     console.log(`  - tools/index.html`);
     console.log(`  - ${tools.length} tool pages`);
+    console.log(`  - ${editorialPages.length} editorial pages`);
     console.log(`  - comparison page`);
   }
 
@@ -547,20 +838,6 @@ function writeStaticFiles() {
         console.warn(`Warning: failed to copy preferred assets to ${outDir}: ${String(err)}`);
       }
     }
-  }
-
-  function collectHtmlFiles(dir: string) {
-    const results: string[] = [];
-    const entries = fs.readdirSync(dir, { withFileTypes: true });
-    for (const entry of entries) {
-      const full = path.join(dir, entry.name);
-      if (entry.isDirectory()) {
-        results.push(...collectHtmlFiles(full));
-      } else if (entry.isFile() && full.endsWith('.html')) {
-        results.push(full);
-      }
-    }
-    return results;
   }
 
   for (const outDir of outDirs) {

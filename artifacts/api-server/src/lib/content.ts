@@ -178,6 +178,36 @@ export const tools: ToolRecord[] = [
     blogSlug: null,
   },
   {
+    slug: "sign-pdf",
+    name: "Sign PDF",
+    shortDescription: "Add an electronic signature to a PDF document online.",
+    category: "Edit & Sign",
+    icon: "FileSignature",
+    popular: false,
+    status: "available",
+    seoTitle: "Sign PDF Documents Online Free | PDFKira",
+    seoDescription:
+      "Sign PDF documents online by drawing, typing, or uploading your signature, then place it on the page and download your signed PDF.",
+    steps: [
+      "Upload the PDF document you want to sign.",
+      "Create your signature by drawing, typing, or uploading an image.",
+      "Place your signature on the page and download the signed PDF.",
+    ],
+    faqs: [
+      {
+        question: "Can I add an electronic signature to my PDF?",
+        answer:
+          "Yes. Create a signature by drawing it, typing your name, or uploading a signature image, then place it on the document.",
+      },
+      {
+        question: "Can I choose where my signature appears?",
+        answer:
+          "Yes. Position your signature on the page and adjust its size before downloading the signed PDF.",
+      },
+    ],
+    blogSlug: null,
+  },
+  {
     slug: "transform-pdf",
     name: "Transform Handwritten PDF",
     shortDescription: "Apply handwritten-looking distress and paper texture to PDFs.",

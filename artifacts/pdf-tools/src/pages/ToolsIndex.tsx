@@ -7,6 +7,7 @@ import { BrandMark } from "@/components/brand/BrandMark";
 import { useState, useMemo } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { tools as toolCatalog } from "../../../api-server/src/lib/content";
 
 export function ToolsIndex() {
   useSEO({
@@ -15,25 +16,26 @@ export function ToolsIndex() {
   });
 
   const { data: tools, isLoading } = useListTools();
+  const catalogTools = Array.isArray(tools) && tools.length > 0 ? tools : toolCatalog;
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("All");
 
   const categories = useMemo(() => {
-    if (!Array.isArray(tools)) return ["All"];
-    const cats = new Set(tools.map((t) => t.category));
+    if (!Array.isArray(catalogTools)) return ["All"];
+    const cats = new Set(catalogTools.map((t) => t.category));
     return ["All", ...Array.from(cats)].sort();
-  }, [tools]);
+  }, [catalogTools]);
 
   const filteredTools = useMemo(() => {
-    if (!Array.isArray(tools)) return [];
-    return tools.filter((tool) => {
+    if (!Array.isArray(catalogTools)) return [];
+    return catalogTools.filter((tool) => {
       if (tool.slug === "edit-pdf") return false;
       const matchesSearch = tool.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         tool.shortDescription.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesCategory = activeCategory === "All" || tool.category === activeCategory;
       return matchesSearch && matchesCategory;
     });
-  }, [tools, searchQuery, activeCategory]);
+  }, [catalogTools, searchQuery, activeCategory]);
 
   return (
     <div className="bg-background pb-24">
@@ -65,7 +67,7 @@ export function ToolsIndex() {
           ))}
         </div>
 
-        {isLoading ? (
+        {isLoading && Array.isArray(tools) ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
             {[1, 2, 3, 4, 5, 6, 7, 8, 9].map(i => (
               <Skeleton key={i} className="h-48 w-full rounded-2xl" />

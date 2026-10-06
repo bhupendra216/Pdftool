@@ -1,0 +1,63 @@
+name: Refresh Remotive AI jobs
+
+on:
+  schedule:
+    - cron: "17 0,8,16 * * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: refresh-remotive-ai-jobs
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout default branch
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: pnpm
+
+      - name: Install workspace dependencies
+        run: pnpm install --frozen-lockfile --filter @workspace/scripts
+
+      # One request per scheduled run. Do not add retries or a page-request fetch.
+      - name: Fetch and filter Remotive jobs
+        run: pnpm --dir scripts exec tsx src/refresh-remotive-jobs.ts
+
+      - name: Commit refreshed static cache
+        id: cache
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add artifacts/api-server/src/lib/ai-jobs-cache.json
+          if git diff --cached --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            git commit -m "Refresh cached Remotive AI jobs"
+            git push
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Deploy refreshed static page
+        if: steps.cache.outputs.changed == 'true'
+        env:
+          VERCEL_AI_JOBS_DEPLOY_HOOK_URL: ${{ secrets.VERCEL_AI_JOBS_DEPLOY_HOOK_URL }}
+        run: |
+          if [ -z "$VERCEL_AI_JOBS_DEPLOY_HOOK_URL" ]; then
+            echo "Set the VERCEL_AI_JOBS_DEPLOY_HOOK_URL repository secret to rebuild the static page."
+            exit 1
+          fi
+          curl --fail --silent --show-error --max-time 30 \
+            --request POST "$VERCEL_AI_JOBS_DEPLOY_HOOK_URL"

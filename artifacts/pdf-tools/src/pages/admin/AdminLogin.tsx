@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { BrandMark } from "@/components/brand/BrandMark";
+import { resolvedApiBase } from "@/lib/api-base";
 
 export function AdminLogin() {
   const [, setLocation] = useLocation();
@@ -14,7 +15,7 @@ export function AdminLogin() {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    void fetch("/api/admin/me", { credentials: "include" }).then(async (res) => {
+    void fetch(`${resolvedApiBase}/api/admin/me`, { credentials: "include" }).then(async (res) => {
       if (res.ok) {
         setLocation("/admin/dashboard");
       }
@@ -26,7 +27,7 @@ export function AdminLogin() {
     setLoading(true);
     setError(null);
 
-    const response = await fetch("/api/admin/login", {
+    const response = await fetch(`${resolvedApiBase}/api/admin/login`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       credentials: "include",

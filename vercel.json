@@ -52,6 +52,12 @@
   ]
   ,
   "redirects": [
+    {
+      "source": "/:path*",
+      "has": [{ "type": "host", "value": "www.pdfkira.com" }],
+      "destination": "https://pdfkira.com/:path*",
+      "statusCode": 301
+    },
     { "source": "/tools/dirty-pdf", "destination": "/tools/transform-pdf", "permanent": true },
     { "source": "/merge-pdf", "destination": "/tools/merge-pdf", "permanent": true },
     { "source": "/merge", "destination": "/tools/merge-pdf", "permanent": true },
@@ -86,6 +92,7 @@
     { "source": "/unlock", "destination": "/tools/unlock-pdf", "permanent": true },
     { "source": "/protect-pdf", "destination": "/tools/protect-pdf", "permanent": true },
     { "source": "/protect", "destination": "/tools/protect-pdf", "permanent": true },
+    { "source": "/sign-pdf", "destination": "/tools/sign-pdf", "permanent": true },
     { "source": "/watermark-pdf", "destination": "/tools/watermark-pdf", "permanent": true },
     { "source": "/watermark", "destination": "/tools/watermark-pdf", "permanent": true },
     { "source": "/add-page-numbers", "destination": "/tools/add-page-numbers", "permanent": true },

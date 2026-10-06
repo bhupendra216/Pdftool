@@ -1,7 +1,10 @@
 import { useSEO } from "@/hooks/use-seo";
 
 export function Terms() {
-  useSEO({ title: "Terms of Service" });
+  useSEO({
+    title: "Terms of Service",
+    description: "Terms that apply when using PDFKira tools and services.",
+  });
   return (
     <div className="bg-background min-h-screen pb-24">
       <div className="bg-card border-b border-border pt-20 pb-16 mb-16">

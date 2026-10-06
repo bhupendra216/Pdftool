@@ -1,8 +1,11 @@
 export type PageState = {
   id: string;
   pageNumber: number;
+  sourcePageIndex: number;
   rotation: number;
-  selected: boolean;  thumbnailUrl?: string | null;};
+  selected: boolean;
+  thumbnailUrl?: string | null;
+};
 
 export function removePagesById(pages: PageState[], pageIds: string[], thumbnails: Array<string | null> = []): { pages: PageState[]; thumbnails: Array<string | null> } {
   const idsToRemove = new Set(pageIds);

@@ -5,8 +5,7 @@ import App from "./App.tsx";
 import "./index.css";
 
 import { setBaseUrl } from "@workspace/api-client-react";
-
-const resolvedApiBase = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, "") || (import.meta.env.DEV ? "http://localhost:3000" : "");
+import { resolvedApiBase } from "./lib/api-base";
 console.log("Resolved API base:", resolvedApiBase);
 
 setBaseUrl(resolvedApiBase);

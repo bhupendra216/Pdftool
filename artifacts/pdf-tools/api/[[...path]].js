@@ -1,11 +1,18 @@
 // Vercel serverless entrypoint that forwards API requests to the Express app
 // The Express app is built under artifacts/api-server/dist/index.mjs
+import { companies } from '../../api-server/src/lib/ai-jobs-seed.ts';
 
 export default async function handler(req, res) {
   // Minimal built-in handlers for admin endpoints to ensure login works even if
   // the full api-server dist is not available in the deployment bundle.
   const url = new URL(req.url, `https://${req.headers.host || 'example.com'}`);
   const pathname = url.pathname || req.url || '';
+
+  if (pathname === '/api/ai-jobs' && req.method === 'GET') {
+    res.setHeader('Content-Type', 'application/json');
+    res.end(JSON.stringify({ companies }));
+    return;
+  }
 
   // Simple in-memory session store for serverless instances (best-effort)
   global.__pdfkiraAdminSessions = global.__pdfkiraAdminSessions || new Map();

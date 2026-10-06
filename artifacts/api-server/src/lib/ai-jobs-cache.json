@@ -1,0 +1,94 @@
+{
+  "source": "Remotive",
+  "fetchedAt": "2026-10-06T11:06:39.475Z",
+  "jobs": [
+    {
+      "id": "2091133",
+      "url": "https://remotive.com/remote-jobs/software-development/senior-react-full-stack-developer-2091133",
+      "title": "Senior React Full-stack Developer",
+      "companyName": "Lemon.io",
+      "companyLogo": "https://remotive.com/job/2091133/logo",
+      "location": "Europe, USA, Canada, APAC",
+      "salary": null,
+      "jobType": "Full Time",
+      "publicationDate": "2026-10-02T13:30:06"
+    },
+    {
+      "id": "2091132",
+      "url": "https://remotive.com/remote-jobs/software-development/senior-back-end-engineer-2091132",
+      "title": "Senior back-end Engineer",
+      "companyName": "Lemon.io",
+      "companyLogo": "https://remotive.com/job/2091132/logo",
+      "location": "Europe, USA, UK, Canada, Australia, Ireland, Switzerland, Singapore, Mexico, Iceland, Norway",
+      "salary": null,
+      "jobType": "Full Time",
+      "publicationDate": "2026-09-30T13:15:26"
+    },
+    {
+      "id": "2091141",
+      "url": "https://remotive.com/remote-jobs/design/frontend-web-application-developer-2091141",
+      "title": "Frontend Web Application Developer",
+      "companyName": "KoboToolbox",
+      "companyLogo": "https://remotive.com/job/2091141/logo",
+      "location": "USA, Canada, Argentina, Mexico, Peru",
+      "salary": "$90k - $105k",
+      "jobType": "Full Time",
+      "publicationDate": "2026-09-18T16:43:22"
+    },
+    {
+      "id": "2091131",
+      "url": "https://remotive.com/remote-jobs/artificial-intelligence/senior-ai-engineer-2091131",
+      "title": "Senior AI Engineer",
+      "companyName": "Lemon.io",
+      "companyLogo": "https://remotive.com/job/2091131/logo",
+      "location": "Northern America, LATAM, Europe, APAC",
+      "salary": null,
+      "jobType": "Full Time",
+      "publicationDate": "2026-09-18T12:23:56"
+    },
+    {
+      "id": "2091130",
+      "url": "https://remotive.com/remote-jobs/software-development/senior-net-full-stack-developer-2091130",
+      "title": "Senior .NET Full-stack Developer",
+      "companyName": "Lemon.io",
+      "companyLogo": "https://remotive.com/job/2091130/logo",
+      "location": "Northern America, LATAM, Europe, APAC",
+      "salary": null,
+      "jobType": "Full Time",
+      "publicationDate": "2026-09-17T13:22:05"
+    },
+    {
+      "id": "2091129",
+      "url": "https://remotive.com/remote-jobs/data/senior-data-scientist-2091129",
+      "title": "Senior Data Scientist",
+      "companyName": "Lemon.io",
+      "companyLogo": "https://remotive.com/job/2091129/logo",
+      "location": "Northern America, LATAM, Europe, APAC",
+      "salary": null,
+      "jobType": "Full Time",
+      "publicationDate": "2026-09-16T12:35:28"
+    },
+    {
+      "id": "1919266",
+      "url": "https://remotive.com/remote-jobs/software-development/senior-independent-ai-engineer-architect-1919266",
+      "title": "Senior Independent AI Engineer / Architect",
+      "companyName": "A.Team",
+      "companyLogo": "https://remotive.com/job/1919266/logo",
+      "location": "Americas, Europe, Israel",
+      "salary": "$120 - $170 /hour",
+      "jobType": "Contract",
+      "publicationDate": "2026-09-16T10:10:53"
+    },
+    {
+      "id": "2069746",
+      "url": "https://remotive.com/remote-jobs/software-development/tech-lead-full-stack-rails-engineer-2069746",
+      "title": "Tech Lead Full-Stack Rails Engineer",
+      "companyName": "Mitre Media",
+      "companyLogo": "https://remotive.com/job/2069746/logo",
+      "location": "USA, Canada, USA timezones",
+      "salary": "$170k - $200k",
+      "jobType": "Full Time",
+      "publicationDate": "2026-09-14T20:33:27"
+    }
+  ]
+}
