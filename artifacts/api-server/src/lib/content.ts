@@ -180,7 +180,7 @@ export const tools: ToolRecord[] = [
   {
     slug: "sign-pdf",
     name: "Sign PDF",
-    shortDescription: "Add an electronic signature to a PDF document online.",
+    shortDescription: "Draw, type, or upload a signature and place it on a PDF in your browser.",
     category: "Edit & Sign",
     icon: "FileSignature",
     popular: false,
@@ -205,6 +205,44 @@ export const tools: ToolRecord[] = [
           "Yes. Position your signature on the page and adjust its size before downloading the signed PDF.",
       },
     ],
+    blogSlug: null,
+  },
+  {
+    slug: "pdf-to-excel",
+    name: "PDF to Excel",
+    shortDescription: "Extract PDF text and tables into an Excel workbook in your browser.",
+    category: "Convert",
+    icon: "TableProperties",
+    popular: false,
+    status: "available",
+    seoTitle: "PDF to Excel Online Free — PDFKira",
+    seoDescription:
+      "Convert PDF tables to Excel spreadsheets in your browser for free. Files stay on your device, with no upload required.",
+    steps: [
+      "Choose a PDF or drag it into the upload area.",
+      "Select one worksheet per page or combine all pages into one sheet.",
+      "Convert locally and download the .xlsx workbook.",
+    ],
+    faqs: [],
+    blogSlug: null,
+  },
+  {
+    slug: "ocr-pdf",
+    name: "OCR PDF",
+    shortDescription: "Make scanned PDFs searchable with private, browser-based OCR.",
+    category: "Convert",
+    icon: "ScanText",
+    popular: false,
+    status: "available",
+    seoTitle: "OCR PDF Online Free — Make Scanned PDFs Searchable — PDFKira",
+    seoDescription:
+      "Make scanned PDFs searchable with free browser-based OCR. Recognize text locally and download a searchable PDF or plain text.",
+    steps: [
+      "Upload a scanned PDF and choose the pages to recognize.",
+      "Run English OCR locally and follow per-page progress.",
+      "Download a searchable PDF, or save recognized text as a .txt file.",
+    ],
+    faqs: [],
     blogSlug: null,
   },
   {

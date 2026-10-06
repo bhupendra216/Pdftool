@@ -9,6 +9,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { tools as toolCatalog } from "../../../api-server/src/lib/content";
 
+const browserToolSlugs = new Set(["pdf-to-excel", "sign-pdf", "ocr-pdf"]);
+
 export function ToolsIndex() {
   useSEO({
     title: "All PDF Tools",
@@ -16,7 +18,15 @@ export function ToolsIndex() {
   });
 
   const { data: tools, isLoading } = useListTools();
-  const catalogTools = Array.isArray(tools) && tools.length > 0 ? tools : toolCatalog;
+  const catalogTools = useMemo(() => {
+    if (!Array.isArray(tools) || tools.length === 0) return toolCatalog;
+
+    const mergedTools = new Map(tools.map((tool) => [tool.slug, tool]));
+    for (const tool of toolCatalog) {
+      if (browserToolSlugs.has(tool.slug)) mergedTools.set(tool.slug, tool);
+    }
+    return Array.from(mergedTools.values());
+  }, [tools]);
   const [searchQuery, setSearchQuery] = useState("");
   const [activeCategory, setActiveCategory] = useState<string>("All");
 

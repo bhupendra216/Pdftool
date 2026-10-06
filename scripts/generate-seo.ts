@@ -4,6 +4,7 @@ import { fileURLToPath } from 'url';
 import { blogPosts, tools, type ToolRecord } from '../artifacts/api-server/src/lib/content.ts';
 import { getToolSeoContent } from '../artifacts/pdf-tools/src/lib/toolSeoContent.ts';
 import { resolveToolOgImage, toolsSEO } from '../artifacts/pdf-tools/src/data/seoConfig.js';
+import { clientToolContent } from '../artifacts/pdf-tools/src/data/clientToolContent';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -77,6 +78,11 @@ function resolveAbsoluteImageUrl(image: string | undefined, fallback = `${siteUr
   if (!image) return fallback;
   if (image.startsWith('http')) return image;
   return `${siteUrl}${image.startsWith('/') ? image : `/${image}`}`;
+}
+
+function toolPageUrl(slug: string) {
+  const clientTool = clientToolContent.some((tool) => tool.slug === slug);
+  return `${siteUrl}${clientTool ? `/${slug}` : `/tools/${slug}`}`;
 }
 
 function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath: string }) {
@@ -211,6 +217,83 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
   return injectGoogleTagIntoHtml(html);
 }
 
+function renderClientToolPageHtml(tool: (typeof clientToolContent)[number], assets: { jsPath: string; cssPath: string }) {
+  const canonical = `${siteUrl}/${tool.slug}`;
+  const benefits = tool.benefits
+    .map((benefit) => `<article><h3>${escapeHtml(benefit.title)}</h3><p>${escapeHtml(benefit.description)}</p></article>`)
+    .join('');
+  const faqs = tool.faqs
+    .map((faq) => `<li><h3>${escapeHtml(faq.question)}</h3><p>${escapeHtml(faq.answer)}</p></li>`)
+    .join('');
+  const related = tool.related
+    .map((item) => `<li><a href="${escapeHtml(item.href)}">${escapeHtml(item.label)}</a></li>`)
+    .join('');
+  const structuredData = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'SoftwareApplication',
+        name: tool.name,
+        description: tool.description,
+        applicationCategory: 'UtilitiesApplication',
+        operatingSystem: 'Any',
+        url: canonical,
+        offers: { '@type': 'Offer', price: 0, priceCurrency: 'USD' },
+      },
+      {
+        '@type': 'FAQPage',
+        mainEntity: tool.faqs.map((faq) => ({
+          '@type': 'Question',
+          name: faq.question,
+          acceptedAnswer: { '@type': 'Answer', text: faq.answer },
+        })),
+      },
+    ],
+  };
+
+  return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${escapeHtml(tool.title)}</title>
+    <meta name="description" content="${escapeHtml(tool.description)}" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="${canonical}" />
+    <meta property="og:title" content="${escapeHtml(tool.title)}" />
+    <meta property="og:description" content="${escapeHtml(tool.description)}" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="${canonical}" />
+    <meta property="og:image" content="${siteUrl}/logo.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${escapeHtml(tool.title)}" />
+    <meta name="twitter:description" content="${escapeHtml(tool.description)}" />
+    <meta name="twitter:url" content="${canonical}" />
+    <meta name="twitter:image" content="${siteUrl}/logo.png" />
+    <link rel="stylesheet" href="${assets.cssPath}" />
+    <script type="application/ld+json">${JSON.stringify(structuredData).replace(/</g, '\\u003c')}</script>
+    <script>document.documentElement.classList.add('js');</script>
+    <style>html.js #seo-fallback { display: none !important; } html:not(.js) #seo-fallback { display: block !important; }</style>
+  </head>
+  <body>
+    <div id="seo-fallback" style="display:block">
+      <main>
+        <p><a href="/">PDFKira</a></p>
+        <h1>${escapeHtml(tool.name)}</h1>
+        <p>${escapeHtml(tool.intro)}</p>
+        <section><h2>How it works</h2><ol>${tool.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol></section>
+        <section><h2>Why use this tool</h2>${benefits}</section>
+        <section><h2>Frequently asked questions</h2><ul>${faqs}</ul></section>
+        <nav aria-label="Related tools"><h2>Related tools</h2><ul>${related}</ul></nav>
+      </main>
+    </div>
+    <div id="root"></div>
+    <script type="module" src="${assets.jsPath}"></script>
+    <noscript><style>#seo-fallback { display:block !important; }</style></noscript>
+  </body>
+</html>`;
+}
+
 function renderToolsIndexHtml(assets: { jsPath: string; cssPath: string }) {
   const description =
     'Browse free online PDF tools to merge, split, compress, convert, and organize documents. Pick a secure browser-based workflow and get started with PDFKira.';
@@ -218,7 +301,7 @@ function renderToolsIndexHtml(assets: { jsPath: string; cssPath: string }) {
     .map(
       (tool) => `
         <li>
-          <a href="${siteUrl}/tools/${tool.slug}" aria-label="Use ${escapeHtml(tool.name)}">
+          <a href="${toolPageUrl(tool.slug)}" aria-label="Use ${escapeHtml(tool.name)}">
             <h2>${escapeHtml(tool.name)}</h2>
             <p>${escapeHtml(tool.shortDescription)}</p>
           </a>
@@ -258,7 +341,7 @@ function renderToolsIndexHtml(assets: { jsPath: string; cssPath: string }) {
             name: tool.name,
             applicationCategory: 'Utility',
             operatingSystem: 'Web',
-            url: `${siteUrl}/tools/${tool.slug}`,
+            url: toolPageUrl(tool.slug),
           },
         })),
       })}
@@ -519,7 +602,7 @@ function renderHomeSeoBlock() {
       .map(
         (tool) => `
           <li>
-            <a href="${siteUrl}/tools/${tool.slug}" aria-label="Use ${escapeHtml(tool.name)}">
+            <a href="${toolPageUrl(tool.slug)}" aria-label="Use ${escapeHtml(tool.name)}">
               <h3>${escapeHtml(tool.name)}</h3>
               <p>${escapeHtml(tool.shortDescription)}</p>
             </a>
@@ -612,6 +695,8 @@ function injectGoogleTagIntoAllHtmlFiles(outDir: string) {
       if (entry.isDirectory()) {
         stack.push(fullPath);
       } else if (entry.isFile() && fullPath.endsWith('.html')) {
+        const firstPathSegment = path.relative(outDir, fullPath).split(path.sep)[0];
+        if (clientToolContent.some((tool) => tool.slug === firstPathSegment)) continue;
         const original = fs.readFileSync(fullPath, 'utf-8');
         const patched = injectGoogleTagIntoHtml(original);
         if (patched !== original) {
@@ -692,7 +777,7 @@ function verifyGeneratedSeo(
     const aliasRedirect = vercelConfig.redirects.find(
       (redirect: any) => redirect.source === `/${tool.slug}` && redirect.destination === `/tools/${tool.slug}`,
     );
-    if (!aliasRedirect) {
+    if (!clientToolContent.some((clientTool) => clientTool.slug === tool.slug) && !aliasRedirect) {
       throw new Error(`Missing legacy route redirect for tool: ${tool.slug}`);
     }
 
@@ -726,6 +811,23 @@ function verifyGeneratedSeo(
     }
     if (!html.includes('<h2>Why use this tool</h2>') || (html.match(/<div><h3>/g) || []).length < 3) {
       throw new Error(`Tool route is missing its three benefit blocks: ${tool.slug}`);
+    }
+  }
+
+  for (const tool of clientToolContent) {
+    const htmlPath = path.join(outDir, tool.slug, 'index.html');
+    const html = fs.readFileSync(htmlPath, 'utf-8');
+    if (!html.includes(`<h1>${escapeHtml(tool.name)}</h1>`) || !html.includes('<h2>How it works</h2>') ||
+        !html.includes('<h2>Why use this tool</h2>') || !html.includes('<h2>Frequently asked questions</h2>') ||
+        !html.includes('<h2>Related tools</h2>')) {
+      throw new Error(`Client tool SEO HTML is missing required content: ${tool.slug}`);
+    }
+    const structuredDataScript = html.match(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/i)?.[1];
+    if (!structuredDataScript) throw new Error(`Missing structured data for client tool: ${tool.slug}`);
+    const structuredData = JSON.parse(structuredDataScript);
+    const faqPage = structuredData['@graph']?.find((entry: any) => entry['@type'] === 'FAQPage');
+    if (!faqPage || faqPage.mainEntity.length !== 5) {
+      throw new Error(`Client tool must have five structured FAQ entries: ${tool.slug}`);
     }
   }
 
@@ -766,6 +868,7 @@ function writeStaticFiles() {
       { loc: `${siteUrl}/`, changefreq: 'weekly' },
       { loc: `${siteUrl}/tools`, changefreq: 'weekly' },
       { loc: `${siteUrl}/compare/ilovepdf-vs-smallpdf-vs-pdfkira`, changefreq: 'weekly' },
+      ...clientToolContent.map((tool) => ({ loc: `${siteUrl}/${tool.slug}`, changefreq: 'weekly' as const })),
       ...tools
         .filter((tool) => tool.status === 'available')
         .map((tool) => ({ loc: `${siteUrl}/tools/${tool.slug}`, changefreq: 'weekly' as const })),
@@ -790,6 +893,12 @@ function writeStaticFiles() {
       const pagePath = path.join(outDir, page.path.replace(/^\//, ''), 'index.html');
       ensureDir(path.dirname(pagePath));
       fs.writeFileSync(pagePath, renderEditorialPageHtml(page, assets), 'utf-8');
+    }
+
+    for (const tool of clientToolContent) {
+      const toolDir = path.join(outDir, tool.slug);
+      ensureDir(toolDir);
+      fs.writeFileSync(path.join(toolDir, 'index.html'), renderClientToolPageHtml(tool, assets), 'utf-8');
     }
 
     // Write individual tool pages

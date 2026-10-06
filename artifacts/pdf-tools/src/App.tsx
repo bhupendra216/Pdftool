@@ -11,6 +11,9 @@ const Home = lazy(() => import('@/pages/Home').then((mod) => ({ default: mod.Hom
 const ToolsIndex = lazy(() => import('@/pages/ToolsIndex').then((mod) => ({ default: mod.ToolsIndex })));
 const ToolDetail = lazy(() => import('@/pages/ToolDetail').then((mod) => ({ default: mod.ToolDetail })));
 const MergePdfPage = lazy(() => import('@/pages/merge-pdf'));
+const PdfToExcelPage = lazy(() => import('@/pages/pdf-to-excel'));
+const SignPdfPage = lazy(() => import('@/pages/sign-pdf'));
+const OcrPdfPage = lazy(() => import('@/pages/ocr-pdf'));
 const SplitPdfPage = lazy(() => import('@/pages/split-pdf'));
 const CompressPdfPage = lazy(() => import('@/pages/compress-pdf'));
 const EditPdfPage = lazy(() => import('@/pages/edit-pdf'));
@@ -52,6 +55,12 @@ function Router() {
         <Route path="/tools" component={ToolsIndex} />
         {/* Explicit tool routes placed before the dynamic catch-all */}
         <Route path="/tools/merge-pdf" component={MergePdfPage} />
+        <Route path="/pdf-to-excel" component={PdfToExcelPage} />
+        <Route path="/sign-pdf" component={SignPdfPage} />
+        <Route path="/ocr-pdf" component={OcrPdfPage} />
+        <Route path="/tools/pdf-to-excel" component={PdfToExcelPage} />
+        <Route path="/tools/sign-pdf" component={SignPdfPage} />
+        <Route path="/tools/ocr-pdf" component={OcrPdfPage} />
         <Route path="/tools/split-pdf" component={SplitPdfPage} />
         <Route path="/tools/compress-pdf" component={CompressPdfPage} />
         <Route path="/tools/transform-pdf" component={DirtyPdfPage} />

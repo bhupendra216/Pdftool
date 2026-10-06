@@ -92,7 +92,6 @@
     { "source": "/unlock", "destination": "/tools/unlock-pdf", "permanent": true },
     { "source": "/protect-pdf", "destination": "/tools/protect-pdf", "permanent": true },
     { "source": "/protect", "destination": "/tools/protect-pdf", "permanent": true },
-    { "source": "/sign-pdf", "destination": "/tools/sign-pdf", "permanent": true },
     { "source": "/watermark-pdf", "destination": "/tools/watermark-pdf", "permanent": true },
     { "source": "/watermark", "destination": "/tools/watermark-pdf", "permanent": true },
     { "source": "/add-page-numbers", "destination": "/tools/add-page-numbers", "permanent": true },

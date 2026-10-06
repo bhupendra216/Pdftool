@@ -6,6 +6,9 @@ import { Badge } from "@/components/ui/badge";
 
 export function ToolCard({ tool, featured = false, className = "" }: { tool: Tool; featured?: boolean; className?: string }) {
   const isAvailable = tool.status === "available";
+  const clientToolPath = ["pdf-to-excel", "sign-pdf", "ocr-pdf"].includes(tool.slug)
+    ? `/${tool.slug}`
+    : `/tools/${tool.slug}`;
 
   // The edit-PDF MVP is intentionally hidden from the main tool catalog until it is
   // ready for public navigation, but its direct route remains available for access by URL.
@@ -14,7 +17,7 @@ export function ToolCard({ tool, featured = false, className = "" }: { tool: Too
   }
 
   return (
-    <Link href={isAvailable ? `/tools/${tool.slug}` : "#"} className={!isAvailable ? "cursor-not-allowed" : ""}>
+    <Link href={isAvailable ? clientToolPath : "#"} className={!isAvailable ? "cursor-not-allowed" : ""}>
       <Card className={`group h-full transition-all duration-300 ${isAvailable ? 'hover:shadow-md hover:-translate-y-1 hover:border-primary/50' : 'opacity-70'} ${featured ? 'border-primary/60 shadow-lg shadow-primary/10 ring-1 ring-primary/20' : ''} ${className}`}>
         <CardContent className="p-6 flex flex-col h-full">
           <div className="flex justify-between items-start mb-4">
