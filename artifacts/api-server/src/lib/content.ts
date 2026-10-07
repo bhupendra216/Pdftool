@@ -150,14 +150,14 @@ export const tools: ToolRecord[] = [
   {
     slug: "edit-pdf",
     name: "Edit PDF",
-    shortDescription: "Delete pages or make small browser-side edits without sending files to a server.",
+    shortDescription: "Replace, add, or visually delete PDF text and download your edited file in your browser.",
     category: "Edit & Sign",
     icon: "PenTool",
     popular: true,
     status: "available",
     seoTitle: "Edit PDF Online Free | PDFKira",
     seoDescription:
-      "Edit PDF files in your browser by removing pages and making simple document changes on your device. Keep control of your file and try PDFKira free.",
+      "Edit runs entirely in your browser — your file never leaves your device.",
     steps: [
       "Upload the PDF you want to edit.",
       "Choose the page range or edit operations you want to apply.",
@@ -167,12 +167,12 @@ export const tools: ToolRecord[] = [
       {
         question: "Does this upload my file to a server?",
         answer:
-          "No. The edit flow is implemented as a browser-side proof of concept and keeps the file on your device while it is processed.",
+          "No. The dedicated text editor processes and downloads your edited PDF in the browser; your file does not leave your device.",
       },
       {
         question: "What kind of edits are supported?",
         answer:
-          "The current client-side workflow supports local page-level edits and prepared PDFium compatibility checks for advanced object-level editing.",
+          "Select and replace or delete text, add text, and download a new PDF. Text edits are overlays; deleting text flattens the pages so the old text is not extractable, but this is not a secure redaction tool.",
       },
     ],
     blogSlug: null,

@@ -81,7 +81,6 @@
     "zod": "catalog:"
   },
   "dependencies": {
-    "@embedpdf/pdfium": "^2.15.0",
     "@imgly/background-removal": "^1.7.0",
     "@tanstack/react-virtual": "^3.14.10",
     "@tesseract.js-data/eng": "^1.0.0",

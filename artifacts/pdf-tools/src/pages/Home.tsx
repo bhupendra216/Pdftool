@@ -28,7 +28,7 @@ export function Home() {
   ];
 
   const catalogTools = Array.isArray(tools) && tools.length > 0 ? tools : toolCatalog;
-  const visibleTools = catalogTools.filter((tool) => tool.status === "available" && tool.slug !== "edit-pdf");
+  const visibleTools = catalogTools.filter((tool) => tool.status === "available");
 
   const featuredTools = Array.isArray(catalogTools)
     ? featuredToolSlugs

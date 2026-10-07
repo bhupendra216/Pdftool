@@ -6,7 +6,15 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 
-export function FaqSection({ faqs, title = "Frequently Asked Questions" }: { faqs: FaqItem[], title?: string }) {
+export function FaqSection({
+  faqs,
+  title = "Frequently Asked Questions",
+  description = "Quick answers to common questions before you upload or download.",
+}: {
+  faqs: FaqItem[];
+  title?: string;
+  description?: string;
+}) {
   if (!faqs || faqs.length === 0) return null;
 
   return (
@@ -14,9 +22,7 @@ export function FaqSection({ faqs, title = "Frequently Asked Questions" }: { faq
       <div className="container mx-auto max-w-3xl px-4 md:px-6">
         <div className="mx-auto mb-12 max-w-2xl text-center">
           <h2 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">{title}</h2>
-          <p className="mt-4 text-base text-muted-foreground md:text-lg">
-            Quick answers to common questions before you upload or download.
-          </p>
+          <p className="mt-4 text-base text-muted-foreground md:text-lg">{description}</p>
         </div>
         <Accordion
           type="single"

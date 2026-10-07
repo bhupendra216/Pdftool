@@ -111,6 +111,7 @@ describe('pdf text geometry validation', () => {
     assert.equal(grouped.length, 1);
     assert.equal(grouped[0].text, 'Compiler Design');
     assert.ok(Math.abs(grouped[0].baselineY - 100) < 0.001);
+    assert.deepEqual(grouped[0].boundingBox, { x: 50, y: 100, width: 97, height: 12 });
   });
 
   it('keeps a small X-gap same-line split together, and keeps distinct baselines separate', () => {
@@ -138,6 +139,22 @@ describe('pdf text geometry validation', () => {
     const grouped = groupTextItemsIntoLines(items, 2);
     assert.equal(grouped.length, 1);
     assert.equal(grouped[0].text, 'Introduction');
+  });
+
+  it('groups normalized editor text items by their PDF positions and text values', () => {
+    const items = [
+      { text: 'First line', pdfX: 50, pdfY: 200, width: 60, height: 12, fontSize: 12 },
+      { text: 'Second line', pdfX: 50, pdfY: 180, width: 70, height: 12, fontSize: 12 },
+    ];
+
+    const grouped = groupTextItemsIntoLines(items, 2);
+    assert.equal(grouped.length, 2);
+    assert.deepEqual(grouped.map((group) => group.text), ['Second line', 'First line']);
+    assert.deepEqual(grouped.map((group) => group.baselineY), [180, 200]);
+    assert.deepEqual(grouped.map((group) => group.boundingBox), [
+      { x: 50, y: 180, width: 70, height: 12 },
+      { x: 50, y: 200, width: 60, height: 12 },
+    ]);
   });
 
   it('moves the full file object together when the drag order changes', () => {

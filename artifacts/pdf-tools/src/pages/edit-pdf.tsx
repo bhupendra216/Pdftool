@@ -6,7 +6,7 @@ import { getToolSeoContent } from '@/lib/toolSeoContent';
 
 export default function EditPdfPage() {
   const title = 'Edit PDF Online Free — PDFKira';
-  const description = 'Edit PDF text in your browser with a privacy-first client-side workflow. No upload to the server.';
+  const description = 'Edit runs entirely in your browser — your file never leaves your device.';
 
   useSEOAdvanced({
     title,

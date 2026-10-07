@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { tools as toolCatalog } from "../../../api-server/src/lib/content";
 
-const browserToolSlugs = new Set(["pdf-to-excel", "sign-pdf", "ocr-pdf"]);
+const browserToolSlugs = new Set(["pdf-to-excel", "sign-pdf", "ocr-pdf", "edit-pdf"]);
 
 export function ToolsIndex() {
   useSEO({
@@ -39,7 +39,6 @@ export function ToolsIndex() {
   const filteredTools = useMemo(() => {
     if (!Array.isArray(catalogTools)) return [];
     return catalogTools.filter((tool) => {
-      if (tool.slug === "edit-pdf") return false;
       const matchesSearch = tool.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         tool.shortDescription.toLowerCase().includes(searchQuery.toLowerCase());
       const matchesCategory = activeCategory === "All" || tool.category === activeCategory;

@@ -5,12 +5,13 @@ import { blogPosts, tools, type ToolRecord } from '../artifacts/api-server/src/l
 import { getToolSeoContent } from '../artifacts/pdf-tools/src/lib/toolSeoContent.ts';
 import { resolveToolOgImage, toolsSEO } from '../artifacts/pdf-tools/src/data/seoConfig.js';
 import { clientToolContent } from '../artifacts/pdf-tools/src/data/clientToolContent';
+import { aiJobsFaqs } from '../artifacts/pdf-tools/src/data/aiJobsFaqs.ts';
+import { gigCategorySections, gigPlatforms } from '../data/gig-platforms.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const siteUrl = 'https://pdfkira.com';
-const aiJobsCachePath = path.resolve(__dirname, '../artifacts/api-server/src/lib/ai-jobs-cache.json');
 // Prefer the built `dist/public` (hashed assets) first, then the legacy `public`.
 const outDirs = [
   path.resolve(__dirname, '../artifacts/pdf-tools/dist/public'),
@@ -133,7 +134,7 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
     <meta name="twitter:title" content="${escapeHtml(tool.seoTitle)}" />
     <meta name="twitter:description" content="${escapeHtml(tool.seoDescription)}" />
     <meta name="twitter:image" content="${ogImageUrl}" />
-    
+
     <!-- React SPA CSS -->
     <link rel="stylesheet" href="${assets.cssPath}" />
 
@@ -150,7 +151,7 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
       html.js #seo-fallback { display: none !important; }
       html:not(.js) #seo-fallback { display: block !important; }
     </style>
-    
+
     <script type="application/ld+json">
       ${JSON.stringify({
         '@context': 'https://schema.org',
@@ -200,10 +201,10 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
         <p><a href="/tools">Browse all PDF tools</a></p>
       </main>
     </div>
-    
+
     <!-- React Mount Point -->
     <div id="root"></div>
-    
+
     <!-- React SPA Bundle -->
     <script type="module" src="${assets.jsPath}"></script>
 
@@ -324,10 +325,10 @@ function renderToolsIndexHtml(assets: { jsPath: string; cssPath: string }) {
     <meta property="og:url" content="${siteUrl}/tools" />
     <meta property="og:image" content="${siteUrl}/logo.png" />
     <meta name="twitter:card" content="summary_large_image" />
-    
+
     <!-- React SPA CSS -->
     <link rel="stylesheet" href="${assets.cssPath}" />
-    
+
     <script type="application/ld+json">
       ${JSON.stringify({
         '@context': 'https://schema.org',
@@ -356,13 +357,13 @@ function renderToolsIndexHtml(assets: { jsPath: string; cssPath: string }) {
         <ul>${cards}</ul>
       </main>
     </div>
-    
+
     <!-- React Mount Point -->
     <div id="root"></div>
-    
+
     <!-- React SPA Bundle -->
     <script type="module" src="${assets.jsPath}"></script>
-    
+
     <!-- Hide SEO fallback after hydration -->
     <script>
       (function() {
@@ -381,7 +382,7 @@ function renderToolsIndexHtml(assets: { jsPath: string; cssPath: string }) {
         }, 5000);
       })();
     </script>
-    
+
     <noscript>
       <style>#seo-fallback { display: block !important; }</style>
     </noscript>
@@ -450,11 +451,21 @@ function renderComparisonPageHtml(assets: { jsPath: string; cssPath: string }) {
 }
 
 function renderEditorialPageHtml(
-  page: { path: string; title: string; description: string; body: string },
+  page: {
+    path: string;
+    title: string;
+    description: string;
+    body: string;
+    heading?: string;
+    jsonLd?: Record<string, unknown>;
+  },
   assets: { jsPath: string; cssPath: string },
 ) {
   const canonical = `${siteUrl}${page.path}`;
   const title = page.title.endsWith('| PDFKira') ? page.title : `${page.title} | PDFKira`;
+  const jsonLd = page.jsonLd
+    ? `<script id="structured-data-jsonld" type="application/ld+json">${JSON.stringify(page.jsonLd).replace(/</g, '\\u003c')}</script>`
+    : '';
   return `<!DOCTYPE html>
 <html lang="en">
   <head>
@@ -469,12 +480,12 @@ function renderEditorialPageHtml(
     <meta property="og:type" content="website" />
     <meta property="og:url" content="${canonical}" />
     <meta property="og:image" content="${siteUrl}/logo.png" />
-    <link rel="stylesheet" href="${assets.cssPath}" />
+${jsonLd ? `    ${jsonLd}\n` : ''}    <link rel="stylesheet" href="${assets.cssPath}" />
     <script>document.documentElement.classList.add('js');</script>
     <style>html.js #seo-fallback { display: none !important; } html:not(.js) #seo-fallback { display: block !important; }</style>
   </head>
   <body>
-    <div id="seo-fallback" style="display:block"><main><h1>${escapeHtml(page.title)}</h1>${page.body}</main></div>
+    <div id="seo-fallback" style="display:block"><main><h1>${escapeHtml(page.heading || page.title)}</h1>${page.body}</main></div>
     <div id="root"></div>
     <script type="module" src="${assets.jsPath}"></script>
     <noscript><style>#seo-fallback { display:block !important; }</style></noscript>
@@ -482,62 +493,70 @@ function renderEditorialPageHtml(
 </html>`;
 }
 
-function renderAiJobsSnapshot() {
-  const cache = JSON.parse(fs.readFileSync(aiJobsCachePath, 'utf-8')) as {
-    fetchedAt: string;
-    jobs: Array<{
-      id: string;
-      url: string;
-      title: string;
-      companyName: string;
-      companyLogo: string | null;
-      location: string;
-      salary: string | null;
-      jobType: string;
-      publicationDate: string;
-    }>;
-  };
+function renderGigPlatformsDirectory() {
+  const platformAnchor = (name: string) =>
+    `gig-${name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')}`;
+  const categoryFilters = gigCategorySections
+    .map((category) => `<button type="button" aria-pressed="false" class="rounded-full border border-border bg-background px-4 py-2 text-sm font-medium text-foreground">${escapeHtml(category.title.replace(/^[^ ]+ /, ''))}</button>`)
+    .join('');
+  const categorySectionsHtml = gigCategorySections.map((category) => {
+    const matchingPlatforms = gigPlatforms.filter((platform) => platform.categories.includes(category.id));
+    if (matchingPlatforms.length === 0) return '';
 
-  const parseDate = (value: string) => {
-    const iso = /(?:Z|[+-]\d{2}:\d{2})$/i.test(value) ? value : `${value}Z`;
-    return new Date(iso);
-  };
-  const formatPostedDate = (value: string) => {
-    const date = parseDate(value);
-    const hours = Math.floor(Math.max(0, Date.now() - date.getTime()) / (60 * 60 * 1000));
-    if (hours < 24) return `New · Posted ${hours < 1 ? 'less than 1h ago' : `${hours}h ago`}`;
-    return new Intl.DateTimeFormat('en', {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      timeZone: 'UTC',
-    }).format(date);
-  };
-  const jobs = cache.jobs
-    .slice()
-    .sort((left, right) => parseDate(right.publicationDate).getTime() - parseDate(left.publicationDate).getTime());
-
-  const jobCards = jobs.map((job) => {
-    const logo = job.companyLogo
-      ? `<img src="${escapeHtml(job.companyLogo)}" alt="${escapeHtml(job.companyName)} logo" width="48" height="48" />`
-      : `<span aria-hidden="true">${escapeHtml(job.companyName.slice(0, 2).toUpperCase())}</span>`;
-    const salary = job.salary ? `<span> · ${escapeHtml(job.salary)}</span>` : '';
-    return `<article>
-  ${logo}
-  <h2>${escapeHtml(job.title)}</h2>
-  <p>${escapeHtml(job.companyName)}</p>
-  <p>${escapeHtml(job.location)} · ${escapeHtml(job.jobType)}${salary}</p>
-  <p><time>${escapeHtml(formatPostedDate(job.publicationDate))}</time></p>
-  <p><a href="${escapeHtml(job.url)}" target="_blank" rel="noopener noreferrer">Apply</a></p>
+    const cards = matchingPlatforms.map((platform) => {
+      const isPrimaryCategory = platform.categories[0] === category.id;
+      const visitUrl = platform.referralUrl || platform.signupUrl;
+      const beginnerBadge = platform.beginnerFriendly
+        ? '<span class="rounded-full border border-border px-2.5 py-1 text-xs font-medium">Beginner friendly</span>'
+        : '';
+      const ratingNote = platform.ratingNote
+        ? `<span class="w-full text-xs text-muted-foreground">${escapeHtml(platform.ratingNote)}</span>`
+        : '';
+      const referralLabel = platform.referralUrl
+        ? '<span class="text-xs text-muted-foreground">(referral)</span>'
+        : '';
+      const anchor = isPrimaryCategory ? ` id="${platformAnchor(platform.name)}"` : '';
+      return `<article${anchor} class="flex h-full min-w-0 flex-col rounded-2xl border border-border/70 bg-card p-5 shadow-sm">
+        <h3 class="text-lg font-semibold text-foreground"><a href="${escapeHtml(platform.signupUrl)}" target="_blank" rel="noopener noreferrer" class="text-primary underline-offset-4 hover:underline">${escapeHtml(platform.name)}</a></h3>
+  <p class="mt-2 flex-1 text-sm leading-6 text-muted-foreground">${escapeHtml(platform.description)}</p>
+  <ul class="mt-4 list-disc space-y-1 pl-5 text-sm leading-5 text-foreground">${platform.taskExamples.map((example) => `<li>${escapeHtml(example)}</li>`).join('')}</ul>
+  <div class="mt-4 flex min-w-0 flex-wrap gap-2"><span class="max-w-full whitespace-normal break-words rounded-full bg-secondary px-2.5 py-1 text-left text-xs font-medium leading-4 text-secondary-foreground">${escapeHtml(platform.payRange)}</span>${beginnerBadge}${ratingNote}</div>
+  <div class="mt-5 flex items-center gap-2"><a href="${escapeHtml(visitUrl)}" target="_blank" rel="noopener noreferrer" class="inline-flex h-10 items-center justify-center rounded-full bg-primary px-5 text-sm font-medium text-primary-foreground">Visit site →</a>${referralLabel}</div>
 </article>`;
-  }).join('\n');
+    }).join('');
 
-  // JobPosting JSON-LD is omitted: these cached listings can expire between scheduled refreshes,
-  // and Google requires each structured job to be current and removed promptly when no longer open.
-  return `<p><strong>Remotive listings may be delayed by up to 24 hours; confirm availability on the original listing.</strong></p>
-<p>Jobs via <a href="https://remotive.com" target="_blank" rel="noopener noreferrer">Remotive</a> — the source for these remote job listings.</p>
-${jobs.length ? jobCards : '<p>No AI jobs found right now — check back soon.</p>'}
-<p>Jobs via <a href="https://remotive.com" target="_blank" rel="noopener noreferrer">Remotive</a>. Applications open on the original listing.</p>`;
+    return `<section class="mb-12" aria-labelledby="category-${category.id}">
+  <h2 id="category-${category.id}" class="mb-5 text-2xl font-semibold tracking-tight text-foreground">${escapeHtml(category.title)}</h2>
+  <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">${cards}</div>
+</section>`;
+  }).join('');
+
+  return `<section class="container mx-auto max-w-6xl px-4 py-12 md:px-6" aria-labelledby="gig-platforms-title">
+  <div class="mb-8 max-w-3xl">
+    <h2 id="gig-platforms-title" class="text-3xl font-bold tracking-tight text-foreground md:text-4xl">Non-Technical AI Gig Platforms</h2>
+    <p class="mt-4 text-base leading-7 text-muted-foreground md:text-lg">Explore remote AI tasks and data collection projects across translation, video recording, photo collection, handwriting, and response review. Some projects are suitable for beginners, though screening, task availability, and qualifications vary by platform.</p>
+  </div>
+  <div class="mb-8 flex flex-wrap gap-2" aria-label="Filter platforms by task category">
+    <button type="button" aria-pressed="true" class="rounded-full border border-primary bg-primary px-4 py-2 text-sm font-medium text-primary-foreground">All</button>
+    ${categoryFilters}
+  </div>
+  ${categorySectionsHtml}
+</section>`;
+}
+
+function renderAiJobsFaqs() {
+  return `<section class="container mx-auto max-w-3xl px-4 py-16 md:px-6" aria-labelledby="faq-title">
+  <h2 id="faq-title" class="text-3xl font-bold tracking-tight text-foreground">Frequently Asked Questions</h2>
+  <div class="mt-8 space-y-4">${aiJobsFaqs.map((faq) => `<details class="rounded-xl border border-border/70 bg-card p-5">
+    <summary class="cursor-pointer text-lg font-medium text-foreground">${escapeHtml(faq.question)}</summary>
+    <p class="mt-4 text-base leading-7 text-muted-foreground">${escapeHtml(faq.answer)}</p>
+  </details>`).join('')}</div>
+</section>`;
+}
+
+function renderAiJobsPageBody() {
+  return `${renderGigPlatformsDirectory()}
+${renderAiJobsFaqs()}`;
 }
 
 function getStaticPages() {
@@ -557,8 +576,21 @@ function getStaticPages() {
     {
       path: '/ai-jobs',
       title: 'AI Jobs – Latest Remote AI & Machine Learning Jobs',
-      description: 'Browse remote AI and machine learning jobs from Remotive, updated three times daily. Search by role or location and apply on the original listing.',
-      body: renderAiJobsSnapshot(),
+      heading: 'AI Jobs',
+      description: 'Browse remote AI jobs and non-technical paid AI training tasks, data collection gigs, translation, video, photo, and annotation projects.',
+      body: renderAiJobsPageBody(),
+      jsonLd: {
+        '@context': 'https://schema.org',
+        '@type': 'FAQPage',
+        mainEntity: aiJobsFaqs.map((faq) => ({
+          '@type': 'Question',
+          name: faq.question,
+          acceptedAnswer: {
+            '@type': 'Answer',
+            text: faq.answer,
+          },
+        })),
+      },
     },
     {
       path: '/contact',
@@ -591,7 +623,7 @@ function getStaticPages() {
 }
 
 function renderHomeSeoBlock() {
-  const visibleTools = tools.filter((tool) => tool.status === 'available' && tool.slug !== 'edit-pdf');
+  const visibleTools = tools.filter((tool) => tool.status === 'available');
   const featuredSlugs = ['pdf-to-markdown', 'add-page-numbers', 'image-converter', 'qr-code-generator'];
   const featuredTools = featuredSlugs
     .map((slug) => visibleTools.find((tool) => tool.slug === slug))
@@ -779,19 +811,6 @@ function verifyGeneratedSeo(
     );
     if (!clientToolContent.some((clientTool) => clientTool.slug === tool.slug) && !aliasRedirect) {
       throw new Error(`Missing legacy route redirect for tool: ${tool.slug}`);
-    }
-
-    const aiJobsPage = fs.readFileSync(path.join(outDir, 'ai-jobs', 'index.html'), 'utf-8');
-    const aiJobsCache = JSON.parse(fs.readFileSync(aiJobsCachePath, 'utf-8')) as {
-      jobs: Array<{ title: string; url: string }>;
-    };
-    if (!aiJobsPage.includes('Jobs via <a href="https://remotive.com"')) {
-      throw new Error('AI Jobs static page is missing Remotive attribution.');
-    }
-    for (const job of aiJobsCache.jobs) {
-      if (!aiJobsPage.includes(escapeHtml(job.title)) || !aiJobsPage.includes(escapeHtml(job.url))) {
-        throw new Error(`AI Jobs static page is missing cached listing: ${job.title}`);
-      }
     }
 
     const htmlPath = path.join(outDir, 'tools', tool.slug, 'index.html');
