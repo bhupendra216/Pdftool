@@ -596,6 +596,10 @@ function PdfTextEditor() {
   }, [pageLayouts, pdfDocument]);
 
   const beginGroupEdit = useCallback((pageNumber: number, group: PdfTextLineGroup) => {
+    const currentDraft = currentDraftRef.current;
+    if (currentDraft && currentDraft.groupId !== group.id) {
+      commitDraft();
+    }
     const existing = edits.find((entry) => entry.groupId === group.id && entry.type === 'text');
     const textItem = group.items[0] as TextItem | undefined;
     const color = existing?.color ?? getTextColor(pageNumber, group);
@@ -630,7 +634,7 @@ function PdfTextEditor() {
         document.getElementById(`pdf-page-${pageNumber}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
       });
     }
-  }, [edits, getMaskColor, getTextColor, pageLayouts]);
+  }, [commitDraft, edits, getMaskColor, getTextColor, pageLayouts]);
 
   const setDraftProperty = (update: Partial<TextItem>) => {
     setDraftTouched(true);
