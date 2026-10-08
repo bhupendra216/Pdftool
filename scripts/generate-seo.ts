@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { marked } from 'marked';
 import { blogPosts, tools, type ToolRecord } from '../artifacts/api-server/src/lib/content.ts';
 import { getToolSeoContent } from '../artifacts/pdf-tools/src/lib/toolSeoContent.ts';
 import { resolveToolOgImage, toolsSEO } from '../artifacts/pdf-tools/src/data/seoConfig.js';
@@ -81,9 +82,62 @@ function resolveAbsoluteImageUrl(image: string | undefined, fallback = `${siteUr
   return `${siteUrl}${image.startsWith('/') ? image : `/${image}`}`;
 }
 
+function formatArticleDate(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat('en-US', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'UTC',
+  }).format(date);
+}
+
+function blogMarkdown(article: (typeof blogPosts)[number]) {
+  return article.content
+    .replace(/^---\s*\n[\s\S]*?\n---\s*\n?/, '')
+    .replace(/^#\s+.+\n+/, '');
+}
+
+function blogDescription(article: (typeof blogPosts)[number]) {
+  if (article.seoDescription) return article.seoDescription;
+  if (article.excerpt && article.excerpt !== article.title) return article.excerpt;
+
+  const firstParagraph = blogMarkdown(article)
+    .split(/\n\s*\n/)
+    .map((paragraph) => paragraph.replace(/[#*_`[\]]/g, '').replace(/\s+/g, ' ').trim())
+    .find(Boolean);
+  if (!firstParagraph) return article.title;
+  return firstParagraph.length > 160 ? `${firstParagraph.slice(0, 157).trimEnd()}...` : firstParagraph;
+}
+
+function renderBlogArticleBody(article: (typeof blogPosts)[number]) {
+  const markdown = blogMarkdown(article);
+  const articleHtml = marked.parse(markdown);
+  const publishedDate = formatArticleDate(article.publishedAt);
+  const updatedDate = article.updatedAt ? formatArticleDate(article.updatedAt) : '';
+
+  return `<article>
+  <div class="article-meta">
+    <time datetime="${escapeHtml(article.publishedAt)}">${escapeHtml(publishedDate)}</time>
+    <span>By PDFKira Team</span>
+    <span>${article.readingMinutes} min read</span>
+    ${updatedDate ? `<span>Updated ${escapeHtml(updatedDate)}</span>` : ''}
+  </div>
+  <div class="article-content">${articleHtml}</div>
+  <footer>
+    <p>Published: <time datetime="${escapeHtml(article.publishedAt)}">${escapeHtml(publishedDate)}</time></p>
+    ${updatedDate ? `<p>Updated: <time datetime="${escapeHtml(article.updatedAt ?? '')}">${escapeHtml(updatedDate)}</time></p>` : ''}
+    <nav aria-label="Article navigation">
+      <a href="/blog">← All Articles</a>
+      <a href="/tools">Try Our PDF Tools →</a>
+    </nav>
+  </footer>
+</article>`;
+}
+
 function toolPageUrl(slug: string) {
-  const clientTool = clientToolContent.some((tool) => tool.slug === slug);
-  return `${siteUrl}${clientTool ? `/${slug}` : `/tools/${slug}`}`;
+  return `${siteUrl}/tools/${slug}`;
 }
 
 function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath: string }) {
@@ -219,7 +273,7 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
 }
 
 function renderClientToolPageHtml(tool: (typeof clientToolContent)[number], assets: { jsPath: string; cssPath: string }) {
-  const canonical = `${siteUrl}/${tool.slug}`;
+  const canonical = `${siteUrl}/tools/${tool.slug}`;
   const benefits = tool.benefits
     .map((benefit) => `<article><h3>${escapeHtml(benefit.title)}</h3><p>${escapeHtml(benefit.description)}</p></article>`)
     .join('');
@@ -480,6 +534,11 @@ function renderEditorialPageHtml(
     <meta property="og:type" content="website" />
     <meta property="og:url" content="${canonical}" />
     <meta property="og:image" content="${siteUrl}/logo.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${escapeHtml(title)}" />
+    <meta name="twitter:description" content="${escapeHtml(page.description)}" />
+    <meta name="twitter:url" content="${canonical}" />
+    <meta name="twitter:image" content="${siteUrl}/logo.png" />
 ${jsonLd ? `    ${jsonLd}\n` : ''}    <link rel="stylesheet" href="${assets.cssPath}" />
     <script>document.documentElement.classList.add('js');</script>
     <style>html.js #seo-fallback { display: none !important; } html:not(.js) #seo-fallback { display: block !important; }</style>
@@ -612,12 +671,33 @@ function getStaticPages() {
     },
   ];
 
-  const articles = blogPosts.map((post) => ({
-    path: `/blog/${encodeURIComponent(post.slug)}`,
-    title: post.title,
-    description: post.excerpt,
-    body: `<p>${escapeHtml(post.excerpt)}</p><p><a href="${siteUrl}/blog">Browse all PDFKira guides</a></p>`,
-  }));
+  const articles = blogPosts.map((post) => {
+    const canonical = `${siteUrl}/blog/${encodeURIComponent(post.slug)}`;
+    return {
+      path: `/blog/${encodeURIComponent(post.slug)}`,
+      title: post.title,
+      description: blogDescription(post),
+      body: renderBlogArticleBody(post),
+      jsonLd: {
+        '@context': 'https://schema.org',
+        '@type': 'BlogPosting',
+        headline: post.title,
+        description: blogDescription(post),
+        author: {
+          '@type': 'Organization',
+          name: 'PDFKira',
+          url: siteUrl,
+        },
+        datePublished: post.publishedAt,
+        dateModified: post.updatedAt || post.publishedAt,
+        mainEntityOfPage: {
+          '@type': 'WebPage',
+          '@id': canonical,
+        },
+        image: resolveAbsoluteImageUrl(post.coverImage, `${siteUrl}/logo.png`),
+      },
+    };
+  });
 
   return [...pages, ...articles];
 }
@@ -823,7 +903,8 @@ function verifyGeneratedSeo(
     throw new Error(`robots.txt does not reference the canonical sitemap: ${outDir}`);
   }
 
-  for (const tool of tools.filter((entry) => entry.status === 'available')) {
+  const clientToolSlugs = new Set(clientToolContent.map((tool) => tool.slug));
+  for (const tool of tools.filter((entry) => entry.status === 'available' && !clientToolSlugs.has(entry.slug))) {
     const aliasRedirect = redirects.find(
       (redirect: any) =>
         redirect?.source === `/${tool.slug}` && redirect?.destination === `/tools/${tool.slug}`,
@@ -857,7 +938,7 @@ function verifyGeneratedSeo(
   }
 
   for (const tool of clientToolContent) {
-    const htmlPath = path.join(outDir, tool.slug, 'index.html');
+    const htmlPath = path.join(outDir, 'tools', tool.slug, 'index.html');
     const html = fs.readFileSync(htmlPath, 'utf-8');
     if (!html.includes(`<h1>${escapeHtml(tool.name)}</h1>`) || !html.includes('<h2>How it works</h2>') ||
         !html.includes('<h2>Why use this tool</h2>') || !html.includes('<h2>Frequently asked questions</h2>') ||
@@ -906,13 +987,14 @@ function writeStaticFiles() {
 
     // Write sitemap.xml
     const editorialPages = getStaticPages();
+    const clientToolSlugs = new Set(clientToolContent.map((tool) => tool.slug));
     const sitemapItems = [
       { loc: `${siteUrl}/`, changefreq: 'weekly' },
       { loc: `${siteUrl}/tools`, changefreq: 'weekly' },
       { loc: `${siteUrl}/compare/ilovepdf-vs-smallpdf-vs-pdfkira`, changefreq: 'weekly' },
-      ...clientToolContent.map((tool) => ({ loc: `${siteUrl}/${tool.slug}`, changefreq: 'weekly' as const })),
+      ...clientToolContent.map((tool) => ({ loc: `${siteUrl}/tools/${tool.slug}`, changefreq: 'weekly' as const })),
       ...tools
-        .filter((tool) => tool.status === 'available')
+        .filter((tool) => tool.status === 'available' && !clientToolSlugs.has(tool.slug))
         .map((tool) => ({ loc: `${siteUrl}/tools/${tool.slug}`, changefreq: 'weekly' as const })),
       ...editorialPages.map((page) => ({ loc: `${siteUrl}${page.path}`, changefreq: 'monthly' as const })),
     ];
@@ -938,13 +1020,13 @@ function writeStaticFiles() {
     }
 
     for (const tool of clientToolContent) {
-      const toolDir = path.join(outDir, tool.slug);
+      const toolDir = path.join(outDir, 'tools', tool.slug);
       ensureDir(toolDir);
       fs.writeFileSync(path.join(toolDir, 'index.html'), renderClientToolPageHtml(tool, assets), 'utf-8');
     }
 
     // Write individual tool pages
-    for (const tool of tools) {
+    for (const tool of tools.filter((entry) => !clientToolSlugs.has(entry.slug))) {
       const toolDir = path.join(outDir, 'tools', tool.slug);
       ensureDir(toolDir);
       fs.writeFileSync(path.join(toolDir, 'index.html'), renderToolPageHtml(tool, assets), 'utf-8');

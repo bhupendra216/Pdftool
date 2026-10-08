@@ -8,7 +8,7 @@ export function ClientToolPage({ slug, children }: { slug: "pdf-to-excel" | "sig
   const tool = getClientToolContent(slug);
   if (!tool) throw new Error(`Missing content for client tool: ${slug}`);
 
-  const canonical = `${SITE_URL}/${tool.slug}`;
+  const canonical = `${SITE_URL}/tools/${tool.slug}`;
   const structuredData = {
     "@context": "https://schema.org",
     "@graph": [

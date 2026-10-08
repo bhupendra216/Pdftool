@@ -31,8 +31,11 @@ export interface BlogPostRecord {
   slug: string;
   title: string;
   excerpt: string;
+  seoDescription?: string;
   category: string;
   publishedAt: string;
+  updatedAt?: string;
+  coverImage?: string;
   readingMinutes: number;
   content: string;
   relatedToolSlug: string | null;
