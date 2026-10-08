@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as
 import { PDFDocument, PDFName, PDFString, rgb, StandardFonts } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
 import saveAs from 'file-saver';
-import { AlignCenter, AlignLeft, AlignRight, Bold, Highlighter, Link2, Plus, Redo2, Italic, Underline, Undo2 } from 'lucide-react';
+import { AlignCenter, AlignLeft, AlignRight, Bold, Highlighter, Link2, Plus, Redo2, Italic, Underline, Undo2, Upload } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { groupTextItemsIntoLines, type PdfTextLineGroup } from '../lib/pdf-text-lines';
@@ -21,6 +21,8 @@ type TextItem = {
   text: string;
   originalText: string;
   pdfRect: PdfRect;
+  maskRect?: PdfRect;
+  anchorX?: number;
   pdfX: number;
   pdfY: number;
   width?: number;
@@ -58,8 +60,9 @@ type PageHistory = {
 
 type ResizeState = {
   pointerId: number;
-  startX: number;
-  startWidth: number;
+  edge: 'left' | 'right';
+  pageLeft: number;
+  startViewportRect: PdfRect;
   startPdfRect: PdfRect;
   viewport: any;
 };
@@ -73,7 +76,7 @@ type MoveState = {
 };
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
-const MASK_PADDING_PT = 2;
+const MASK_PADDING_PT = 1.5;
 
 function normalizeHex(color: string | null | undefined) {
   if (!color) return '#111111';
@@ -164,35 +167,30 @@ function sampleRingColor(context: CanvasRenderingContext2D, rect: PdfRect) {
   const top = clamp(Math.floor(rect.y), 0, context.canvas.height - 1);
   const right = clamp(Math.ceil(rect.x + rect.width), left + 1, context.canvas.width);
   const bottom = clamp(Math.ceil(rect.y + rect.height), top + 1, context.canvas.height);
-  const pad = 2;
+  const pad = 4;
   const regionLeft = Math.max(0, left - pad);
   const regionTop = Math.max(0, top - pad);
   const regionRight = Math.min(context.canvas.width, right + pad);
   const regionBottom = Math.min(context.canvas.height, bottom + pad);
   const pixels = context.getImageData(regionLeft, regionTop, regionRight - regionLeft, regionBottom - regionTop);
-  const channels = [0, 0, 0];
-  let count = 0;
-  const addPixel = (x: number, y: number) => {
-    if (x < regionLeft || y < regionTop || x >= regionRight || y >= regionBottom) return;
-    const index = ((y - regionTop) * pixels.width + x - regionLeft) * 4;
-    channels[0] += pixels.data[index];
-    channels[1] += pixels.data[index + 1];
-    channels[2] += pixels.data[index + 2];
-    count += 1;
-  };
-  for (let x = left; x < right; x += 2) {
-    addPixel(x, top - pad);
-    addPixel(x, bottom + pad - 1);
+  const colors = new Map<string, number>();
+  for (let y = regionTop; y < regionBottom; y += 1) {
+    for (let x = regionLeft; x < regionRight; x += 1) {
+      if (x >= left && x < right && y >= top && y < bottom) continue;
+      const index = ((y - regionTop) * pixels.width + x - regionLeft) * 4;
+      const red = pixels.data[index];
+      const green = pixels.data[index + 1];
+      const blue = pixels.data[index + 2];
+      const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
+      if (luminance < 120) continue;
+      const color = [red, green, blue].map((channel) =>
+        Math.min(255, Math.round(channel / 8) * 8).toString(16).padStart(2, '0')).join('');
+      colors.set(color, (colors.get(color) ?? 0) + 1);
+    }
   }
-  for (let y = top; y < bottom; y += 2) {
-    addPixel(left - pad, y);
-    addPixel(right + pad - 1, y);
-  }
-  if (!count) {
-    const sample = context.getImageData(clamp(left, 0, context.canvas.width - 1), clamp(top, 0, context.canvas.height - 1), 1, 1).data;
-    return normalizeHex(`#${[sample[0], sample[1], sample[2]].map((value) => value.toString(16).padStart(2, '0')).join('')}`);
-  }
-  return `#${channels.map((value) => Math.round(value / count).toString(16).padStart(2, '0')).join('')}`;
+  const mode = [...colors.entries()].sort((leftColor, rightColor) => rightColor[1] - leftColor[1])[0]?.[0];
+  if (!mode) throw new Error('The page background could not be sampled around this text.');
+  return `#${mode}`;
 }
 
 function sampleTextColor(context: CanvasRenderingContext2D, rect: PdfRect, backgroundColor: string) {
@@ -219,6 +217,54 @@ function sampleTextColor(context: CanvasRenderingContext2D, rect: PdfRect, backg
   const average = [0, 1, 2].map((channel) =>
     Math.round(foregroundPixels.reduce((total, candidate) => total + candidate.color[channel], 0) / foregroundPixels.length));
   return `#${average.map((channel) => channel.toString(16).padStart(2, '0')).join('')}`;
+}
+
+function inferTextAlignment(group: PdfTextLineGroup, pageItems: TextItem[]) {
+  const lineItems = pageItems.filter((item) => {
+    const rect = item.pdfRect;
+    return rect.y <= group.boundingBox.y + group.boundingBox.height + 3 &&
+      group.boundingBox.y <= rect.y + rect.height + 3;
+  });
+  const lineLeft = Math.min(group.boundingBox.x, ...lineItems.map((item) => item.pdfRect.x));
+  const columnRight = Math.max(...pageItems.map((item) => item.pdfRect.x + item.pdfRect.width));
+  const spanLeft = group.boundingBox.x;
+  const spanRight = group.boundingBox.x + group.boundingBox.width;
+  const previousRight = Math.max(
+    ...lineItems
+      .filter((item) => !group.items.includes(item) && item.pdfRect.x < spanLeft)
+      .map((item) => item.pdfRect.x + item.pdfRect.width),
+    Number.NEGATIVE_INFINITY,
+  );
+  const previousGap = spanLeft - previousRight;
+  const normalWordSpace = Math.max(2, group.dominantFontSize * 0.25);
+
+  if (Math.abs(spanRight - columnRight) <= 4 && previousGap > normalWordSpace) {
+    return {
+      alignment: 'right' as const,
+      anchorX: spanRight,
+      pdfRect: {
+        ...group.boundingBox,
+        x: spanRight - Math.max(40, columnRight - lineLeft),
+        width: Math.max(40, columnRight - lineLeft),
+      },
+    };
+  }
+
+  const centerX = (spanLeft + spanRight) / 2;
+  const columnCenterX = (lineLeft + columnRight) / 2;
+  if (Math.abs(centerX - columnCenterX) <= 5) {
+    return {
+      alignment: 'center' as const,
+      anchorX: columnCenterX,
+      pdfRect: {
+        ...group.boundingBox,
+        x: lineLeft,
+        width: Math.max(40, columnRight - lineLeft),
+      },
+    };
+  }
+
+  return { alignment: 'left' as const, anchorX: undefined, pdfRect: group.boundingBox };
 }
 
 async function readFileBytes(file: File) {
@@ -297,6 +343,7 @@ function PdfTextEditor() {
   const [pageLayouts, setPageLayouts] = useState<PageLayout[]>([]);
   const [edits, setEdits] = useState<TextItem[]>([]);
   const [draft, setDraft] = useState<TextItem | null>(null);
+  const [draftTouched, setDraftTouched] = useState(false);
   const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [addTextMode, setAddTextMode] = useState(false);
   const [pageScale, setPageScale] = useState(1);
@@ -307,17 +354,25 @@ function PdfTextEditor() {
   const [showDebugTextBoxes, setShowDebugTextBoxes] = useState(false);
   const [customColors, setCustomColors] = useState<string[]>([]);
   const [showLinkInput, setShowLinkInput] = useState(false);
+  const [isDragOver, setIsDragOver] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [history, setHistory] = useState<PageHistory>({ past: [], future: [] });
   const [renderVersion, setRenderVersion] = useState(0);
   const baseCanvasRefs = useRef<Record<number, HTMLCanvasElement | null>>({});
   const overlayCanvasRefs = useRef<Record<number, HTMLCanvasElement | null>>({});
   const thumbnailCanvasRefs = useRef<Record<number, HTMLCanvasElement | null>>({});
   const editorRef = useRef<HTMLDivElement | null>(null);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const savedTimeoutRef = useRef<number | null>(null);
   const resizeRef = useRef<ResizeState | null>(null);
   const moveRef = useRef<MoveState | null>(null);
   const currentDraftRef = useRef<TextItem | null>(null);
   const renderTasksRef = useRef<Set<{ promise: Promise<void>; cancel: () => void }>>(new Set());
   currentDraftRef.current = draft;
+
+  useEffect(() => () => {
+    if (savedTimeoutRef.current !== null) window.clearTimeout(savedTimeoutRef.current);
+  }, []);
 
   const pageWidths = useMemo(() => new Map(pageLayouts.map((layout) => [
     layout.pageNumber,
@@ -329,6 +384,30 @@ function PdfTextEditor() {
     if (!pdfDocument || !page) return null;
     return pdfDocument.getPage(pageNumber).then((pdfPage: any) => pdfPage.getViewport({ scale }));
   }, [pageLayouts, pdfDocument]);
+
+  const loadFile = async (selected: File) => {
+    if (selected.type !== 'application/pdf' && !selected.name.toLowerCase().endsWith('.pdf')) {
+      setError('Please choose a PDF file.');
+      return;
+    }
+    if (selected.size > 50 * 1024 * 1024) {
+      setError('This PDF is larger than the 50 MB file limit.');
+      return;
+    }
+    try {
+      const data = await readFileBytes(selected);
+      setFile(selected);
+      setSourcePdfBytes(data.sourcePdfBytes);
+      setPdfJsBytes(data.pdfJsBytes);
+      setEdits([]);
+      setDraft(null);
+      setDraftTouched(false);
+      setHistory({ past: [], future: [] });
+      setError(null);
+    } catch (reason) {
+      setError(reason instanceof Error ? reason.message : 'Could not read this PDF.');
+    }
+  };
 
   const getMaskColor = useCallback((pageNumber: number, rect: PdfRect) => {
     const canvas = baseCanvasRefs.current[pageNumber];
@@ -479,13 +558,21 @@ function PdfTextEditor() {
   const commitDraft = useCallback(() => {
     const current = currentDraftRef.current;
     if (!current) return;
+    const alreadyCommitted = edits.some((entry) => entry.id === current.id ||
+      (current.groupId && entry.groupId === current.groupId));
+    if (!draftTouched && !current.isAdded && !alreadyCommitted) {
+      setDraft(null);
+      setDraftTouched(false);
+      return;
+    }
     const next = current.type === 'text' && !current.text.trim()
       ? edits.filter((entry) => entry.id !== current.id && entry.groupId !== current.groupId)
       : [...edits.filter((entry) => entry.id !== current.id && !(current.groupId && entry.groupId === current.groupId)), current];
     pushHistory(next);
     setDraft(null);
+    setDraftTouched(false);
     setStatus('Edits ready to download');
-  }, [edits, pushHistory]);
+  }, [draftTouched, edits, pushHistory]);
 
   useEffect(() => {
     const onPointerDown = (event: globalThis.PointerEvent) => {
@@ -512,7 +599,9 @@ function PdfTextEditor() {
     const existing = edits.find((entry) => entry.groupId === group.id && entry.type === 'text');
     const textItem = group.items[0] as TextItem | undefined;
     const color = existing?.color ?? getTextColor(pageNumber, group);
-    const pdfRect = { ...group.boundingBox };
+    const originalRect = { ...group.boundingBox };
+    const detected = inferTextAlignment(group, pageLayouts.find((page) => page.pageNumber === pageNumber)?.textItems ?? []);
+    const pdfRect = { ...detected.pdfRect };
     const entry: TextItem = existing ?? {
       id: `edit-${Date.now()}`,
       pageNumber,
@@ -520,6 +609,8 @@ function PdfTextEditor() {
       text: group.text,
       originalText: group.text,
       pdfRect,
+      maskRect: originalRect,
+      anchorX: detected.anchorX,
       pdfX: pdfRect.x,
       pdfY: group.baselineY,
       fontName: textItem?.fontName ?? 'Helvetica',
@@ -527,20 +618,22 @@ function PdfTextEditor() {
       fontSize: clamp(group.dominantFontSize, 8, 72),
       color,
       type: 'text',
-      maskColor: getMaskColor(pageNumber, pdfRect),
-      alignment: 'left',
+      maskColor: getMaskColor(pageNumber, originalRect),
+      alignment: detected.alignment,
     };
     currentDraftRef.current = entry;
     setDraft(entry);
+    setDraftTouched(false);
     setSelectedGroupId(group.id);
     if (window.innerWidth < 1280) {
       requestAnimationFrame(() => {
         document.getElementById(`pdf-page-${pageNumber}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
       });
     }
-  }, [edits, getMaskColor, getTextColor]);
+  }, [edits, getMaskColor, getTextColor, pageLayouts]);
 
   const setDraftProperty = (update: Partial<TextItem>) => {
+    setDraftTouched(true);
     setDraft((current) => {
       if (!current) return current;
       const next = { ...current, ...update };
@@ -559,6 +652,7 @@ function PdfTextEditor() {
       text: '',
       originalText: group.text,
       pdfRect,
+      maskRect: pdfRect,
       pdfX: pdfRect.x,
       pdfY: group.baselineY,
       fontName: textItem?.fontName ?? 'Helvetica',
@@ -572,6 +666,7 @@ function PdfTextEditor() {
     setSelectedGroupId(null);
     currentDraftRef.current = null;
     setDraft(null);
+    setDraftTouched(false);
   };
 
   const addTextAtPoint = async (pageNumber: number, clientX: number, clientY: number, pageElement: HTMLElement) => {
@@ -602,6 +697,7 @@ function PdfTextEditor() {
     };
     currentDraftRef.current = entry;
     setDraft(entry);
+    setDraftTouched(true);
     setAddTextMode(false);
   };
 
@@ -612,6 +708,7 @@ function PdfTextEditor() {
     setHistory({ past: history.past.slice(0, -1), future: [edits, ...history.future] });
     currentDraftRef.current = null;
     setDraft(null);
+    setDraftTouched(false);
   };
 
   const redo = () => {
@@ -621,23 +718,26 @@ function PdfTextEditor() {
     setHistory({ past: [...history.past, edits], future });
     currentDraftRef.current = null;
     setDraft(null);
+    setDraftTouched(false);
   };
 
-  const resizeStart = (event: ReactPointerEvent, entry: TextItem) => {
+  const resizeStart = (event: ReactPointerEvent, entry: TextItem, edge: ResizeState['edge']) => {
     event.preventDefault();
     event.stopPropagation();
     const handle = event.currentTarget as HTMLElement;
     const pointerId = event.pointerId;
-    const startX = event.clientX;
     const layout = pageLayouts.find((page) => page.pageNumber === entry.pageNumber);
     if (!layout) return;
     const scale = (pageWidths.get(entry.pageNumber) ?? layout.viewportWidth) / layout.viewportWidth;
     const viewport = layout.viewport.clone({ scale });
+    const pageCanvas = handle.closest<HTMLElement>('[data-pdf-page-canvas]');
+    if (!pageCanvas) return;
     const rect = pdfToViewport(viewport, entry.pdfRect);
     resizeRef.current = {
       pointerId,
-      startX,
-      startWidth: rect.width,
+      edge,
+      pageLeft: pageCanvas.getBoundingClientRect().left,
+      startViewportRect: rect,
       startPdfRect: entry.pdfRect,
       viewport,
     };
@@ -668,9 +768,28 @@ function PdfTextEditor() {
   const resizeMove = (event: ReactPointerEvent) => {
     const current = resizeRef.current;
     if (!current || current.pointerId !== event.pointerId) return;
-    const widthPx = Math.max(40, current.startWidth + event.clientX - current.startX);
-    const delta = viewportToPdf(current.viewport, 0, 0, widthPx, 0);
-    setDraftProperty({ pdfRect: { ...current.startPdfRect, width: Math.max(delta.width, delta.height) } });
+    const right = current.startViewportRect.x + current.startViewportRect.width;
+    const pointerX = event.clientX - current.pageLeft;
+    const left = current.edge === 'left'
+      ? clamp(pointerX, 0, right - 40)
+      : current.startViewportRect.x;
+    const rightEdge = current.edge === 'right'
+      ? Math.max(pointerX, left + 40)
+      : right;
+    const resized = viewportToPdf(
+      current.viewport,
+      left,
+      current.startViewportRect.y,
+      rightEdge - left,
+      current.startViewportRect.height,
+    );
+    setDraftProperty({
+      pdfRect: {
+        ...current.startPdfRect,
+        x: current.edge === 'left' ? resized.x : current.startPdfRect.x,
+        width: resized.width,
+      },
+    });
   };
 
   const moveMove = (event: ReactPointerEvent) => {
@@ -689,6 +808,9 @@ function PdfTextEditor() {
         x: current.startPdfRect.x + deltaX,
         y: current.startPdfRect.y + deltaY,
       },
+      anchorX: currentDraftRef.current?.anchorX === undefined
+        ? undefined
+        : currentDraftRef.current.anchorX + deltaX,
       pdfX: current.startPdfRect.x + deltaX,
       pdfY: current.startPdfRect.y + current.startPdfRect.height + deltaY,
     });
@@ -696,12 +818,14 @@ function PdfTextEditor() {
 
   const downloadEditedPdf = async () => {
     if (!sourcePdfBytes || !file) return;
-    commitDraft();
     const finalEdits = draft
       ? [...edits.filter((entry) => entry.id !== draft.id && !(draft.groupId && entry.groupId === draft.groupId)), draft]
       : edits;
+    if (!finalEdits.length) return;
+    commitDraft();
     setExportWarnings([]);
     setStatus('Preparing edited PDF...');
+    setSaved(false);
     const failures: string[] = [];
     try {
       const source = await PDFDocument.load(sourcePdfBytes);
@@ -713,7 +837,7 @@ function PdfTextEditor() {
         const pageEdits = finalEdits.filter((entry) => entry.pageNumber === index + 1);
         for (const entry of pageEdits) {
           try {
-            const rect = getMaskRect(entry.pdfRect);
+            const rect = getMaskRect(entry.maskRect ?? entry.pdfRect);
             if (entry.groupId || entry.type === 'delete') {
             if (!entry.maskColor) throw new Error('The original background could not be sampled for this text mask.');
             page.drawRectangle({
@@ -722,6 +846,8 @@ function PdfTextEditor() {
                 width: rect.width,
                 height: rect.height,
                 color: colorToPdf(entry.maskColor),
+                opacity: 1,
+                borderWidth: 0,
               });
             }
             if (entry.type === 'delete') continue;
@@ -741,12 +867,16 @@ function PdfTextEditor() {
             const baseline = entry.pdfY || (entry.pdfRect.y + entry.pdfRect.height - size);
             lines.forEach((line, lineIndex) => {
               const lineWidth = font.widthOfTextAtSize(line, size);
-              const xOffset = entry.alignment === 'center'
-                ? (entry.pdfRect.width - lineWidth) / 2
-                : entry.alignment === 'right' ? entry.pdfRect.width - lineWidth : 0;
+              const x = entry.alignment === 'right' && entry.anchorX !== undefined
+                ? entry.anchorX - lineWidth
+                : entry.alignment === 'center' && entry.anchorX !== undefined
+                  ? entry.anchorX - lineWidth / 2
+                  : entry.pdfRect.x + (entry.alignment === 'center'
+                    ? (entry.pdfRect.width - lineWidth) / 2
+                    : entry.alignment === 'right' ? entry.pdfRect.width - lineWidth : 0);
               const y = baseline - lineIndex * lineHeight;
               page.drawText(line, {
-                x: entry.pdfRect.x + xOffset,
+                x,
                 y,
                 size,
                 font,
@@ -754,8 +884,8 @@ function PdfTextEditor() {
               });
               if (entry.underline) {
                 page.drawLine({
-                  start: { x: entry.pdfRect.x + xOffset, y: y - size * 0.12 },
-                  end: { x: entry.pdfRect.x + xOffset + lineWidth, y: y - size * 0.12 },
+                  start: { x, y: y - size * 0.12 },
+                  end: { x: x + lineWidth, y: y - size * 0.12 },
                   thickness: Math.max(0.5, size * 0.05),
                   color: colorToPdf(entry.color),
                 });
@@ -804,6 +934,9 @@ function PdfTextEditor() {
       saveAs(new Blob([downloadBytes.buffer], { type: 'application/pdf' }), `${file.name.replace(/\.pdf$/i, '')}-edited.pdf`);
       setExportWarnings(failures);
       setStatus('Edited PDF downloaded in your browser.');
+      setSaved(true);
+      if (savedTimeoutRef.current !== null) window.clearTimeout(savedTimeoutRef.current);
+      savedTimeoutRef.current = window.setTimeout(() => setSaved(false), 2200);
     } catch (reason) {
       console.error('[edit-pdf] export failed', reason);
       setStatus(reason instanceof Error ? reason.message : 'Could not create the edited PDF.');
@@ -811,6 +944,12 @@ function PdfTextEditor() {
   };
 
   const selectedGroup = pageLayouts.flatMap((page) => page.lineGroups).find((group) => group.id === selectedGroupId);
+  const draftIsPending = draft && (draftTouched || draft.isAdded ||
+    edits.some((entry) => entry.id === draft.id || (draft.groupId && entry.groupId === draft.groupId)));
+  const pendingEdits = draftIsPending && draft
+    ? [...edits.filter((entry) => entry.id !== draft.id && !(draft.groupId && entry.groupId === draft.groupId)), draft]
+    : edits;
+  const pendingCount = pendingEdits.length;
   const renderFormatPanel = (className: string) => draft && (
     <div data-pdf-edit-area className={`rounded-2xl border border-border bg-card p-4 shadow-lg ${className}`}>
       <div className="mb-3 flex items-center justify-between">
@@ -877,48 +1016,74 @@ function PdfTextEditor() {
   );
 
   return (
-    <div className="min-h-[70vh] rounded-[28px] border border-border/70 bg-card/90 p-4 shadow-sm md:p-6">
+    <div className={`min-h-[70vh] rounded-[28px] border border-border/70 bg-card/90 p-4 shadow-sm md:p-6 ${file ? 'pb-24 xl:pb-6' : ''}`}>
       <div className="mb-4 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-muted-foreground">PDFKira — Edit PDF</p>
           <h2 className="mt-2 text-2xl font-bold text-foreground">Edit text in a PDF</h2>
           <p className="mt-1 text-sm text-muted-foreground">Edit runs entirely in your browser — your file never leaves your device.</p>
         </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <label className="inline-flex cursor-pointer items-center rounded-md border border-border px-3 py-2 text-xs font-medium">
-            Open PDF<input type="file" accept="application/pdf,.pdf" className="sr-only" onChange={async (event) => {
-              const selected = event.target.files?.[0];
-              if (!selected) return;
-              try {
-                const data = await readFileBytes(selected);
-                setFile(selected);
-                setSourcePdfBytes(data.sourcePdfBytes);
-                setPdfJsBytes(data.pdfJsBytes);
-                setEdits([]);
-                setDraft(null);
-                setHistory({ past: [], future: [] });
-                setError(null);
-              } catch (reason) {
-                setError(reason instanceof Error ? reason.message : 'Could not read this PDF.');
-              }
-            }} />
-          </label>
+        {file && <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" onClick={() => setAddTextMode((value) => !value)}>{addTextMode ? 'Cancel Add Text' : 'Add Text'}</Button>
           <Button variant="outline" size="sm" onClick={() => setShowDebugTextBoxes((value) => !value)}>{showDebugTextBoxes ? 'Hide debug boxes' : 'Show debug boxes'}</Button>
           <Button variant="outline" size="icon" aria-label="Undo" title="Undo" disabled={!history.past.length} onClick={undo}><Undo2 /></Button>
           <Button variant="outline" size="icon" aria-label="Redo" title="Redo" disabled={!history.future.length} onClick={redo}><Redo2 /></Button>
-          <Button size="sm" onClick={downloadEditedPdf} disabled={!file || !pdfDocument}>Download PDF</Button>
-        </div>
+        </div>}
       </div>
-      <p className="mb-4 text-sm text-muted-foreground">{status}</p>
+      {file && <p className="mb-4 text-sm text-muted-foreground">{status}</p>}
       {error && <p role="alert" className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-foreground">{error} {error.includes('password-protected') && <a className="underline" href="/tools/unlock-pdf">Unlock PDF tool</a>}</p>}
       {exportWarnings.length > 0 && <div role="alert" className="mb-4 rounded-xl border border-amber-500/40 p-4 text-sm"><p>Some changes couldn&apos;t be applied: {exportWarnings.join(', ')}. Try converting this PDF with our <a href="/tools/compress-pdf" className="underline">Repair/Compress tool</a> first.</p></div>}
       {edits.some((entry) => entry.type === 'delete') && <p role="note" className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm">Visual delete only — the original text may still exist in the file&apos;s data layer. For sensitive content, redact with a dedicated tool.</p>}
 
       {!file ? (
-        <div className="rounded-[26px] border border-dashed border-border/70 bg-background/80 p-6 text-center">
-          <p className="text-lg font-semibold">Upload a PDF to start editing</p>
-          <p className="mt-1 text-sm text-muted-foreground">Select text, change its formatting, add text boxes, and download locally.</p>
+        <div className="flex min-h-[55vh] w-full items-center justify-center py-6">
+          <div
+            role="button"
+            tabIndex={0}
+            aria-label="Choose a PDF or drop it here"
+            className={`flex min-h-[340px] w-full flex-col items-center justify-center rounded-[26px] border-2 border-dashed px-5 py-10 text-center transition-colors md:w-[60%] md:min-w-[320px] md:px-10 ${isDragOver ? 'border-primary bg-primary/5' : 'border-border/70 bg-background/80 hover:border-primary/60'}`}
+            onClick={() => fileInputRef.current?.click()}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' || event.key === ' ') {
+                event.preventDefault();
+                fileInputRef.current?.click();
+              }
+            }}
+            onDragOver={(event) => { event.preventDefault(); setIsDragOver(true); }}
+            onDragLeave={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setIsDragOver(false);
+            }}
+            onDrop={(event) => {
+              event.preventDefault();
+              setIsDragOver(false);
+              const droppedFile = event.dataTransfer.files[0];
+              if (droppedFile) void loadFile(droppedFile);
+            }}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/pdf,.pdf"
+              className="sr-only"
+              onChange={(event) => {
+                const selected = event.target.files?.[0];
+                event.target.value = '';
+                if (selected) void loadFile(selected);
+              }}
+            />
+            <div className="mb-5 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10 text-primary">
+              <Upload className="h-8 w-8" aria-hidden="true" />
+            </div>
+            <h3 className="text-2xl font-bold text-foreground">Drop your PDF here</h3>
+            <p className="my-3 text-sm text-muted-foreground">or</p>
+            <Button type="button" size="lg" onClick={(event) => {
+              event.stopPropagation();
+              fileInputRef.current?.click();
+            }}>Choose PDF file</Button>
+            <p className="mt-6 max-w-md text-sm leading-relaxed text-muted-foreground">
+              Processed entirely in your browser — your file never leaves your device. Max 50 MB.
+            </p>
+          </div>
         </div>
       ) : (
         <div className="grid gap-5 xl:grid-cols-[230px_minmax(0,1fr)_270px]">
@@ -943,7 +1108,7 @@ function PdfTextEditor() {
               return <section key={page.pageNumber} id={`pdf-page-${page.pageNumber}`} data-page-number={page.pageNumber} className="rounded-2xl bg-slate-900 p-3">
                 <div className="mb-2 flex items-center justify-between"><h3 className="text-sm font-medium text-white">Page {page.pageNumber}</h3><Badge variant="secondary">{page.textItems.length} texts</Badge></div>
                 {!page.textItems.length && <p className="mb-2 rounded bg-amber-100 p-2 text-xs text-black">This page appears to be a scanned image — text can&apos;t be selected. Use Whiteout + Add Text, or run OCR first with our <a className="underline" href="/ocr-pdf">OCR PDF tool</a>.</p>}
-                <div data-pdf-edit-area className="relative mx-auto overflow-hidden bg-white shadow-lg" style={{ width, height }} onClick={(event) => {
+                <div data-pdf-edit-area data-pdf-page-canvas className="relative mx-auto overflow-hidden bg-white shadow-lg" style={{ width, height }} onClick={(event) => {
                   if (addTextMode) void addTextAtPoint(page.pageNumber, event.clientX, event.clientY, event.currentTarget);
                 }}>
                   <canvas ref={(node) => { baseCanvasRefs.current[page.pageNumber] = node; }} className="absolute inset-0 h-full w-full" />
@@ -979,7 +1144,24 @@ function PdfTextEditor() {
                         editorRef.current = element;
                       }} onInput={(event) => setDraftProperty({ text: event.currentTarget.innerText })} className="min-h-full outline-none" style={{ minHeight: Math.max(rect.height, fontCssSize * 1.3) }} />
                       <button type="button" aria-label="Move textbox" title="Move textbox" className="absolute -left-5 -top-5 h-5 w-5 cursor-move rounded bg-blue-600 text-xs text-white" onPointerDown={(event) => void moveStart(event, draft)} onPointerMove={moveMove} onPointerUp={() => { moveRef.current = null; }}>↔</button>
-                      <button type="button" aria-label="Resize textbox" title="Resize textbox" className="absolute -bottom-2 -right-2 h-4 w-4 cursor-nwse-resize rounded-sm border border-white bg-blue-600" onPointerDown={(event) => void resizeStart(event, draft)} onPointerMove={resizeMove} onPointerUp={() => { resizeRef.current = null; }} />
+                      {([
+                        ['left', '-left-2 top-1/2 -translate-y-1/2', 'cursor-ew-resize', 'Resize textbox from left'],
+                        ['left', '-left-2 -top-2', 'cursor-nwse-resize', 'Resize textbox from top left'],
+                        ['left', '-left-2 -bottom-2', 'cursor-nesw-resize', 'Resize textbox from bottom left'],
+                        ['right', '-right-2 -top-2', 'cursor-nesw-resize', 'Resize textbox from top right'],
+                        ['right', '-right-2 -bottom-2', 'cursor-nwse-resize', 'Resize textbox'],
+                      ] as const).map(([edge, position, cursor, label]) => (
+                        <button
+                          key={label}
+                          type="button"
+                          aria-label={label}
+                          title={label}
+                          className={`absolute z-10 h-4 w-4 rounded-sm border border-white bg-blue-600 ${position} ${cursor}`}
+                          onPointerDown={(event) => resizeStart(event, draft, edge)}
+                          onPointerMove={resizeMove}
+                          onPointerUp={() => { resizeRef.current = null; }}
+                        />
+                      ))}
                     </div>;
                   })()}
                 </div>
@@ -991,18 +1173,37 @@ function PdfTextEditor() {
             })}
           </main>
           {renderFormatPanel('hidden xl:block xl:sticky xl:top-4 xl:h-fit')}
-          {renderFormatPanel('fixed inset-x-2 bottom-2 z-40 max-h-[45vh] overflow-y-auto xl:hidden')}
+          {renderFormatPanel('fixed inset-x-2 bottom-20 z-40 max-h-[45vh] overflow-y-auto xl:hidden')}
         </div>
       )}
       <div className="mt-4 flex justify-end">
-        <Button variant="outline" size="sm" onClick={() => setShowDebugTextBoxes((value) => !value)}>{showDebugTextBoxes ? 'Hide debug boxes' : 'Show debug boxes'}</Button>
+        {file && <Button variant="outline" size="sm" onClick={() => setShowDebugTextBoxes((value) => !value)}>{showDebugTextBoxes ? 'Hide debug boxes' : 'Show debug boxes'}</Button>}
       </div>
+      {file && (
+        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-border bg-background/95 px-4 py-3 shadow-[0_-8px_24px_rgba(0,0,0,0.08)] backdrop-blur xl:sticky xl:inset-x-auto xl:bottom-0 xl:-mx-6 xl:mt-6 xl:px-6">
+          <div className="mx-auto flex max-w-screen-2xl items-center justify-between gap-4">
+            <p className="text-sm text-muted-foreground">
+              {status === 'Preparing edited PDF...'
+                ? status
+                : pendingCount === 0 ? 'No changes yet' : `${pendingCount} ${pendingCount === 1 ? 'edit' : 'edits'} pending`}
+            </p>
+            <Button
+              onClick={downloadEditedPdf}
+              disabled={!pdfDocument || pendingCount === 0 || status === 'Preparing edited PDF...' || saved}
+              title={pendingCount === 0 ? 'Make at least one edit to download' : undefined}
+              className="min-w-36"
+            >
+              {saved ? 'Saved ✓' : 'Download PDF'}
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
 function drawPreviewMask(context: CanvasRenderingContext2D, entry: TextItem, viewport: any) {
-  const mask = pdfToViewport(viewport, getMaskRect(entry.pdfRect));
+  const mask = pdfToViewport(viewport, getMaskRect(entry.maskRect ?? entry.pdfRect));
   if (!entry.maskColor) return;
   context.save();
   context.fillStyle = entry.maskColor;
@@ -1019,6 +1220,9 @@ function drawPreviewEntry(context: CanvasRenderingContext2D, entry: TextItem, vi
     context.fillRect(highlight.x, highlight.y, highlight.width, Math.max(highlight.height, entry.fontSize * viewport.scale * 1.25));
   }
   const baseline = pdfToViewport(viewport, { x: entry.pdfX, y: entry.pdfY, width: 0, height: 0 });
+  const anchor = entry.anchorX === undefined
+    ? baseline.x
+    : pdfToViewport(viewport, { x: entry.anchorX, y: entry.pdfY, width: 0, height: 0 }).x;
   const size = entry.fontSize * viewport.scale;
   context.font = `${entry.italic ? 'italic ' : ''}${entry.bold ? 'bold ' : ''}${size}px ${cssFontFamily(entry.fontFamily)}`;
   context.fillStyle = entry.color;
@@ -1039,8 +1243,12 @@ function drawPreviewEntry(context: CanvasRenderingContext2D, entry: TextItem, vi
   }
   lines.forEach((line, index) => {
     const width = context.measureText(line).width;
-    const x = entry.alignment === 'center' ? baseline.x + (maxWidth - width) / 2
-      : entry.alignment === 'right' ? baseline.x + maxWidth - width : baseline.x;
+    const x = entry.alignment === 'center' && entry.anchorX !== undefined
+      ? anchor - width / 2
+      : entry.alignment === 'right' && entry.anchorX !== undefined
+        ? anchor - width
+        : entry.alignment === 'center' ? baseline.x + (maxWidth - width) / 2
+          : entry.alignment === 'right' ? baseline.x + maxWidth - width : baseline.x;
     const y = baseline.y + index * size * 1.2;
     context.fillText(line, x, y);
     if (entry.underline) {
