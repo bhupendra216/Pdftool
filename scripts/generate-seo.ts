@@ -7,17 +7,15 @@ import { getToolSeoContent } from '../artifacts/pdf-tools/src/lib/toolSeoContent
 import { resolveToolOgImage, toolsSEO } from '../artifacts/pdf-tools/src/data/seoConfig.js';
 import { clientToolContent } from '../artifacts/pdf-tools/src/data/clientToolContent';
 import { aiJobsFaqs } from '../artifacts/pdf-tools/src/data/aiJobsFaqs.ts';
+import { getToolContentRequirements } from '../artifacts/pdf-tools/src/data/toolContentRequirements.ts';
 import { gigCategorySections, gigPlatforms } from '../data/gig-platforms.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const siteUrl = 'https://pdfkira.com';
-// Prefer the built `dist/public` (hashed assets) first, then the legacy `public`.
-const outDirs = [
-  path.resolve(__dirname, '../artifacts/pdf-tools/dist/public'),
-  path.resolve(__dirname, '../artifacts/pdf-tools/public'),
-].filter((dir, index, list) => list.indexOf(dir) === index);
+// The Vite build output is the single source for generated SEO files.
+const outDirs = [path.resolve(__dirname, '../artifacts/pdf-tools/dist/public')];
 
 const escapeHtml = (value: string) =>
   value
@@ -93,6 +91,12 @@ function formatArticleDate(value: string) {
   }).format(date);
 }
 
+function dateOnly(value: string | undefined, fallback: string) {
+  if (!value) return fallback;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? fallback : date.toISOString().slice(0, 10);
+}
+
 function blogMarkdown(article: (typeof blogPosts)[number]) {
   return article.content
     .replace(/^---\s*\n[\s\S]*?\n---\s*\n?/, '')
@@ -142,31 +146,19 @@ function toolPageUrl(slug: string) {
 
 function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath: string }) {
   const seoEntry = getToolSeoContent(tool.slug);
+  const content = getToolContentRequirements(tool);
   const toolOgImage = resolveToolOgImage(tool.slug, `${siteUrl}/logo.png`);
   const ogImageUrl = resolveAbsoluteImageUrl(toolOgImage);
 
-  const steps = (seoEntry?.howItWorks || tool.steps || [])
-    .map((step: any) => {
-      const text = typeof step === 'string' ? step : step.description || step.title || '';
-      return `<li>${escapeHtml(text)}</li>`;
-    })
+  const steps = content.howToSteps
+    .map((step) => `<li><h3>${escapeHtml(step.title)}</h3><p>${escapeHtml(step.description)}</p></li>`)
     .join('');
 
   const whyUseHtml = (seoEntry?.whyUse || [])
     .map((w: any) => `<div><h3>${escapeHtml(w.title)}</h3><p>${escapeHtml(w.description)}</p></div>`)
     .join('');
 
-  const pageFaqs = seoEntry?.faq?.length ? seoEntry.faq : tool.faqs;
-
-  const faqs = pageFaqs
-    .map(
-      (item: any) => `
-        <li>
-          <h3>${escapeHtml(item.question)}</h3>
-          <p>${escapeHtml(item.answer)}</p>
-        </li>`,
-    )
-    .join('');
+  const contentFaqs = content.faqs;
 
   const toolUrl = `${siteUrl}/tools/${tool.slug}`;
 
@@ -176,17 +168,17 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
     <title>${escapeHtml(tool.seoTitle)}</title>
-    <meta name="description" content="${escapeHtml(tool.seoDescription)}" />
+    <meta name="description" content="${escapeHtml(content.uniqueIntro.slice(0, 155))}" />
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href="${toolUrl}" />
     <meta property="og:title" content="${escapeHtml(tool.seoTitle)}" />
-    <meta property="og:description" content="${escapeHtml(tool.seoDescription)}" />
+    <meta property="og:description" content="${escapeHtml(content.uniqueIntro.slice(0, 155))}" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="${toolUrl}" />
     <meta property="og:image" content="${ogImageUrl}" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${escapeHtml(tool.seoTitle)}" />
-    <meta name="twitter:description" content="${escapeHtml(tool.seoDescription)}" />
+    <meta name="twitter:description" content="${escapeHtml(content.uniqueIntro.slice(0, 155))}" />
     <meta name="twitter:image" content="${ogImageUrl}" />
 
     <!-- React SPA CSS -->
@@ -225,7 +217,7 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
           },
           {
             '@type': 'FAQPage',
-            mainEntity: pageFaqs.map((faq: any) => ({
+            mainEntity: contentFaqs.map((faq) => ({
               '@type': 'Question',
               name: faq.question,
               acceptedAnswer: {
@@ -248,9 +240,17 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
           <p>${escapeHtml(tool.shortDescription)}</p>
         </header>
 
-        ${steps ? `<section><h2>How it works</h2><ol>${steps}</ol></section>` : ''}
-        ${whyUseHtml ? `<section><h2>Why use this tool</h2>${whyUseHtml}</section>` : ''}
-        ${faqs ? `<section><h2>Frequently asked questions</h2><ul>${faqs}</ul></section>` : ''}
+        <section><h2>About ${escapeHtml(tool.name)}</h2><p>${escapeHtml(content.uniqueIntro)}</p></section>
+        <section><h2>How to use ${escapeHtml(tool.name)}</h2><ol>${steps}</ol></section>
+        <section><h2>Common use cases</h2>${content.useCases.map((item) => `<article><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.description)}</p><p><strong>Example:</strong> ${escapeHtml(item.example)}</p></article>`).join('')}</section>
+        <section><h2>Technical specifications</h2><dl><dt>Input formats</dt><dd>${escapeHtml(content.technicalSpecs.inputFormats.join(', '))}</dd><dt>Output formats</dt><dd>${escapeHtml(content.technicalSpecs.outputFormats.join(', '))}</dd><dt>Maximum file size</dt><dd>${escapeHtml(content.technicalSpecs.maxFileSize)}</dd><dt>Typical processing time</dt><dd>${escapeHtml(content.technicalSpecs.processingTime)}</dd></dl></section>
+        <section><h2>Privacy and processing</h2><p>${escapeHtml(content.privacyModel.description)}</p><p>Processing model: ${escapeHtml(content.privacyModel.type)}.</p></section>
+        <section><h2>Limitations and considerations</h2><ul>${content.limitations.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>
+        <section><h2>Why use this tool</h2>${whyUseHtml}</section>
+        <section><h2>Frequently asked questions</h2><ul>${contentFaqs.map((faq) => `<li><h3>${escapeHtml(faq.question)}</h3><p>${escapeHtml(faq.answer)}</p></li>`).join('')}</ul></section>
+        <section><h2>Related tools</h2><ul>${content.relatedTools.map((item) => `<li><a href="${escapeHtml(item.tool)}">${escapeHtml(item.tool.replace('/tools/', '').split('-').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' '))}</a> — ${escapeHtml(item.reason)}</li>`).join('')}</ul></section>
+        ${content.proTips?.length ? `<section><h2>Pro tips</h2><ul>${content.proTips.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>` : ''}
+        ${content.commonMistakes?.length ? `<section><h2>Common mistakes to avoid</h2><ul>${content.commonMistakes.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>` : ''}
 
         <p><a href="/tools">Browse all PDF tools</a></p>
       </main>
@@ -283,6 +283,25 @@ function renderClientToolPageHtml(tool: (typeof clientToolContent)[number], asse
   const related = tool.related
     .map((item) => `<li><a href="${escapeHtml(item.href)}">${escapeHtml(item.label)}</a></li>`)
     .join('');
+  const expansion = `
+        <section><h2>When to use ${escapeHtml(tool.name)}</h2>
+          <p>${escapeHtml(tool.intro)} This workflow is useful when you need a quick result without installing a desktop PDF application. It creates a separate output file, so you can compare the result with the source before sharing it.</p>
+          <div><h3>Routine document work</h3><p>Use this tool for finished documents that need one focused operation before an upload, review, meeting, or handoff. Check the source first, choose the smallest useful page range, and give the downloaded file a clear name.</p></div>
+          <div><h3>Private working copies</h3><p>The page is designed for browser-based processing. Even when a workflow runs locally, you should still use a trusted device, keep your browser updated, and avoid leaving downloaded documents in a shared downloads folder.</p></div>
+          <div><h3>Final quality check</h3><p>PDF structures vary. Fonts, scans, tables, signatures, forms, and unusual page layouts can affect results, so open the output in a PDF viewer and verify the portions that matter before relying on it.</p></div>
+        </section>
+        <section><h2>Technical details and limitations</h2>
+          <dl><dt>Input</dt><dd>PDF files up to 50MB and 20 pages, subject to the limits shown by the upload control.</dd>
+          <dt>Output</dt><dd>A PDF or document output described above; the exact result depends on the selected workflow and source structure.</dd>
+          <dt>Processing</dt><dd>Browser-side processing is used for this tool. Large, image-heavy, encrypted, damaged, or complex files can require more memory or may not process successfully.</dd></dl>
+          <ul><li>Review converted tables, recognized text, placed signatures, or other generated content manually.</li>
+          <li>Password-protected or corrupted PDFs may need to be repaired or unlocked before processing.</li>
+          <li>This tool is not a substitute for a certified signature provider, document-management system, or accessibility review.</li>
+          <li>Keep the original document until the downloaded result has been checked.</li></ul>
+        </section>
+        <section><h2>Practical tips</h2>
+          <ul><li>Use a clear, upright source PDF with readable text whenever possible.</li><li>Process fewer pages when a large file causes browser memory pressure.</li><li>Use the related tools below when the document needs another step before or after this workflow.</li><li>Do not upload a document unless you have permission to process and share it.</li></ul>
+        </section>`;
   const structuredData = {
     '@context': 'https://schema.org',
     '@graph': [
@@ -338,6 +357,7 @@ function renderClientToolPageHtml(tool: (typeof clientToolContent)[number], asse
         <p>${escapeHtml(tool.intro)}</p>
         <section><h2>How it works</h2><ol>${tool.steps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol></section>
         <section><h2>Why use this tool</h2>${benefits}</section>
+        ${expansion}
         <section><h2>Frequently asked questions</h2><ul>${faqs}</ul></section>
         <nav aria-label="Related tools"><h2>Related tools</h2><ul>${related}</ul></nav>
       </main>
@@ -970,6 +990,7 @@ function writeStaticFiles() {
 
   for (const outDir of outDirs) {
     ensureDir(outDir);
+    fs.rmSync(path.join(outDir, 'tools'), { recursive: true, force: true });
     ensureDir(path.join(outDir, 'tools'));
     // Inject SEO fallback into the built homepage index.html if needed
     patchHomepageHtml(outDir);
@@ -988,21 +1009,32 @@ function writeStaticFiles() {
     // Write sitemap.xml
     const editorialPages = getStaticPages();
     const clientToolSlugs = new Set(clientToolContent.map((tool) => tool.slug));
+    const buildDate = new Date().toISOString().slice(0, 10);
+    const articleDates = new Map(
+      blogPosts.map((post) => [
+        `/blog/${encodeURIComponent(post.slug)}`,
+        dateOnly(post.updatedAt || post.publishedAt, buildDate),
+      ]),
+    );
     const sitemapItems = [
-      { loc: `${siteUrl}/`, changefreq: 'weekly' },
-      { loc: `${siteUrl}/tools`, changefreq: 'weekly' },
-      { loc: `${siteUrl}/compare/ilovepdf-vs-smallpdf-vs-pdfkira`, changefreq: 'weekly' },
-      ...clientToolContent.map((tool) => ({ loc: `${siteUrl}/tools/${tool.slug}`, changefreq: 'weekly' as const })),
+      { loc: `${siteUrl}/`, changefreq: 'weekly', lastmod: buildDate },
+      { loc: `${siteUrl}/tools`, changefreq: 'weekly', lastmod: buildDate },
+      { loc: `${siteUrl}/compare/ilovepdf-vs-smallpdf-vs-pdfkira`, changefreq: 'weekly', lastmod: buildDate },
+      ...clientToolContent.map((tool) => ({ loc: `${siteUrl}/tools/${tool.slug}`, changefreq: 'weekly' as const, lastmod: buildDate })),
       ...tools
         .filter((tool) => tool.status === 'available' && !clientToolSlugs.has(tool.slug))
-        .map((tool) => ({ loc: `${siteUrl}/tools/${tool.slug}`, changefreq: 'weekly' as const })),
-      ...editorialPages.map((page) => ({ loc: `${siteUrl}${page.path}`, changefreq: 'monthly' as const })),
+        .map((tool) => ({ loc: `${siteUrl}/tools/${tool.slug}`, changefreq: 'weekly' as const, lastmod: buildDate })),
+      ...editorialPages.map((page) => ({
+        loc: `${siteUrl}${page.path}`,
+        changefreq: 'monthly' as const,
+        lastmod: articleDates.get(page.path) || buildDate,
+      })),
     ];
 
     const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${sitemapItems
       .map(
         (item) =>
-          `  <url>\n    <loc>${escapeHtml(item.loc)}</loc>\n    <lastmod>${new Date().toISOString().slice(0, 10)}</lastmod>\n    <changefreq>${item.changefreq}</changefreq>\n  </url>`,
+          `  <url>\n    <loc>${escapeHtml(item.loc)}</loc>\n    <lastmod>${item.lastmod}</lastmod>\n    <changefreq>${item.changefreq}</changefreq>\n  </url>`,
       )
       .join('\n')}\n</urlset>`;
 
