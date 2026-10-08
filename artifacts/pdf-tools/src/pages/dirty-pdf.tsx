@@ -5,8 +5,8 @@ import ToolSeoSection from '@/components/Content/ToolSeoSection';
 import { getToolSeoContent } from '@/lib/toolSeoContent';
 
 export default function DirtyPdfPage() {
-  const title = 'Transform PDF — Make pages look aged and handwritten';
-  const description = 'Apply distressed, handwritten-looking effects to a PDF in your browser — remove polished machine prints and add natural paper texture and marks.';
+  const title = 'Make PDF Look Old — Aged, Vintage & Scanned Paper Effects | PDFKira';
+  const description = 'Make a PDF look old with vintage paper tones, grain, creases, and scanned-paper effects. Process locally in your browser and export a flattened image PDF.';
 
   useSEOAdvanced({
     title,
@@ -15,9 +15,10 @@ export default function DirtyPdfPage() {
     jsonLd: {
       '@context': 'https://schema.org',
       '@type': 'SoftwareApplication',
-      name: 'Transform Handwritten PDF Tool',
+      name: 'Aged & Scanned PDF Effects',
       applicationCategory: 'Utility',
       operatingSystem: 'Web',
+      url: `${SITE_URL}/tools/transform-pdf`,
       offers: { '@type': 'Offer', price: 0, priceCurrency: 'USD' },
       description,
     },

@@ -119,12 +119,12 @@ export function applyGlareToCtx(ctx: CanvasRenderingContext2D, w: number, h: num
   ctx.restore();
 }
 
-export function applyGrainToImageData(imageData: ImageData, amount: number) {
+export function applyGrainToImageData(imageData: ImageData, amount: number, random: () => number) {
   if (amount <= 0) return;
   const data = imageData.data;
   const strength = amount / 100;
   for (let i = 0; i < data.length; i += 4) {
-    const noise = (Math.random() * 2 - 1) * 255 * 0.3 * strength;
+    const noise = (random() * 2 - 1) * 255 * 0.3 * strength;
     data[i] = clamp(data[i] + noise, 0, 255);
     data[i + 1] = clamp(data[i + 1] + noise, 0, 255);
     data[i + 2] = clamp(data[i + 2] + noise, 0, 255);
@@ -279,7 +279,7 @@ export function removeRuledLinesFromImageData(imageData: ImageData, sensitivity 
   }
 }
 
-export function applyJpegArtifactsToImageData(imageData: ImageData, amount: number) {
+export function applyJpegArtifactsToImageData(imageData: ImageData, amount: number, random: () => number) {
   if (amount <= 0) return;
   const data = imageData.data;
   const strength = clamp01(amount / 100);
@@ -288,7 +288,7 @@ export function applyJpegArtifactsToImageData(imageData: ImageData, amount: numb
   const block = 8;
   for (let by = 0; by < h; by += block) {
     for (let bx = 0; bx < w; bx += block) {
-      if (Math.random() > strength) continue;
+      if (random() > strength) continue;
       // compute average color in block and then fill block with it
       let r = 0,
         g = 0,
@@ -317,9 +317,9 @@ export function applyJpegArtifactsToImageData(imageData: ImageData, amount: numb
           const y = by + yy;
           if (x >= w || y >= h) continue;
           const idx = (y * w + x) * 4;
-          data[idx] = r + (Math.random() - 0.5) * 20 * strength;
-          data[idx + 1] = g + (Math.random() - 0.5) * 20 * strength;
-          data[idx + 2] = b + (Math.random() - 0.5) * 20 * strength;
+          data[idx] = r + (random() - 0.5) * 20 * strength;
+          data[idx + 1] = g + (random() - 0.5) * 20 * strength;
+          data[idx + 2] = b + (random() - 0.5) * 20 * strength;
         }
       }
     }
@@ -502,34 +502,34 @@ export function applyPaperTone(ctx: CanvasRenderingContext2D, w: number, h: numb
   ctx.restore();
 }
 
-export function applyAgeSpots(ctx: CanvasRenderingContext2D, w: number, h: number, amount: number) {
+export function applyAgeSpots(ctx: CanvasRenderingContext2D, w: number, h: number, amount: number, random: () => number) {
   const count = Math.floor((amount / 100) * 60);
   for (let i = 0; i < count; i++) {
-    const rx = Math.random() * w;
-    const ry = Math.random() * h;
-    const r = Math.random() * (6 + (amount / 100) * 30);
-    const o = Math.random() * 0.4 + 0.05;
+    const rx = random() * w;
+    const ry = random() * h;
+    const r = random() * (6 + (amount / 100) * 30);
+    const o = random() * 0.4 + 0.05;
     ctx.beginPath();
     ctx.fillStyle = `rgba(120,70,30,${o})`;
-    ctx.ellipse(rx, ry, r, r * (0.6 + Math.random() * 0.8), Math.random() * Math.PI, 0, Math.PI * 2);
+    ctx.ellipse(rx, ry, r, r * (0.6 + random() * 0.8), random() * Math.PI, 0, Math.PI * 2);
     ctx.fill();
   }
 }
 
-export function applyFoldCrease(ctx: CanvasRenderingContext2D, w: number, h: number, amount: number, horizontal = false) {
+export function applyFoldCrease(ctx: CanvasRenderingContext2D, w: number, h: number, amount: number, random: () => number, horizontal = false) {
   if (amount <= 0) return;
   ctx.save();
   ctx.globalAlpha = clamp01(amount / 100) * 0.9;
   ctx.strokeStyle = 'rgba(0,0,0,0.15)';
   ctx.lineWidth = Math.max(0.5, (amount / 100) * 4);
   if (horizontal) {
-    const y = h * (0.2 + Math.random() * 0.6);
+    const y = h * (0.2 + random() * 0.6);
     ctx.beginPath();
     ctx.moveTo(0, y);
     ctx.lineTo(w, y);
     ctx.stroke();
   } else {
-    const x = w * (0.05 + Math.random() * 0.2);
+    const x = w * (0.05 + random() * 0.2);
     ctx.beginPath();
     ctx.moveTo(x, 0);
     ctx.lineTo(x, h);
@@ -538,7 +538,7 @@ export function applyFoldCrease(ctx: CanvasRenderingContext2D, w: number, h: num
   ctx.restore();
 }
 
-export function applyTornEdges(ctx: CanvasRenderingContext2D, w: number, h: number, amount: number) {
+export function applyTornEdges(ctx: CanvasRenderingContext2D, w: number, h: number, amount: number, random: () => number) {
   if (amount <= 0) return;
   const jag = Math.floor(6 + (amount / 100) * 30);
   const margin = Math.max(6, (amount / 100) * 30);
@@ -548,7 +548,7 @@ export function applyTornEdges(ctx: CanvasRenderingContext2D, w: number, h: numb
   // top edge
   for (let i = 0; i < jag; i++) {
     const x = margin + (i / jag) * (w - margin * 2);
-    const y = margin + Math.random() * margin * 0.6;
+    const y = margin + random() * margin * 0.6;
     path.lineTo(x, y);
   }
   path.lineTo(w - margin, margin);
@@ -556,7 +556,7 @@ export function applyTornEdges(ctx: CanvasRenderingContext2D, w: number, h: numb
   // bottom jag
   for (let i = jag; i >= 0; i--) {
     const x = margin + (i / jag) * (w - margin * 2);
-    const y = h - margin - Math.random() * margin * 0.6;
+    const y = h - margin - random() * margin * 0.6;
     path.lineTo(x, y);
   }
   path.closePath();
@@ -618,16 +618,16 @@ export function applyPaperclipMark(ctx: CanvasRenderingContext2D, w: number, h: 
   ctx.restore();
 }
 
-export function applyTapeResidue(ctx: CanvasRenderingContext2D, w: number, h: number, amount: number) {
+export function applyTapeResidue(ctx: CanvasRenderingContext2D, w: number, h: number, amount: number, random: () => number) {
   if (amount <= 0) return;
   const count = Math.max(1, Math.floor(amount / 30));
   for (let i = 0; i < count; i++) {
-    const x = Math.random() * (w * 0.5);
-    const y = Math.random() * (h * 0.15);
-    const rw = Math.min(w * 0.6, 60 + Math.random() * 120);
-    const rh = Math.min(h * 0.08, 12 + Math.random() * 20);
+    const x = random() * (w * 0.5);
+    const y = random() * (h * 0.15);
+    const rw = Math.min(w * 0.6, 60 + random() * 120);
+    const rh = Math.min(h * 0.08, 12 + random() * 20);
     ctx.save();
-    ctx.fillStyle = `rgba(220,200,150,${0.08 + Math.random() * 0.12})`;
+    ctx.fillStyle = `rgba(220,200,150,${0.08 + random() * 0.12})`;
     roundRect(ctx, x, y, rw, rh, 4);
     ctx.fill();
     ctx.restore();

@@ -1,27 +1,42 @@
 /// <reference types="react" />
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import PDFPreview from '@/components/PDFPreview';
 import DirtyPreview from '@/components/DirtyPreview';
-import { applyPaperToneToCanvas, drawFoldCreaseOnCanvas, drawTornEdgesOnCanvas, drawDogEarOnCanvas, drawStapleHolesOnCanvas, drawPaperclipMarkOnCanvas, drawTapeResidueOnCanvas, setGlobalMarkSizeLimit } from '@/lib/dirtyEffects';
-import { applyPixelFilters, applyGrainToImageData, applyJpegArtifactsToImageData, applyGlareToCtx, applyVignetteToCtx, downscaleUpscaleCanvas, removeRuledLinesFromImageData, applyInkTransformations } from '@/lib/canvasFilters';
+import { processPage, type TransformSettings } from '@/lib/transform/processPage';
+import { PDFDocument } from 'pdf-lib';
+import * as pdfjsLib from 'pdfjs-dist';
+
+const MAX_FILE_BYTES = 50 * 1024 * 1024;
+const MAX_PAGES = 30;
+
+function createSeed() {
+  const values = new Uint32Array(1);
+  crypto.getRandomValues(values);
+  return values[0];
+}
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024 * 1024) return `${Math.ceil(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+function processingError(error: unknown) {
+  const failure = error as { name?: string; message?: string };
+  const details = `${failure?.name ?? ''} ${failure?.message ?? ''}`.toLowerCase();
+  if (failure?.name === 'PasswordException' || /password|encrypted/.test(details)) return 'password';
+  if (/memory|allocation|out of memory|quotaexceeded/.test(details)) return 'memory';
+  return 'read';
+}
 
 export default function DirtyPDF() {
   const [file, setFile] = useState<File | null>(null);
-  const intensity = 0;
   const [processing, setProcessing] = useState<boolean>(false);
-  const loadPdfRuntime = async () => {
-    const [{ PDFDocument }, pdfjsLib] = await Promise.all([
-      import('pdf-lib'),
-      import('pdfjs-dist'),
-    ]);
-    try {
-      await import('pdfjs-dist/build/pdf.worker.mjs');
-    } catch {
-      // optional worker module; not required for initial hydration
-    }
-    return { PDFDocument, pdfjsLib };
-  };
+  const [progress, setProgress] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [outputSize, setOutputSize] = useState<number | null>(null);
   const [downloadUrl, setDownloadUrl] = useState<string | null>(null);
+  const [seed, setSeed] = useState(1);
+  const [dpi, setDpi] = useState<100 | 150 | 200>(150);
 
   // preview controls
   const [brightness, setBrightness] = useState<number>(55);
@@ -35,9 +50,8 @@ export default function DirtyPDF() {
   const [paperGrain, setPaperGrain] = useState<number>(30);
   const [paperToneAmount, setPaperToneAmount] = useState<number>(60);
   const [removeLines, setRemoveLines] = useState<boolean>(false);
-  const [paperStyle, setPaperStyle] = useState<'auto'|'plain'|'lined'|'grid'>('auto');
+  const [paperStyle, setPaperStyle] = useState<'plain'|'lined'|'grid'>('plain');
   const [pageRotation, setPageRotation] = useState<number>(2);
-  const [perspectiveSkew, setPerspectiveSkew] = useState<number>(0);
   const [foldCrease, setFoldCrease] = useState<number>(40);
   const [tornEdges, setTornEdges] = useState<number>(40);
   const [dogEar, setDogEar] = useState<'none'|'top-left'|'top-right'|'bottom-left'|'bottom-right'>('top-left');
@@ -54,7 +68,6 @@ export default function DirtyPDF() {
   const [waterStainDepth, setWaterStainDepth] = useState<number>(15);
   const [jpegArtifacts, setJpegArtifacts] = useState<number>(15);
   const [dpiReduction, setDpiReduction] = useState<number>(15);
-  const [smallMarks, setSmallMarks] = useState<boolean>(false);
 
   // Ink transformation controls
   const [inkColor, setInkColor] = useState<'black'|'blue'|'brown'|'gray'|'green'|'red'>('black');
@@ -75,6 +88,45 @@ export default function DirtyPDF() {
   const [damageOpen, setDamageOpen] = useState(false);
   const [colorOpen, setColorOpen] = useState(false);
   const [artifactsOpen, setArtifactsOpen] = useState(false);
+  const settings = useMemo<TransformSettings>(() => ({
+    brightness,
+    contrast,
+    sepia,
+    temperature,
+    vignette,
+    vignetteDarkness,
+    sharpen,
+    paperTone,
+    paperGrain,
+    paperToneAmount,
+    removeLines,
+    paperStyle,
+    pageRotation,
+    foldCrease,
+    tornEdges,
+    dogEar,
+    dogEarSize,
+    gamma,
+    saturation,
+    hueShift,
+    glare,
+    stapleHoles,
+    paperclipMark,
+    tapeResidue,
+    smudgeIntensity,
+    waterStainDepth,
+    jpegArtifacts,
+    dpiReduction,
+    inkColor,
+    inkFading,
+    inkBleeding,
+  }), [
+    brightness, contrast, sepia, temperature, vignette, vignetteDarkness, sharpen,
+    paperTone, paperGrain, paperToneAmount, removeLines, paperStyle, pageRotation,
+    foldCrease, tornEdges, dogEar, dogEarSize, gamma, saturation, hueShift, glare,
+    stapleHoles, paperclipMark, tapeResidue, smudgeIntensity, waterStainDepth,
+    jpegArtifacts, dpiReduction, inkColor, inkFading, inkBleeding,
+  ]);
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
@@ -103,124 +155,114 @@ export default function DirtyPDF() {
     };
   }, [downloadUrl]);
 
+  useEffect(() => {
+    setDownloadUrl(null);
+    setOutputSize(null);
+  }, [file, settings, seed, dpi]);
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setDownloadUrl((d) => {
       if (d) URL.revokeObjectURL(d);
       return null;
     });
     const f = e.target.files && e.target.files[0] ? e.target.files[0] : null;
-    setFile(f);
+    setFile(null);
+    setErrorMessage('');
+    setOutputSize(null);
+    setProgress('');
     setPageNumber(1);
     setTotalPages(1);
-    if (f) {
-      // load to get total pages quickly
-      (async () => {
-        try {
-          const { PDFDocument } = await loadPdfRuntime();
-          const arrayBuffer = await f.arrayBuffer();
-          const pdfDoc = await PDFDocument.load(arrayBuffer);
-          setTotalPages(pdfDoc.getPageCount());
-        } catch (e) {
-          // ignore
-        }
-      })();
+    if (!f) return;
+    if (f.size > MAX_FILE_BYTES) {
+      setErrorMessage('File too large. Please use a PDF up to 50 MB.');
+      e.target.value = '';
+      return;
     }
+    void (async () => {
+      try {
+        const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(await f.arrayBuffer()) });
+        const document = await loadingTask.promise;
+        if (document.numPages > MAX_PAGES) {
+          setErrorMessage('This PDF has more than 30 pages. Please choose a shorter document.');
+          await loadingTask.destroy();
+          e.target.value = '';
+          return;
+        }
+        setTotalPages(document.numPages);
+        await loadingTask.destroy();
+        setSeed(createSeed());
+        setFile(f);
+      } catch (error) {
+        const kind = processingError(error);
+        setErrorMessage(kind === 'password'
+          ? 'This PDF is password-protected — unlock it with our Unlock PDF tool first.'
+          : kind === 'memory'
+            ? 'File too large, try fewer pages or lower DPI.'
+            : 'Couldn’t read this PDF. Check that it is a valid, unencrypted PDF.');
+        e.target.value = '';
+      }
+    })();
   };
 
   const handleProcess = async () => {
     if (!file) return;
     setProcessing(true);
     setDownloadUrl(null);
+    setOutputSize(null);
+    setErrorMessage('');
+    setProgress('Starting processing…');
+    let destroyPdf: (() => Promise<void>) | undefined;
 
     try {
-      const { PDFDocument, pdfjsLib } = await loadPdfRuntime();
-      const arrayBuffer = await file.arrayBuffer();
-      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      if (file.size > MAX_FILE_BYTES) throw new Error('file-limit');
+      const sourceBytes = await file.arrayBuffer();
+      const sourceDoc = await PDFDocument.load(sourceBytes, { ignoreEncryption: true });
+      const loadingTask = pdfjsLib.getDocument({ data: new Uint8Array(sourceBytes) });
+      destroyPdf = () => loadingTask.destroy();
+      const pdf = await loadingTask.promise;
+      if (pdf.numPages > MAX_PAGES) throw new Error('page-limit');
       const outPdf = await PDFDocument.create();
+      outPdf.setCreationDate(new Date(0));
+      outPdf.setModificationDate(new Date(0));
+      outPdf.setCreator('PDFKira');
+      outPdf.setProducer('PDFKira');
 
       for (let p = 1; p <= pdf.numPages; p++) {
+        setProgress(`Processing page ${p} of ${pdf.numPages}…`);
         const page = await pdf.getPage(p);
-        const viewport = page.getViewport({ scale: 2 });
-        const temp = document.createElement('canvas');
-        temp.width = Math.floor(viewport.width);
-        temp.height = Math.floor(viewport.height);
-        const tctx = temp.getContext('2d');
-        if (!tctx) throw new Error('Failed to get temp canvas context');
-        await page.render({ canvasContext: tctx, viewport } as any).promise;
-
-        // apply pixel filters
-        const imageData = tctx.getImageData(0, 0, temp.width, temp.height);
-        // optionally remove ruled lines
-        if (removeLines || paperStyle === 'plain') {
-          try {
-            removeRuledLinesFromImageData(imageData, 0.7);
-          } catch (e) {
-            console.warn('removeRuledLines failed', e);
-          }
-        }
-        applyPixelFilters(imageData, {
-          brightness,
-          contrast,
-          sepia,
-          gamma,
-          saturation,
-          hue: hueShift,
-          temperature,
+        const processed = await processPage(page, p, settings, seed, dpi);
+        const blob = await new Promise<Blob>((resolve, reject) => {
+          processed.toBlob((result) => result ? resolve(result) : reject(new Error('image-encode')), 'image/png');
         });
-        applyGrainToImageData(imageData, paperGrain);
-        applyJpegArtifactsToImageData(imageData, jpegArtifacts);
-
-        // Ink transformations for export
-        if (inkColor !== 'black' || (inkFading ?? 0) > 0 || (inkBleeding ?? 0) > 0) {
-          try {
-            applyInkTransformations(imageData, {
-              color: inkColor,
-              fading: inkFading,
-              bleeding: inkBleeding,
-            });
-          } catch (e) {
-            console.warn('applyInkTransformations failed', e);
-          }
-        }
-        tctx.putImageData(imageData, 0, 0);
-
-        // overlays and damage
-        applyPaperToneToCanvas(tctx, temp.width, temp.height, paperTone, paperTone === 'white' ? 0 : paperToneAmount);
-        drawFoldCreaseOnCanvas(tctx, temp.width, temp.height, foldCrease, false);
-        drawTornEdgesOnCanvas(tctx, temp.width, temp.height, tornEdges);
-        drawDogEarOnCanvas(tctx, temp.width, temp.height, dogEar, dogEarSize);
-        drawStapleHolesOnCanvas(tctx, temp.width, temp.height, stapleHoles);
-        drawPaperclipMarkOnCanvas(tctx, temp.width, temp.height, paperclipMark);
-        drawTapeResidueOnCanvas(tctx, temp.width, temp.height, tapeResidue);
-        applyGlareToCtx(tctx, temp.width, temp.height, glare);
-        applyVignetteToCtx(tctx, temp.width, temp.height, vignette, vignetteDarkness);
-
-        if (dpiReduction > 0) downscaleUpscaleCanvas(temp, dpiReduction);
-
-        // convert to blob and embed
-        const blob: Blob = await new Promise((res) => temp.toBlob((b) => res(b as Blob), 'image/png'));
         const imgBytes = await blob.arrayBuffer();
         const img = await outPdf.embedPng(imgBytes);
-        const { width: imgW, height: imgH } = img.scale(1);
-        const pageNew = outPdf.addPage([imgW, imgH]);
-        pageNew.drawImage(img, { x: 0, y: 0, width: imgW, height: imgH });
+        const { width, height } = sourceDoc.getPage(p - 1).getSize();
+        const outputPage = outPdf.addPage([width, height]);
+        outputPage.drawImage(img, { x: 0, y: 0, width, height });
+        processed.width = 0;
+        processed.height = 0;
       }
 
       const outBytes = await outPdf.save();
-      // ensure we have a plain Uint8Array copy so we can use a standard ArrayBuffer
-      const outArray = Uint8Array.from(outBytes as any);
-      const outBuffer = outArray.buffer as unknown as ArrayBuffer;
-      // tsserver sometimes flags the typed ArrayBuffer as incompatible with BlobPart — silence here
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
-      const outBlob = new Blob([outBuffer], { type: 'application/pdf' });
+      const outBlob = new Blob([new Uint8Array(outBytes)], { type: 'application/pdf' });
       const url = URL.createObjectURL(outBlob);
       setDownloadUrl(url);
+      setOutputSize(outBlob.size);
+      setProgress('Finished processing.');
     } catch (error) {
-      // eslint-disable-next-line no-console
-      console.error('Error processing PDF:', error);
-      alert('Failed to process PDF. Please try again.');
+      const kind = processingError(error);
+      setErrorMessage(kind === 'password'
+        ? 'This PDF is password-protected — unlock it with our Unlock PDF tool first.'
+        : kind === 'memory'
+          ? 'File too large, try fewer pages or lower DPI.'
+          : (error instanceof Error && error.message === 'page-limit')
+            ? 'This PDF has more than 30 pages. Please choose a shorter document.'
+            : (error instanceof Error && error.message === 'file-limit')
+              ? 'File too large. Please use a PDF up to 50 MB.'
+              : 'Couldn’t read this PDF. Check that it is a valid, unencrypted PDF.');
+      setProgress('');
     } finally {
+      if (destroyPdf) await destroyPdf();
       setProcessing(false);
     }
   };
@@ -237,10 +279,8 @@ export default function DirtyPDF() {
     setPaperGrain(0);
     setPaperToneAmount(0);
     setRemoveLines(false);
-    setPaperStyle('auto');
-    setSmallMarks(false);
+    setPaperStyle('plain');
     setPageRotation(0);
-    setPerspectiveSkew(0);
     setFoldCrease(0);
     setTornEdges(0);
     setDogEar('none');
@@ -256,6 +296,7 @@ export default function DirtyPDF() {
     setWaterStainDepth(0);
     setJpegArtifacts(0);
     setDpiReduction(0);
+    setDpi(150);
     setInkColor('black');
     setInkFading(0);
     setInkBleeding(0);
@@ -266,11 +307,20 @@ export default function DirtyPDF() {
 
   return (
     <div className="max-w-6xl mx-auto p-6">
-      <h1 className="text-3xl font-bold mb-4">Transform PDF</h1>
-      <p className="text-gray-600 mb-6">Make your PDF look aged and handwritten — add paper texture and natural marks. Preview changes in real-time.</p>
+      <h1 className="text-3xl font-bold mb-4">Make Your PDF Look Old</h1>
+      <p className="text-gray-600 mb-6">Apply aged, vintage, and scanned-paper effects to a PDF. Preview and export use the same processing; everything runs locally in your browser.</p>
 
       <div className="space-y-4">
         <input type="file" accept=".pdf" onChange={handleFileChange} className="w-full p-3 border rounded" />
+        <p className="text-sm text-muted-foreground">PDF limits: 50 MB and 30 pages. Output is a flattened image PDF — text won’t be selectable or searchable.</p>
+        {errorMessage && (
+          <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
+            {errorMessage}{' '}
+            {errorMessage.startsWith('This PDF is password-protected') && (
+              <a className="font-medium underline" href="/tools/unlock-pdf">Unlock it with our Unlock PDF tool</a>
+            )}
+          </p>
+        )}
 
         <div className="flex items-center justify-between gap-4">
           <div />
@@ -304,6 +354,17 @@ export default function DirtyPDF() {
               <div className="flex items-center justify-between mb-2">
                 <div className="text-sm font-medium">Preview (Distressed)</div>
                 <div className="flex items-center gap-2">
+                  <label className="text-xs text-gray-600">
+                    Quality
+                    <select value={dpi} onChange={(e) => setDpi(Number(e.target.value) as 100 | 150 | 200)} className="ml-1 rounded border bg-white p-1 text-gray-900">
+                      <option value={100}>100 DPI</option>
+                      <option value={150}>150 DPI</option>
+                      <option value={200}>200 DPI</option>
+                    </select>
+                  </label>
+                  <button onClick={() => setSeed(createSeed())} className="px-2 py-1 bg-white rounded border" title="Choose a new deterministic layout for randomized effects">
+                    Shuffle effects
+                  </button>
                   <select value={rightMode} onChange={(e) => {
                     const v = e.target.value as any;
                     setRightMode(v);
@@ -316,48 +377,15 @@ export default function DirtyPDF() {
                     <option value="manual">Change yourself</option>
                     <option value="restore">Restore original values</option>
                   </select>
-                  <div className="text-sm text-gray-500">Preview only</div>
+                  <div className="text-sm text-gray-500">Same processing as export</div>
                 </div>
               </div>
               <DirtyPreview
                 file={file}
                 pageNumber={pageNumber}
-                intensity={0}
-                brightness={brightness}
-                contrast={contrast}
-                sepia={sepia}
-                temperature={temperature}
-                vignette={vignette}
-                vignetteDarkness={vignetteDarkness}
-                sharpen={sharpen}
-                gamma={gamma}
-                saturation={saturation}
-                hue={hueShift}
-                paperTone={paperTone}
-                paperToneAmount={paperToneAmount}
-                paperGrain={paperGrain}
-                pageRotation={pageRotation}
-                perspectiveSkew={perspectiveSkew}
-                foldCrease={foldCrease}
-                tornEdges={tornEdges}
-                dogEar={dogEar}
-                dogEarSize={dogEarSize}
-                jpegArtifacts={jpegArtifacts}
-                paperclipMark={paperclipMark}
-                tapeResidue={tapeResidue}
-                stapleHoles={stapleHoles}
-                glare={glare}
-                // Ink transform props
-                inkColor={inkColor}
-                inkFading={inkFading}
-                inkBleeding={inkBleeding}
-                smudgeIntensity={smudgeIntensity}
-                waterStainDepth={waterStainDepth}
-                dpiReduction={dpiReduction}
-                removeLines={removeLines}
-                paperStyle={paperStyle}
-                smallMarks={smallMarks}
-                scale={zoom}
+                settings={settings}
+                seed={seed}
+                dpi={dpi}
                 className="w-full"
               />
             </div>
@@ -433,15 +461,6 @@ export default function DirtyPDF() {
                   <label className="block text-sm font-medium mb-2">🔍 Sharpen: {sharpen}%</label>
                   <input type="range" min={0} max={100} value={sharpen} onChange={(e) => setSharpen(Number(e.target.value))} className="w-full" />
                 </div>
-                <div>
-                  <label className="inline-flex items-center">
-                    <input type="checkbox" className="mr-2" checked={smallMarks} onChange={(e) => {
-                      setSmallMarks(e.target.checked);
-                      setGlobalMarkSizeLimit(e.target.checked ? 12 : null);
-                    }} />
-                    Small Marks (dot-like)
-                  </label>
-                </div>
               </div>
             )}
           </div>
@@ -470,7 +489,6 @@ export default function DirtyPDF() {
                 <div>
                   <label className="block text-sm font-medium mb-2">Paper Style</label>
                   <select value={paperStyle} onChange={(e) => setPaperStyle(e.target.value as any)} className="w-full p-2 border rounded">
-                    <option value="auto">Auto (detect)</option>
                     <option value="plain">Plain A4</option>
                     <option value="lined">Lined</option>
                     <option value="grid">Grid</option>
@@ -532,10 +550,6 @@ export default function DirtyPDF() {
                 <div>
                   <label className="block text-sm font-medium mb-2">Page Rotation: {pageRotation}°</label>
                   <input type="range" min={-5} max={5} step={0.1} value={pageRotation} onChange={(e) => setPageRotation(Number(e.target.value))} className="w-full" />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium mb-2">Perspective Skew: {perspectiveSkew}%</label>
-                  <input type="range" min={0} max={100} value={perspectiveSkew} onChange={(e) => setPerspectiveSkew(Number(e.target.value))} className="w-full" />
                 </div>
                 <div>
                   <label className="block text-sm font-medium mb-2">Fold Crease: {foldCrease}%</label>
@@ -605,19 +619,24 @@ export default function DirtyPDF() {
         </div>
 
         {/* Action Buttons */}
-        <div className="flex gap-4 mt-4">
+        <div className="mt-4 space-y-2">
+          <p className="text-sm font-medium text-amber-800">Output is a flattened image PDF — text won’t be selectable or searchable.</p>
+          {progress && <p aria-live="polite" className="text-sm text-muted-foreground">{progress}</p>}
+          {outputSize !== null && <p className="text-sm text-muted-foreground">Processed output size: {formatBytes(outputSize)}</p>}
+          <div className="flex gap-4">
           <button onClick={handleProcess} disabled={!file || processing} className="flex-1 py-3 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50">
             {processing ? 'Processing...' : 'Apply & Download'}
           </button>
 
           {downloadUrl && (
-            <a href={downloadUrl} download="distressed.pdf" className="py-3 px-4 bg-green-600 text-white rounded hover:bg-green-700">
-              Download Ready PDF
+            <a href={downloadUrl} download="aged-vintage.pdf" className="py-3 px-4 bg-green-600 text-white rounded hover:bg-green-700">
+              Download PDF
             </a>
           )}
+          </div>
         </div>
 
-        <p className="text-xs text-gray-400 text-center mt-4">🔒 100% client-side — Your file never leaves your browser.</p>
+        <p className="text-xs text-gray-400 text-center mt-4">Processed entirely in your browser — your file never leaves your device.</p>
       </div>
     </div>
   );

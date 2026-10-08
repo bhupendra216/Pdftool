@@ -117,7 +117,9 @@ export function getToolSeoContent(slug: string): ToolSeoContent | undefined {
         apiTool?.shortDescription || '',
         explicit.whyUse,
       ),
-      faq: ensureToolFaqs(apiTool?.name || explicit.slug || slug, slug, explicit.faq),
+      faq: slug === 'transform-pdf'
+        ? explicit.faq
+        : ensureToolFaqs(apiTool?.name || explicit.slug || slug, slug, explicit.faq),
     };
   }
 

@@ -247,24 +247,40 @@ export const tools: ToolRecord[] = [
   },
   {
     slug: "transform-pdf",
-    name: "Transform Handwritten PDF",
-    shortDescription: "Apply handwritten-looking distress and paper texture to PDFs.",
+    name: "Aged & Scanned PDF Effects",
+    shortDescription: "Make a PDF look aged with vintage paper, scanned texture, and visual effects.",
     category: "Edit & Sign",
     icon: "Droplet",
     popular: false,
     status: "available",
-    seoTitle: "Transform Handwritten PDF — Make pages look aged and handwritten",
+    seoTitle: "Make PDF Look Old — Aged, Vintage & Scanned Paper Effects | PDFKira",
     seoDescription:
-      "Transform a PDF with handwritten-style texture, smudges, and natural paper marks using browser-based controls. Create an aged look and try it free.",
+      "Make a PDF look old with vintage paper tones, grain, creases, and scanned-paper effects. Process locally in your browser and export a flattened image PDF.",
     steps: [
-      "Upload a PDF file.",
-      "Use the available controls to adjust paper texture and marks.",
-      "Download the modified PDF — everything runs in your browser.",
+      "Upload a PDF up to 50 MB and 30 pages.",
+      "Adjust the aged-paper settings and preview effects using the selected DPI.",
+      "Download a flattened image PDF processed entirely in your browser.",
     ],
     faqs: [
       {
-        question: "Does this upload my file to a server?",
-        answer: "No. All effects are applied client-side in your browser using pdf-lib.",
+        question: "Does output text stay selectable?",
+        answer: "No. The output is a flattened image PDF, so text is not selectable or searchable.",
+      },
+      {
+        question: "Why does my download look different from preview?",
+        answer: "It doesn’t: preview and export run identical processing with the same settings, quality, and random seed. Use Shuffle effects to choose a different repeatable layout.",
+      },
+      {
+        question: "What are the file limits?",
+        answer: "The tool accepts PDFs up to 50 MB and 30 pages. Choose a lower DPI or fewer pages if your device runs short on memory.",
+      },
+      {
+        question: "Can I undo the effects?",
+        answer: "The source file is not changed. Re-upload it and adjust the settings; Shuffle effects generates a different deterministic layout for randomized effects.",
+      },
+      {
+        question: "Is this tool private?",
+        answer: "Yes. The PDF is rendered and processed entirely in your browser; it is not uploaded to a PDF processing server.",
       },
     ],
     blogSlug: null,

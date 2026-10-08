@@ -1,6 +1,26 @@
 import type { ToolSeoContent } from '@/components/Content/ToolSeoSection';
 
 export const TOOL_SEO_CONTENT: Record<string, ToolSeoContent> = {
+  'transform-pdf': {
+    slug: 'transform-pdf',
+    howItWorks: [
+      { title: 'Choose a PDF', description: 'Upload a PDF of up to 50 MB and 30 pages. The file is processed locally in your browser.' },
+      { title: 'Tune the paper effects', description: 'Adjust paper tone, texture, color, rotation, creases, smudges, and image quality. The preview and export share the same seeded processing.' },
+      { title: 'Download the aged PDF', description: 'Choose 100, 150, or 200 DPI and download a flattened image PDF. Text in the output is not selectable or searchable.' },
+    ],
+    whyUse: [
+      { title: 'Create an aged or scanned-paper look', description: 'Combine vintage paper tones, grain, folds, smudges, and image artifacts with adjustable controls.' },
+      { title: 'Preview matches the exported result', description: 'Both the preview and output use the same processing pipeline and repeatable per-document random seed.' },
+      { title: 'Process locally', description: 'Your PDF is processed entirely in your browser and is not sent to a processing server.' },
+    ],
+    faq: [
+      { question: 'Does output text stay selectable?', answer: 'No. The output is a flattened image PDF, so text is not selectable or searchable.' },
+      { question: 'Why does my download look different from preview?', answer: 'It doesn’t: preview and export run identical processing with the same settings, quality, and random seed. Use Shuffle effects to choose a different repeatable layout.' },
+      { question: 'What are the file limits?', answer: 'The tool accepts PDFs up to 50 MB and 30 pages. Choose a lower DPI or fewer pages if your device runs short on memory.' },
+      { question: 'Can I undo the effects?', answer: 'The source file is not changed. Re-upload it and adjust the settings; Shuffle effects generates a different deterministic layout for randomized effects.' },
+      { question: 'Is this tool private?', answer: 'Yes. The PDF is rendered and processed entirely in your browser; it is not uploaded to a PDF processing server.' },
+    ],
+  },
   'pdf-to-word': {
     slug: 'pdf-to-word',
     howItWorks: [
