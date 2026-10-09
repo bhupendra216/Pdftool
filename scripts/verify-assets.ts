@@ -18,7 +18,7 @@ function collectHtmlFiles(dir: string) {
 }
 
 function run() {
-  const publicDir = path.resolve(process.cwd(), 'public');
+  const publicDir = path.resolve(import.meta.dirname, '..', 'public');
   const assetsDir = path.join(publicDir, 'assets');
   const htmlFiles = collectHtmlFiles(publicDir);
 

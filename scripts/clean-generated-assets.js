@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const assetsDir = path.join(root, 'artifacts/pdf-tools/public/assets');
+const assetsDir = path.join(root, 'public/assets');
 
 if (fs.existsSync(assetsDir)) {
   for (const entry of fs.readdirSync(assetsDir, { withFileTypes: true })) {

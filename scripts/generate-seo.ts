@@ -947,6 +947,15 @@ function collectHtmlFiles(dir: string): string[] {
   return results;
 }
 
+function removeStaleHtmlFiles(outDir: string) {
+  for (const htmlFile of collectHtmlFiles(outDir)) {
+    const relativePath = path.relative(outDir, htmlFile);
+    if (relativePath !== 'index.html' && relativePath !== '404.html') {
+      fs.unlinkSync(htmlFile);
+    }
+  }
+}
+
 function verifyGeneratedSeo(
   outDir: string,
   sitemapItems: Array<{ loc: string; changefreq: string }>,
@@ -1084,6 +1093,7 @@ function writeStaticFiles() {
 
   for (const outDir of outDirs) {
     ensureDir(outDir);
+    removeStaleHtmlFiles(outDir);
     fs.rmSync(path.join(outDir, 'tools'), { recursive: true, force: true });
     ensureDir(path.join(outDir, 'tools'));
     // Inject SEO fallback into the built homepage index.html if needed
@@ -1167,6 +1177,12 @@ function writeStaticFiles() {
       const toolDir = path.join(outDir, 'tools', tool.slug);
       ensureDir(toolDir);
       fs.writeFileSync(path.join(toolDir, 'index.html'), renderToolPageHtml(tool, assets), 'utf-8');
+    }
+
+    for (const htmlFile of collectHtmlFiles(outDir)) {
+      const html = fs.readFileSync(htmlFile, 'utf-8');
+      const normalized = html.replace(/[ \t]+$/gm, '');
+      if (normalized !== html) fs.writeFileSync(htmlFile, normalized, 'utf-8');
     }
 
     verifyGeneratedSeo(outDir, sitemapItems, outDir === preferredOut);
