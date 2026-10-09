@@ -9,6 +9,7 @@ import { clientToolContent } from '../artifacts/pdf-tools/src/data/clientToolCon
 import { aiJobsFaqs } from '../artifacts/pdf-tools/src/data/aiJobsFaqs.ts';
 import { getToolContentRequirements } from '../artifacts/pdf-tools/src/data/toolContentRequirements.ts';
 import { gigCategorySections, gigPlatforms } from '../data/gig-platforms.ts';
+import { toolCategories } from '../artifacts/pdf-tools/src/data/toolCategories.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -34,6 +35,23 @@ const GOOGLE_TAG_SNIPPET = `
       gtag('js', new Date());
 
       gtag('config', 'G-K58M67QSPV');
+    </script>`;
+
+const SEO_FALLBACK_STYLE = '#seo-fallback { display: block !important; }';
+const SEO_FALLBACK_RUNTIME = `
+    <script>
+      (function () {
+        var root = document.getElementById('root');
+        var fallback = document.getElementById('seo-fallback');
+        if (!root || !fallback) return;
+        var observer = new MutationObserver(function () {
+          if (root.childNodes.length > 0) {
+            fallback.style.display = 'none';
+            observer.disconnect();
+          }
+        });
+        observer.observe(root, { childList: true });
+      })();
     </script>`;
 
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
@@ -115,11 +133,38 @@ function blogDescription(article: (typeof blogPosts)[number]) {
   return firstParagraph.length > 160 ? `${firstParagraph.slice(0, 157).trimEnd()}...` : firstParagraph;
 }
 
+const legacyToolLinks: Record<string, string> = {
+  '/pdf-to-ppt': '/tools/pdf-to-word',
+  '/images-to-pdf': '/tools/jpg-to-pdf',
+  '/pdf-to-images': '/tools/pdf-to-jpg',
+  '/add-watermark': '/tools/watermark-pdf',
+  '/flatten-pdf': '/tools/edit-pdf',
+  '/reorder-pages': '/tools/organize-pdf',
+  '/excel-to-pdf': '/tools/pdf-to-excel',
+  '/ppt-to-pdf': '/tools/pdf-to-word',
+  '/pdf-editor': '/tools/edit-pdf',
+  '/compress-images': '/tools/image-compress',
+  '/pdf-to-csv': '/tools/pdf-to-excel',
+  '/pdf-to-pdfa': '/tools/transform-pdf',
+  '/pdf-to-text': '/tools/ocr-pdf',
+};
+
 function renderBlogArticleBody(article: (typeof blogPosts)[number]) {
   const markdown = blogMarkdown(article);
-  const articleHtml = marked.parse(markdown);
+  const articleHtml = String(marked.parse(markdown)).replace(/href="(\/[^"]+)"/g, (_match, href: string) => `href="${legacyToolLinks[href] || (tools.some((tool) => `/tools/${tool.slug}` === href) ? href : href)}"`);
   const publishedDate = formatArticleDate(article.publishedAt);
   const updatedDate = article.updatedAt ? formatArticleDate(article.updatedAt) : '';
+  const articleText = `${article.title} ${article.excerpt ?? ''} ${markdown}`.toLowerCase();
+  const relatedToolSlugs = [
+    ['merge', 'merge-pdf'], ['compress', 'compress-pdf'], ['ocr', 'ocr-pdf'],
+    ['edit', 'edit-pdf'], ['sign', 'sign-pdf'], ['convert', 'pdf-to-word'],
+  ].filter(([keyword]) => articleText.includes(keyword)).map(([, slug]) => slug).slice(0, 3);
+  const toolCtas = relatedToolSlugs.length
+    ? `<section><h2>Try a PDF tool</h2><ul>${relatedToolSlugs.map((slug) => {
+      const tool = tools.find((entry) => entry.slug === slug);
+      return tool ? `<li><a href="/tools/${slug}">${escapeHtml(tool.name)}</a> — ${escapeHtml(tool.shortDescription)}</li>` : '';
+    }).join('')}</ul></section>`
+    : '';
 
   return `<article>
   <div class="article-meta">
@@ -129,6 +174,7 @@ function renderBlogArticleBody(article: (typeof blogPosts)[number]) {
     ${updatedDate ? `<span>Updated ${escapeHtml(updatedDate)}</span>` : ''}
   </div>
   <div class="article-content">${articleHtml}</div>
+  ${toolCtas}
   <footer>
     <p>Published: <time datetime="${escapeHtml(article.publishedAt)}">${escapeHtml(publishedDate)}</time></p>
     ${updatedDate ? `<p>Updated: <time datetime="${escapeHtml(article.updatedAt ?? '')}">${escapeHtml(updatedDate)}</time></p>` : ''}
@@ -142,6 +188,47 @@ function renderBlogArticleBody(article: (typeof blogPosts)[number]) {
 
 function toolPageUrl(slug: string) {
   return `${siteUrl}/tools/${slug}`;
+}
+
+function renderBreadcrumbs(items: Array<{ name: string; url?: string }>) {
+  return `<nav aria-label="Breadcrumb" class="mb-6 text-sm text-muted-foreground"><ol class="flex flex-wrap gap-2">${items.map((item, index) =>
+    `<li>${index ? '<span aria-hidden="true">/</span> ' : ''}${item.url ? `<a href="${escapeHtml(item.url)}" class="underline">${escapeHtml(item.name)}</a>` : `<span aria-current="page">${escapeHtml(item.name)}</span>`}</li>`,
+  ).join('')}</ol></nav>`;
+}
+
+function getCategoryForTool(slug: string) {
+  return toolCategories.find((category) => category.slugs.includes(slug) && getAvailableToolsForCategory(category).length > 0);
+}
+
+function getAvailableToolsForCategory(category: (typeof toolCategories)[number]) {
+  return category.slugs
+    .map((slug) => tools.find((tool) => tool.slug === slug))
+    .filter((tool): tool is ToolRecord => Boolean(tool && tool.status === 'available'));
+}
+
+function renderToolInternalLinks(tool: ToolRecord) {
+  const category = getCategoryForTool(tool.slug);
+  const related = (category?.slugs ?? [])
+    .filter((slug) => slug !== tool.slug)
+    .map((slug) => tools.find((entry) => entry.slug === slug))
+    .filter((entry): entry is ToolRecord => Boolean(entry && entry.status === 'available'))
+    .slice(0, 4);
+  return `${category ? `<section><h2>Explore ${escapeHtml(category.name)}</h2><p>${escapeHtml(category.description)}</p><ul>${related.map((entry) => `<li><a href="/tools/${entry.slug}">${escapeHtml(entry.name)}</a> — ${escapeHtml(entry.shortDescription)}</li>`).join('')}</ul><p><a href="/categories/${category.id}">Browse all ${escapeHtml(category.name)} →</a></p></section>` : ''}<section><h2>More PDF tools</h2><p><a href="/tools">Browse all PDF tools →</a> · <a href="/blog">Read PDF guides →</a></p></section>`;
+}
+
+function renderCategoryPageHtml(category: typeof toolCategories[number], assets: { jsPath: string; cssPath: string }) {
+  const available = getAvailableToolsForCategory(category);
+  const canonical = `${siteUrl}/categories/${category.id}`;
+  const jsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    name: category.name,
+    description: category.description,
+    itemListElement: available.map((tool, index) => ({
+      '@type': 'ListItem', position: index + 1, name: tool.name, url: toolPageUrl(tool.slug),
+    })),
+  };
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(category.name)} | PDFKira</title><meta name="description" content="${escapeHtml(category.description)}"><link rel="canonical" href="${canonical}"><script type="application/ld+json">${JSON.stringify(jsonLd).replace(/</g, '\\u003c')}</script><link rel="stylesheet" href="${assets.cssPath}"><style>${SEO_FALLBACK_STYLE}</style></head><body><div id="seo-fallback" style="display:block"><main><${'h1'}>${escapeHtml(category.name)}</h1>${renderBreadcrumbs([{ name: 'Home', url: '/' }, { name: 'Tools', url: '/tools' }, { name: category.name }])}<p>${escapeHtml(category.description)}</p><section><h2>Tools in this category</h2><ul>${available.map((tool) => `<li><a href="/tools/${tool.slug}">${escapeHtml(tool.name)}</a> — ${escapeHtml(tool.shortDescription)}</li>`).join('')}</ul></section><section><h2>Related categories</h2><ul>${toolCategories.filter((other) => other.id !== category.id).slice(0, 4).map((other) => `<li><a href="/categories/${other.id}">${escapeHtml(other.name)}</a></li>`).join('')}</ul></section></main></div><div id="root"></div><script type="module" src="${assets.jsPath}"></script>${SEO_FALLBACK_RUNTIME}</body></html>`;
 }
 
 function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath: string }) {
@@ -177,6 +264,8 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
     <meta property="og:url" content="${toolUrl}" />
     <meta property="og:image" content="${ogImageUrl}" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@pdfkira" />
+    <meta name="twitter:creator" content="@pdfkira" />
     <meta name="twitter:title" content="${escapeHtml(tool.seoTitle)}" />
     <meta name="twitter:description" content="${escapeHtml(content.uniqueIntro.slice(0, 155))}" />
     <meta name="twitter:image" content="${ogImageUrl}" />
@@ -194,8 +283,7 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
       })();
     </script>
     <style>
-      html.js #seo-fallback { display: none !important; }
-      html:not(.js) #seo-fallback { display: block !important; }
+      ${SEO_FALLBACK_STYLE}
     </style>
 
     <script type="application/ld+json">
@@ -233,7 +321,7 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
   <body>
     <!-- SEO Fallback Content (visible to bots, hidden immediately when JS is enabled) -->
     <div id="seo-fallback" style="display: block;">
-      <main>
+      <main>${renderBreadcrumbs([{ name: 'Home', url: '/' }, { name: 'Tools', url: '/tools' }, { name: tool.name }])}
         <header>
           <p>PDFKira</p>
           <h1>${escapeHtml(tool.name)}</h1>
@@ -248,6 +336,7 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
         <section><h2>Limitations and considerations</h2><ul>${content.limitations.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>
         <section><h2>Why use this tool</h2>${whyUseHtml}</section>
         <section><h2>Frequently asked questions</h2><ul>${contentFaqs.map((faq) => `<li><h3>${escapeHtml(faq.question)}</h3><p>${escapeHtml(faq.answer)}</p></li>`).join('')}</ul></section>
+        ${renderToolInternalLinks(tool)}
         <section><h2>Related tools</h2><ul>${content.relatedTools.map((item) => `<li><a href="${escapeHtml(item.tool)}">${escapeHtml(item.tool.replace('/tools/', '').split('-').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' '))}</a> — ${escapeHtml(item.reason)}</li>`).join('')}</ul></section>
         ${content.proTips?.length ? `<section><h2>Pro tips</h2><ul>${content.proTips.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>` : ''}
         ${content.commonMistakes?.length ? `<section><h2>Common mistakes to avoid</h2><ul>${content.commonMistakes.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>` : ''}
@@ -262,9 +351,9 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
     <!-- React SPA Bundle -->
     <script type="module" src="${assets.jsPath}"></script>
 
-    <!-- Keep the SEO content visible for bots / no-JS, but hide it immediately when JS is available. -->
+    ${SEO_FALLBACK_RUNTIME}
     <noscript>
-      <style>#seo-fallback { display: block !important; }</style>
+      <style>${SEO_FALLBACK_STYLE}</style>
     </noscript>
   </body>
 </html>`;
@@ -344,14 +433,16 @@ function renderClientToolPageHtml(tool: (typeof clientToolContent)[number], asse
     <meta name="twitter:description" content="${escapeHtml(tool.description)}" />
     <meta name="twitter:url" content="${canonical}" />
     <meta name="twitter:image" content="${siteUrl}/logo.png" />
+    <meta name="twitter:site" content="@pdfkira" />
+    <meta name="twitter:creator" content="@pdfkira" />
     <link rel="stylesheet" href="${assets.cssPath}" />
     <script type="application/ld+json">${JSON.stringify(structuredData).replace(/</g, '\\u003c')}</script>
-    <script>document.documentElement.classList.add('js');</script>
-    <style>html.js #seo-fallback { display: none !important; } html:not(.js) #seo-fallback { display: block !important; }</style>
+    <style>${SEO_FALLBACK_STYLE}</style>
   </head>
   <body>
     <div id="seo-fallback" style="display:block">
       <main>
+        ${renderBreadcrumbs([{ name: 'Home', url: '/' }, { name: 'Tools', url: '/tools' }, { name: tool.name }])}
         <p><a href="/">PDFKira</a></p>
         <h1>${escapeHtml(tool.name)}</h1>
         <p>${escapeHtml(tool.intro)}</p>
@@ -364,7 +455,8 @@ function renderClientToolPageHtml(tool: (typeof clientToolContent)[number], asse
     </div>
     <div id="root"></div>
     <script type="module" src="${assets.jsPath}"></script>
-    <noscript><style>#seo-fallback { display:block !important; }</style></noscript>
+    ${SEO_FALLBACK_RUNTIME}
+    <noscript><style>${SEO_FALLBACK_STYLE}</style></noscript>
   </body>
 </html>`;
 }
@@ -383,6 +475,10 @@ function renderToolsIndexHtml(assets: { jsPath: string; cssPath: string }) {
         </li>`,
     )
     .join('');
+  const categoryLinks = toolCategories
+    .filter((category) => getAvailableToolsForCategory(category).length > 0)
+    .map((category) => `<li><a href="/categories/${category.id}">${escapeHtml(category.name)}</a> — ${escapeHtml(category.description)}</li>`)
+    .join('');
 
   const html = `<!DOCTYPE html>
 <html lang="en">
@@ -399,6 +495,8 @@ function renderToolsIndexHtml(assets: { jsPath: string; cssPath: string }) {
     <meta property="og:url" content="${siteUrl}/tools" />
     <meta property="og:image" content="${siteUrl}/logo.png" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@pdfkira" />
+    <meta name="twitter:creator" content="@pdfkira" />
 
     <!-- React SPA CSS -->
     <link rel="stylesheet" href="${assets.cssPath}" />
@@ -429,6 +527,7 @@ function renderToolsIndexHtml(assets: { jsPath: string; cssPath: string }) {
         <h1>PDFKira Tools</h1>
         <p>Free online PDF tools for merging, splitting, compressing, converting, organizing, and editing PDF files.</p>
         <ul>${cards}</ul>
+        <section><h2>Browse by category</h2><ul>${categoryLinks}</ul></section>
       </main>
     </div>
 
@@ -438,24 +537,7 @@ function renderToolsIndexHtml(assets: { jsPath: string; cssPath: string }) {
     <!-- React SPA Bundle -->
     <script type="module" src="${assets.jsPath}"></script>
 
-    <!-- Hide SEO fallback after hydration -->
-    <script>
-      (function() {
-        var checkInterval = setInterval(function() {
-          var root = document.getElementById('root');
-          if (root && root.childNodes.length > 0) {
-            var fallback = document.getElementById('seo-fallback');
-            if (fallback) fallback.style.display = 'none';
-            clearInterval(checkInterval);
-          }
-        }, 100);
-        setTimeout(function() {
-          var fallback = document.getElementById('seo-fallback');
-          if (fallback) fallback.style.display = 'none';
-          clearInterval(checkInterval);
-        }, 5000);
-      })();
-    </script>
+    ${SEO_FALLBACK_RUNTIME}
 
     <noscript>
       <style>#seo-fallback { display: block !important; }</style>
@@ -486,14 +568,11 @@ function renderComparisonPageHtml(assets: { jsPath: string; cssPath: string }) {
     <meta property="og:type" content="article" />
     <meta property="og:url" content="${canonical}" />
     <meta property="og:image" content="${siteUrl}/logo.png" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@pdfkira" />
+    <meta name="twitter:creator" content="@pdfkira" />
     <link rel="stylesheet" href="${assets.cssPath}" />
-    <script>
-      document.documentElement.classList.add('js');
-    </script>
-    <style>
-      html.js #seo-fallback { display: none !important; }
-      html:not(.js) #seo-fallback { display: block !important; }
-    </style>
+    <style>${SEO_FALLBACK_STYLE}</style>
   </head>
   <body>
     <div id="root"></div>
@@ -519,7 +598,8 @@ function renderComparisonPageHtml(assets: { jsPath: string; cssPath: string }) {
       </main>
     </div>
     <script type="module" src="${assets.jsPath}"></script>
-    <noscript><style>#seo-fallback { display: block !important; }</style></noscript>
+    ${SEO_FALLBACK_RUNTIME}
+    <noscript><style>${SEO_FALLBACK_STYLE}</style></noscript>
   </body>
 </html>`;
 }
@@ -560,14 +640,14 @@ function renderEditorialPageHtml(
     <meta name="twitter:url" content="${canonical}" />
     <meta name="twitter:image" content="${siteUrl}/logo.png" />
 ${jsonLd ? `    ${jsonLd}\n` : ''}    <link rel="stylesheet" href="${assets.cssPath}" />
-    <script>document.documentElement.classList.add('js');</script>
-    <style>html.js #seo-fallback { display: none !important; } html:not(.js) #seo-fallback { display: block !important; }</style>
+    <style>${SEO_FALLBACK_STYLE}</style>
   </head>
   <body>
     <div id="seo-fallback" style="display:block"><main><h1>${escapeHtml(page.heading || page.title)}</h1>${page.body}</main></div>
     <div id="root"></div>
     <script type="module" src="${assets.jsPath}"></script>
-    <noscript><style>#seo-fallback { display:block !important; }</style></noscript>
+    ${SEO_FALLBACK_RUNTIME}
+    <noscript><style>${SEO_FALLBACK_STYLE}</style></noscript>
   </body>
 </html>`;
 }
@@ -773,6 +853,29 @@ function patchHomepageHtml(outDir: string) {
     /<meta\s+property=["']og:url["']\s+content=["'][^"']*["']\s*\/?>/i,
     `<meta property="og:url" content="${siteUrl}/" />`,
   );
+  const homepageSchemas = `<script type="application/ld+json">${JSON.stringify({
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'Organization',
+        name: 'PDFKira',
+        url: siteUrl,
+        logo: `${siteUrl}/logo.png`,
+        contactPoint: { '@type': 'ContactPoint', contactType: 'customer support', email: 'support@pdfkira.com' },
+      },
+      {
+        '@type': 'WebSite',
+        name: 'PDFKira',
+        url: `${siteUrl}/`,
+        potentialAction: {
+          '@type': 'SearchAction',
+          target: `${siteUrl}/tools?search={search_term_string}`,
+          'query-input': 'required name=search_term_string',
+        },
+      },
+    ],
+  }).replace(/</g, '\\u003c')}</script>`;
+  content = content.replace(/<\/head>/i, `${homepageSchemas}\n</head>`);
   if (content.indexOf('id="seo-fallback"') !== -1) {
     content = content.replace(/<!-- SEO Fallback -->[\s\S]*?<\/div>/, renderHomeSeoBlock());
     fs.writeFileSync(indexPath, content, 'utf-8');
@@ -780,15 +883,6 @@ function patchHomepageHtml(outDir: string) {
   }
 
   content = injectGoogleTagIntoHtml(content);
-
-  // Inject the instant hide JS + CSS into <head> so #seo-fallback is hidden before first paint
-  const headCloseIndex = content.search(/<\/head>/i);
-  if (headCloseIndex !== -1) {
-    const headInjection = `\n    <script>\n      (function() {\n        try { document.documentElement.classList.add('js'); } catch (e) { }\n      })();\n    </script>\n    <style>\n      html.js #seo-fallback { display: none !important; }\n      html:not(.js) #seo-fallback { display: block !important; }\n    </style>\n`;
-    content = content.slice(0, headCloseIndex) + headInjection + content.slice(headCloseIndex);
-  } else {
-    console.warn(`Could not find </head> in ${indexPath}; skipping head injection.`);
-  }
 
   // Find the root mount point (<div ... id="root" ...>...</div>) without assuming exact whitespace
   const openTagMatch = content.match(/<div[^>]*id\s*=\s*["']root["'][^>]*>/i);
@@ -809,7 +903,7 @@ function patchHomepageHtml(outDir: string) {
 
   const seoBlock = renderHomeSeoBlock();
 
-  const patched = content.slice(0, insertPos) + '\n' + seoBlock + content.slice(insertPos);
+  const patched = content.slice(0, insertPos) + '\n' + seoBlock + SEO_FALLBACK_RUNTIME + content.slice(insertPos);
   fs.writeFileSync(indexPath, patched, 'utf-8');
   console.log(`Patched homepage index.html with SEO fallback: ${indexPath}`);
 }
@@ -969,8 +1063,8 @@ function verifyGeneratedSeo(
     if (!structuredDataScript) throw new Error(`Missing structured data for client tool: ${tool.slug}`);
     const structuredData = JSON.parse(structuredDataScript);
     const faqPage = structuredData['@graph']?.find((entry: any) => entry['@type'] === 'FAQPage');
-    if (!faqPage || faqPage.mainEntity.length !== 5) {
-      throw new Error(`Client tool must have five structured FAQ entries: ${tool.slug}`);
+    if (!faqPage || faqPage.mainEntity.length < 4 || faqPage.mainEntity.length > 6) {
+      throw new Error(`Client tool must have 4-6 structured FAQ entries: ${tool.slug}`);
     }
   }
 
@@ -1029,6 +1123,11 @@ function writeStaticFiles() {
         changefreq: 'monthly' as const,
         lastmod: articleDates.get(page.path) || buildDate,
       })),
+      ...toolCategories.filter((category) => getAvailableToolsForCategory(category).length > 0).map((category) => ({
+        loc: `${siteUrl}/categories/${category.id}`,
+        changefreq: 'monthly' as const,
+        lastmod: buildDate,
+      })),
     ];
 
     const sitemapXml = `<?xml version="1.0" encoding="UTF-8"?>\n<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n${sitemapItems
@@ -1049,6 +1148,12 @@ function writeStaticFiles() {
       const pagePath = path.join(outDir, page.path.replace(/^\//, ''), 'index.html');
       ensureDir(path.dirname(pagePath));
       fs.writeFileSync(pagePath, renderEditorialPageHtml(page, assets), 'utf-8');
+    }
+
+    for (const category of toolCategories.filter((entry) => getAvailableToolsForCategory(entry).length > 0)) {
+      const categoryDir = path.join(outDir, 'categories', category.id);
+      ensureDir(categoryDir);
+      fs.writeFileSync(path.join(categoryDir, 'index.html'), renderCategoryPageHtml(category, assets), 'utf-8');
     }
 
     for (const tool of clientToolContent) {

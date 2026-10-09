@@ -61,11 +61,22 @@ export default defineConfig(async () => {
       assetsDir: 'assets',
       rollupOptions: {
         output: {
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('tesseract.js')) return 'ocr';
+              if (id.includes('onnxruntime-web')) return 'onnx';
+              if (id.includes('pdfjs-dist')) return 'pdfjs';
+              if (id.includes('pdf-lib')) return 'pdf-lib';
+              if (id.includes('react') || id.includes('wouter')) return 'vendor';
+            }
+            return undefined;
+          },
           assetFileNames: 'assets/[name]-[hash][extname]',
           chunkFileNames: 'assets/[name]-[hash].js',
           entryFileNames: 'assets/[name]-[hash].js'
-        }
-      }
+        },
+        chunkSizeWarningLimit: 500
+      },
     },
     server: {
       port,

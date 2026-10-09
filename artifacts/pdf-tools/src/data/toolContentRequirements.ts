@@ -1,4 +1,5 @@
 import type { ToolRecord } from '../../../api-server/src/lib/content';
+import { getSuppliedToolFaqs } from './toolFaqs';
 
 export interface ToolContentRequirements {
   uniqueIntro: string;
@@ -81,7 +82,8 @@ function titleCase(slug: string) {
 }
 
 export function getToolContentRequirements(tool: ToolRecord): ToolContentRequirements {
-  if (tool.slug === 'delete-pages') return customDeletePages;
+  const suppliedFaqs = getSuppliedToolFaqs(tool.slug);
+  if (tool.slug === 'delete-pages') return suppliedFaqs ? { ...customDeletePages, faqs: suppliedFaqs } : customDeletePages;
 
   const name = tool.name || titleCase(tool.slug);
   const relatedSlugs = relatedBySlug[tool.slug] || ['merge-pdf', 'split-pdf', 'compress-pdf', 'organize-pdf'];
@@ -106,7 +108,7 @@ export function getToolContentRequirements(tool: ToolRecord): ToolContentRequire
       { step: 4, title: 'Inspect the result', description: 'Open or preview the generated file and check text, page order, images, and formatting that matter for your use case.' },
       { step: 5, title: 'Download a separate copy', description: 'Save the result with a descriptive name. Keep the original until you are satisfied with the output.' },
     ],
-    faqs: [
+    faqs: suppliedFaqs ?? [
       { question: `What does ${name} do?`, answer: `${tool.shortDescription} The tool is intended for a focused document workflow rather than a replacement for a full desktop publishing application.` },
       { question: `Do I need to install software for ${name}?`, answer: 'No. You can use the tool in a current browser. A stable connection may still be needed to load the site and its application assets.' },
       { question: `Is ${name} free to use?`, answer: 'PDFKira provides this core workflow free to use without requiring an account. Review the result before relying on it for an important submission.' },

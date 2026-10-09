@@ -15,6 +15,8 @@ export interface ClientToolContent {
   related: { label: string; href: string }[];
 }
 
+import { getSuppliedToolFaqs } from './toolFaqs';
+
 export const clientToolContent: ClientToolContent[] = [
   {
     slug: "pdf-to-excel",
@@ -107,6 +109,11 @@ export const clientToolContent: ClientToolContent[] = [
     ],
   },
 ];
+
+for (const tool of clientToolContent) {
+  const suppliedFaqs = getSuppliedToolFaqs(tool.slug);
+  if (suppliedFaqs) tool.faqs = suppliedFaqs as ClientToolContent['faqs'];
+}
 
 export function getClientToolContent(slug: string) {
   return clientToolContent.find((tool) => tool.slug === slug);

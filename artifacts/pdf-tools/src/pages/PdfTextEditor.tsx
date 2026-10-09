@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type PointerEvent as ReactPointerEvent } from 'react';
-import { PDFDocument, PDFName, PDFString, rgb, StandardFonts } from 'pdf-lib';
+import { PDFDict, PDFDocument, PDFName, PDFString, rgb } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
 import saveAs from 'file-saver';
 import { AlignCenter, AlignLeft, AlignRight, Bold, Highlighter, Link2, Plus, Redo2, Italic, Underline, Undo2, Upload } from 'lucide-react';
@@ -9,10 +9,11 @@ import { groupTextItemsIntoLines, type PdfTextLineGroup } from '../lib/pdf-text-
 import { createImageOnlyPdf, type RasterPdfPage } from '../lib/image-only-pdf';
 import { pdfToViewport, viewportToPdf, type PdfRect } from '../lib/pdf-coords';
 import { getSafeTextGeometry, validateTextItemGeometry } from '../lib/pdf-text-geometry';
+import { detectEditorFont, FONT_REGISTRY, cssFamilyFor, getEditorFontAliasMatch, normalizePdfFontName, standardFontFor, type EditorFontFamily, type FontDetectionStatus } from '../lib/fonts/registry';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
 
-type FontFamily = 'Helvetica' | 'Times Roman' | 'Courier';
+type FontFamily = EditorFontFamily;
 type TextAlignment = 'left' | 'center' | 'right';
 
 type TextItem = {
@@ -29,6 +30,8 @@ type TextItem = {
   height?: number;
   fontName: string;
   fontFamily: FontFamily;
+  fontDetectionStatus?: FontDetectionStatus;
+  fontDetectionLabel?: string;
   fontSize: number;
   color: string;
   type: 'text' | 'delete';
@@ -41,6 +44,7 @@ type TextItem = {
   highlightColor?: string;
   alignment?: TextAlignment;
   linkUrl?: string;
+  manualWidth?: boolean;
 };
 
 type PageLayout = {
@@ -95,34 +99,8 @@ function colorToPdf(color: string) {
   return rgb(((value >> 16) & 255) / 255, ((value >> 8) & 255) / 255, (value & 255) / 255);
 }
 
-function pdfFontFamily(fontName: string): FontFamily {
-  const name = fontName.toLowerCase();
-  if (name.includes('sans') || name.includes('helvetica') || name.includes('arial')) return 'Helvetica';
-  if (name.includes('times') || name.includes('serif')) return 'Times Roman';
-  if (name.includes('courier') || name.includes('mono')) return 'Courier';
-  return 'Helvetica';
-}
-
 function cssFontFamily(family: FontFamily) {
-  if (family === 'Times Roman') return '"Times New Roman", Times, serif';
-  if (family === 'Courier') return '"Courier New", Courier, monospace';
-  return 'Helvetica, Arial, sans-serif';
-}
-
-function resolvePdfFont(family: FontFamily, bold: boolean, italic: boolean) {
-  if (family === 'Times Roman') {
-    return bold
-      ? italic ? StandardFonts.TimesRomanBoldItalic : StandardFonts.TimesRomanBold
-      : italic ? StandardFonts.TimesRomanItalic : StandardFonts.TimesRoman;
-  }
-  if (family === 'Courier') {
-    return bold
-      ? italic ? StandardFonts.CourierBoldOblique : StandardFonts.CourierBold
-      : italic ? StandardFonts.CourierOblique : StandardFonts.Courier;
-  }
-  return bold
-    ? italic ? StandardFonts.HelveticaBoldOblique : StandardFonts.HelveticaBold
-    : italic ? StandardFonts.HelveticaOblique : StandardFonts.Helvetica;
+  return cssFamilyFor(family);
 }
 
 function wrapPdfText(text: string, width: number, measure: (value: string) => number) {
@@ -316,7 +294,7 @@ async function loadPageLayouts(pdfJsBytes: Uint8Array) {
           width: pdfRect.width,
           height: pdfRect.height,
           fontName,
-          fontFamily: pdfFontFamily(String(styles[fontName]?.fontFamily ?? fontName)),
+          fontFamily: detectEditorFont(styles[fontName]?.fontFamily ?? fontName).font,
           fontSize: clamp(Number(safe.fontSize) || itemHeight, 8, 72),
           color: '#111111',
           type: 'text' as const,
@@ -354,10 +332,12 @@ function PdfTextEditor() {
   const [showDebugTextBoxes, setShowDebugTextBoxes] = useState(false);
   const [customColors, setCustomColors] = useState<string[]>([]);
   const [showLinkInput, setShowLinkInput] = useState(false);
+  const [fontSearch, setFontSearch] = useState('');
   const [isDragOver, setIsDragOver] = useState(false);
   const [saved, setSaved] = useState(false);
   const [history, setHistory] = useState<PageHistory>({ past: [], future: [] });
   const [renderVersion, setRenderVersion] = useState(0);
+  const panelTextRef = useRef<HTMLTextAreaElement | null>(null);
   const baseCanvasRefs = useRef<Record<number, HTMLCanvasElement | null>>({});
   const overlayCanvasRefs = useRef<Record<number, HTMLCanvasElement | null>>({});
   const thumbnailCanvasRefs = useRef<Record<number, HTMLCanvasElement | null>>({});
@@ -602,33 +582,59 @@ function PdfTextEditor() {
     }
     const existing = edits.find((entry) => entry.groupId === group.id && entry.type === 'text');
     const textItem = group.items[0] as TextItem | undefined;
+    const layout = pageLayouts.find((page) => page.pageNumber === pageNumber);
+    const spanFontName = textItem?.fontName;
+    const resolvedStyle = spanFontName ? layout?.styles[spanFontName] : undefined;
+    const rawFontName = resolvedStyle?.fontFamily;
+    const normalizedFontName = normalizePdfFontName(rawFontName ?? '');
+    const aliasMatch = getEditorFontAliasMatch(rawFontName);
+    const detectedFont = detectEditorFont(rawFontName);
     const color = existing?.color ?? getTextColor(pageNumber, group);
     const originalRect = { ...group.boundingBox };
     const detected = inferTextAlignment(group, pageLayouts.find((page) => page.pageNumber === pageNumber)?.textItems ?? []);
     const pdfRect = { ...detected.pdfRect };
-    const entry: TextItem = existing ?? {
-      id: `edit-${Date.now()}`,
-      pageNumber,
-      groupId: group.id,
-      text: group.text,
-      originalText: group.text,
-      pdfRect,
-      maskRect: originalRect,
-      anchorX: detected.anchorX,
-      pdfX: pdfRect.x,
-      pdfY: group.baselineY,
-      fontName: textItem?.fontName ?? 'Helvetica',
-      fontFamily: textItem?.fontFamily ?? 'Helvetica',
-      fontSize: clamp(group.dominantFontSize, 8, 72),
-      color,
-      type: 'text',
-      maskColor: getMaskColor(pageNumber, originalRect),
-      alignment: detected.alignment,
+    const entry: TextItem = {
+      ...(existing ?? {
+        id: `edit-${Date.now()}`,
+        pageNumber,
+        groupId: group.id,
+        text: group.text,
+        originalText: group.text,
+        pdfRect,
+        maskRect: originalRect,
+        anchorX: detected.anchorX,
+        pdfX: pdfRect.x,
+        pdfY: group.baselineY,
+        fontName: textItem?.fontName ?? 'Helvetica',
+        fontFamily: detectedFont.font,
+        fontSize: clamp(group.dominantFontSize, 8, 72),
+        color,
+        type: 'text' as const,
+        maskColor: getMaskColor(pageNumber, originalRect),
+        alignment: detected.alignment,
+        bold: detectedFont.bold,
+        italic: detectedFont.italic,
+      }),
+      fontDetectionStatus: detectedFont.status,
+      fontDetectionLabel: detectedFont.label,
     };
+    if (import.meta.env.DEV) {
+      console.trace('[font-detect] selection', JSON.stringify({
+          'span.fontName': spanFontName,
+          'styles keys on this page (first 5)': Object.keys(layout?.styles ?? {}).slice(0, 5),
+          'styles[fontName] resolved': resolvedStyle ? 'hit' : 'MISS',
+          'raw fontFamily': rawFontName,
+          normalized: normalizedFontName,
+          'alias match': aliasMatch,
+          'FINAL dropdown value being set': entry.fontFamily,
+          'detection status': entry.fontDetectionStatus,
+        }));
+    }
     currentDraftRef.current = entry;
     setDraft(entry);
     setDraftTouched(false);
     setSelectedGroupId(group.id);
+    requestAnimationFrame(() => panelTextRef.current?.focus());
     if (window.innerWidth < 1280) {
       requestAnimationFrame(() => {
         document.getElementById(`pdf-page-${pageNumber}`)?.scrollIntoView({ block: 'start', behavior: 'smooth' });
@@ -641,6 +647,10 @@ function PdfTextEditor() {
     setDraft((current) => {
       if (!current) return current;
       const next = { ...current, ...update };
+      if (typeof update.text === 'string' && !current.manualWidth) {
+        const longestLine = update.text.split(/\r?\n/).reduce((longest, line) => Math.max(longest, line.length), 0);
+        next.pdfRect = { ...next.pdfRect, width: Math.max(40, longestLine * next.fontSize * 0.52 + 8) };
+      }
       currentDraftRef.current = next;
       return next;
     });
@@ -660,7 +670,7 @@ function PdfTextEditor() {
       pdfX: pdfRect.x,
       pdfY: group.baselineY,
       fontName: textItem?.fontName ?? 'Helvetica',
-      fontFamily: textItem?.fontFamily ?? 'Helvetica',
+      fontFamily: textItem?.fontFamily ?? 'Liberation Sans',
       fontSize: group.dominantFontSize,
       color: '#111111',
       type: 'delete',
@@ -692,7 +702,7 @@ function PdfTextEditor() {
       pdfX: point.x,
       pdfY: point.y,
       fontName: 'Helvetica',
-      fontFamily: 'Helvetica',
+      fontFamily: 'Liberation Sans',
       fontSize: 12,
       color: '#111111',
       type: 'text',
@@ -793,6 +803,7 @@ function PdfTextEditor() {
         x: current.edge === 'left' ? resized.x : current.startPdfRect.x,
         width: resized.width,
       },
+      manualWidth: true,
     });
   };
 
@@ -834,6 +845,17 @@ function PdfTextEditor() {
     try {
       const source = await PDFDocument.load(sourcePdfBytes);
       const output = await PDFDocument.create();
+      const fontCache = new Map<string, Awaited<ReturnType<typeof output.embedFont>>>();
+      const getFont = async (entry: TextItem) => {
+        const variant = entry.bold ? entry.italic ? 'boldItalic' : 'bold' : entry.italic ? 'italic' : 'regular';
+        const key = `${entry.fontFamily}:${variant}`;
+        const cached = fontCache.get(key);
+        if (cached) return cached;
+        // pdf-lib embeds the full font per call — never call embedFont inside draw loops.
+        const font = await output.embedFont(standardFontFor(entry.fontFamily, variant), { subset: true });
+        fontCache.set(key, font);
+        return font;
+      };
       const sourcePages = source.getPages();
       for (let index = 0; index < sourcePages.length; index += 1) {
         const [copied] = await output.copyPages(source, [index]);
@@ -864,7 +886,7 @@ function PdfTextEditor() {
                 color: colorToPdf(entry.highlightColor),
               });
             }
-            const font = await output.embedFont(resolvePdfFont(entry.fontFamily, Boolean(entry.bold), Boolean(entry.italic)));
+            const font = await getFont(entry);
             const size = clamp(entry.fontSize, 8, 72);
             const lines = wrapPdfText(entry.text, entry.pdfRect.width, (line) => font.widthOfTextAtSize(line, size));
             const lineHeight = size * 1.2;
@@ -915,6 +937,24 @@ function PdfTextEditor() {
       }
 
       let bytes = await output.save();
+      if (bytes.byteLength > 100 * 1024 * 1024) {
+        setExportWarnings((warnings) => [...warnings, 'Output is unexpectedly large — this PDF may have issues']);
+      }
+      if (bytes.byteLength > sourcePdfBytes.byteLength + 2 * 1024 * 1024) {
+        setExportWarnings((warnings) => [...warnings, 'Output is unexpectedly large — this PDF may have issues']);
+      }
+      if (import.meta.env.DEV) {
+        const savedPdf = await PDFDocument.load(bytes);
+        const fontCounts = new Map<string, number>();
+        for (const [, object] of savedPdf.context.enumerateIndirectObjects()) {
+          if (!(object instanceof PDFDict) || object.get(PDFName.of('Type'))?.toString() !== '/Font') continue;
+          const subtype = object.get(PDFName.of('Subtype'))?.toString() ?? 'Font';
+          fontCounts.set(subtype, (fontCounts.get(subtype) ?? 0) + 1);
+        }
+        for (const [fontType, count] of fontCounts) {
+          if (count > 4) console.error(`[edit-pdf] font cache sanity check: ${fontType} appears ${count} times`);
+        }
+      }
       if (finalEdits.some((entry) => entry.type === 'delete')) {
         const rendered = await pdfjsLib.getDocument({ data: bytes }).promise;
         const rasterPages: RasterPdfPage[] = [];
@@ -963,9 +1003,53 @@ function PdfTextEditor() {
           <Button variant="outline" size="icon" aria-label="Redo" title="Redo" disabled={!history.future.length} onClick={redo}><Redo2 /></Button>
         </div>
       </div>
-      <label className="mb-3 block text-xs text-muted-foreground">Font family
-        <select className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground" value={draft.fontFamily} onChange={(event) => setDraftProperty({ fontFamily: event.target.value as FontFamily })}>
-          <option>Helvetica</option><option>Times Roman</option><option>Courier</option>
+      <label className="mb-3 block text-xs text-muted-foreground">Text
+        <textarea
+          aria-label="Text"
+          placeholder="Select or double-click text on the page to edit it here."
+          rows={Math.min(10, Math.max(2, draft.text.split(/\r?\n/).length))}
+          value={draft.text}
+          ref={panelTextRef}
+          onChange={(event) => setDraftProperty({ text: event.target.value })}
+          className="mt-1 min-h-16 w-full resize-none rounded-md border border-border bg-background px-2 py-2 text-sm text-foreground"
+        />
+      </label>
+      <label
+        className={`mb-3 block text-xs text-muted-foreground ${draft.fontDetectionStatus === 'fallback' ? 'decoration-dotted underline underline-offset-2' : ''}`}
+        title={draft.fontDetectionStatus === 'fallback' ? "This PDF doesn't record its font names, so we can't auto-detect." : undefined}
+      >Font family
+        <input
+          aria-label="Search fonts"
+          type="search"
+          value={fontSearch}
+          onChange={(event) => setFontSearch(event.target.value)}
+          placeholder="Search fonts"
+          className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground"
+        />
+        <select
+          className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground"
+          value={draft.fontFamily}
+          title={draft.fontDetectionStatus === 'fallback'
+            ? "This PDF doesn't record its font names, so we can't auto-detect."
+            : FONT_REGISTRY.find((font) => font.family === draft.fontFamily)?.compatible
+            ? `Uses the metric-identical open font ${draft.fontFamily}.`
+            : undefined}
+          onChange={(event) => setDraftProperty({ fontFamily: event.target.value as FontFamily })}
+        >
+          {['Compatible', 'Sans-serif', 'Serif', 'Display'].map((group) => {
+            const fonts = FONT_REGISTRY.filter((font) => font.group === group &&
+              font.displayName.toLowerCase().includes(fontSearch.trim().toLowerCase()));
+            return fonts.length > 0 && <optgroup key={group} label={group}>{fonts.map((font) => {
+              const label = font.family === draft.fontFamily && draft.fontDetectionStatus === 'fallback'
+                ? draft.fontDetectionLabel
+                : `${font.displayName}${font.compatible ? ' (compatible)' : ''}`;
+              return <option
+                key={font.family}
+                value={font.family}
+                title={font.compatible ? `Uses the metric-identical open font ${font.family}.` : font.displayName}
+              >{label}</option>;
+            })}</optgroup>;
+          })}
         </select>
       </label>
       <label className="mb-3 block text-xs text-muted-foreground">Font size (pt)
