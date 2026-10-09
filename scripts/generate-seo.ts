@@ -37,7 +37,8 @@ const GOOGLE_TAG_SNIPPET = `
       gtag('config', 'G-K58M67QSPV');
     </script>`;
 
-const SEO_FALLBACK_STYLE = '#seo-fallback { display: block !important; }';
+const SEO_FALLBACK_STYLE = '#seo-fallback { display: none !important; }';
+const SEO_NOSCRIPT_STYLE = '#seo-fallback { display: block !important; }';
 const SEO_FALLBACK_RUNTIME = `
     <script>
       (function () {
@@ -353,7 +354,7 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
 
     ${SEO_FALLBACK_RUNTIME}
     <noscript>
-      <style>${SEO_FALLBACK_STYLE}</style>
+      <style>${SEO_NOSCRIPT_STYLE}</style>
     </noscript>
   </body>
 </html>`;
@@ -456,7 +457,7 @@ function renderClientToolPageHtml(tool: (typeof clientToolContent)[number], asse
     <div id="root"></div>
     <script type="module" src="${assets.jsPath}"></script>
     ${SEO_FALLBACK_RUNTIME}
-    <noscript><style>${SEO_FALLBACK_STYLE}</style></noscript>
+    <noscript><style>${SEO_NOSCRIPT_STYLE}</style></noscript>
   </body>
 </html>`;
 }
@@ -540,7 +541,7 @@ function renderToolsIndexHtml(assets: { jsPath: string; cssPath: string }) {
     ${SEO_FALLBACK_RUNTIME}
 
     <noscript>
-      <style>#seo-fallback { display: block !important; }</style>
+      <style>${SEO_NOSCRIPT_STYLE}</style>
     </noscript>
   </body>
 </html>`;
@@ -599,7 +600,7 @@ function renderComparisonPageHtml(assets: { jsPath: string; cssPath: string }) {
     </div>
     <script type="module" src="${assets.jsPath}"></script>
     ${SEO_FALLBACK_RUNTIME}
-    <noscript><style>${SEO_FALLBACK_STYLE}</style></noscript>
+    <noscript><style>${SEO_NOSCRIPT_STYLE}</style></noscript>
   </body>
 </html>`;
 }
@@ -647,7 +648,7 @@ ${jsonLd ? `    ${jsonLd}\n` : ''}    <link rel="stylesheet" href="${assets.cssP
     <div id="root"></div>
     <script type="module" src="${assets.jsPath}"></script>
     ${SEO_FALLBACK_RUNTIME}
-    <noscript><style>${SEO_FALLBACK_STYLE}</style></noscript>
+    <noscript><style>${SEO_NOSCRIPT_STYLE}</style></noscript>
   </body>
 </html>`;
 }
@@ -822,7 +823,8 @@ function renderHomeSeoBlock() {
       )
       .join('') || `<li>${escapeHtml(label)} are being updated. Browse <a href="${siteUrl}/tools">all tools</a>.</li>`;
 
-  return `<!-- SEO Fallback -->
+  return `<style>${SEO_FALLBACK_STYLE}</style>
+<!-- SEO Fallback -->
 <div id="seo-fallback" style="display: block;">
   <main>
     <h1>PDFKira — Free Online PDF Tools</h1>
@@ -837,7 +839,8 @@ function renderHomeSeoBlock() {
     </section>
     <p><a href="/tools">View all ${visibleTools.length} tools</a></p>
   </main>
-</div>`;
+</div>
+<noscript><style>${SEO_NOSCRIPT_STYLE}</style></noscript>`;
 }
 
 function patchHomepageHtml(outDir: string) {
