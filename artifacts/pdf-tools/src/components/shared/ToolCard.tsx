@@ -6,9 +6,7 @@ import { Badge } from "@/components/ui/badge";
 
 export function ToolCard({ tool, featured = false, className = "" }: { tool: Tool; featured?: boolean; className?: string }) {
   const isAvailable = tool.status === "available";
-  const clientToolPath = ["pdf-to-excel", "sign-pdf", "ocr-pdf"].includes(tool.slug)
-    ? `/${tool.slug}`
-    : `/tools/${tool.slug}`;
+  const clientToolPath = `/tools/${tool.slug}`;
 
   return (
     <Link href={isAvailable ? clientToolPath : "#"} className={!isAvailable ? "cursor-not-allowed" : ""}>
