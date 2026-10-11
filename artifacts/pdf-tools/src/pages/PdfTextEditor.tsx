@@ -259,9 +259,18 @@ async function loadPageLayouts(pdfJsBytes: Uint8Array) {
   const layouts: PageLayout[] = [];
   for (let pageNumber = 1; pageNumber <= document.numPages; pageNumber += 1) {
     const page = await document.getPage(pageNumber);
+    await page.getOperatorList();
     const viewport = page.getViewport({ scale: 1 });
     const content = await page.getTextContent();
-    const styles = content.styles ?? {};
+    const styles = Object.fromEntries(Object.entries(content.styles ?? {}).map(([fontId, style]) => {
+      let embeddedFontName: string | undefined;
+      try {
+        embeddedFontName = page.commonObjs.get(fontId)?.name;
+      } catch {
+        embeddedFontName = undefined;
+      }
+      return [fontId, embeddedFontName ? { ...style, fontFamily: embeddedFontName } : style];
+    }));
     const textItems: TextItem[] = content.items
       .filter((item: any) => typeof item?.str === 'string' && item.str.trim())
       .map((item: any, index: number) => {

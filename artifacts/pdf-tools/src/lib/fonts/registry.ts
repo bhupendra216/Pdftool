@@ -37,14 +37,20 @@ export const FONT_REGISTRY: Array<{
 ];
 
 const aliases: Array<[RegExp, EditorFontFamily]> = [
+  // Embedded clone names are identities, not fallbacks. Keep these before
+  // broader aliases such as "serif" or "mono".
+  [/liberation\s*sans/, 'Liberation Sans'], [/liberation\s*serif/, 'Liberation Serif'],
+  [/liberation\s*mono/, 'Liberation Mono'], [/carlito/, 'Carlito'], [/caladea/, 'Caladea'],
+  [/gelasio/, 'Gelasio'], [/dejavu\s*sans/, 'DejaVu Sans'], [/dejavu\s*serif/, 'DejaVu Serif'],
+  [/noto\s*sans/, 'Noto Sans'], [/noto\s*serif/, 'Noto Serif'], [/open\s?sans/, 'Open Sans'],
+  [/source\s?sans/, 'Source Sans 3'], [/lato/, 'Lato'], [/roboto/, 'Roboto'],
+  [/merriweather/, 'Merriweather'], [/montserrat/, 'Montserrat'],
   [/symbol|zapfdingbats/, 'Liberation Sans'], // Base-14 Symbol fonts have no free metric-identical clone.
-  [/arial|helvetica/, 'Liberation Sans'], [/times-roman|times|liberationserif/, 'Liberation Serif'],
+  [/arial|helvetica/, 'Liberation Sans'], [/times-roman|times/, 'Liberation Serif'],
   [/courier|mono|monaco|consolas/, 'Liberation Mono'], [/calibri/, 'Carlito'],
   [/cambria/, 'Caladea'], [/georgia/, 'Gelasio'], [/verdana|tahoma|geneva/, 'DejaVu Sans'],
-  [/trebuchet/, 'DejaVu Sans'], [/lucida/, 'Noto Sans'], [/dejavusans/, 'DejaVu Sans'], [/dejavuserif/, 'DejaVu Serif'],
-  [/notosans/, 'Noto Sans'], [/notoserif/, 'Noto Serif'], [/lato/, 'Lato'], [/open\s?sans/, 'Open Sans'],
-  [/roboto/, 'Roboto'], [/source\s?sans/, 'Source Sans 3'], [/merriweather/, 'Merriweather'],
-  [/montserrat/, 'Montserrat'], [/cmu|latin modern|computer modern|lm roman/, 'Liberation Serif'],
+  [/trebuchet/, 'DejaVu Sans'], [/lucida/, 'Noto Sans'],
+  [/source\s?sans/, 'Source Sans 3'], [/cmu|latin modern|computer modern|lm roman/, 'Liberation Serif'],
 ];
 
 export function getEditorFontAliasMatch(name?: string): EditorFontFamily | undefined {
@@ -55,13 +61,24 @@ export function getEditorFontAliasMatch(name?: string): EditorFontFamily | undef
 export function normalizePdfFontName(name: string) {
   return name
     .replace(/^[^+]*\+/, '')
-    .replace(/(?:[-, ]?(?:psmt|mt|ps|bolditalic|bold|italic|oblique|bd|it))+$/i, '')
+    .replace(/(?:[-, ]?(?:bolditalic|bold|italic|oblique|semibold|medium|light|regular|psmt|mt|ps|bd))+$/i, '')
     .trim()
     .toLowerCase();
 }
 
 const genericFontNames = new Set(['sans-serif', 'serif', 'monospace', 'helvetica', 'times-roman', 'courier']);
 const latexFontPattern = /cmu|latin modern|computer modern|lm roman/i;
+const embeddedIdentityLabels: Array<[RegExp, string]> = [
+  [/liberation\s*sans/, 'Arial (compatible)'],
+  [/liberation\s*serif/, 'Times New Roman (compatible)'],
+  [/liberation\s*mono/, 'Courier New (compatible)'],
+  [/carlito/, 'Calibri (compatible)'],
+  [/caladea/, 'Cambria (compatible)'],
+  [/gelasio/, 'Georgia (compatible)'],
+  [/dejavu\s*sans/, 'DejaVu Sans'],
+  [/dejavu\s*serif/, 'DejaVu Serif'],
+  [/source\s?sans/, 'Source Sans'],
+];
 
 export function detectEditorFont(name?: string): {
   font: EditorFontFamily;
@@ -78,6 +95,7 @@ export function detectEditorFont(name?: string): {
   const font = match ?? 'Liberation Sans';
   const registryFont = FONT_REGISTRY.find((entry) => entry.family === font);
   const status = match && !isGeneric && !isLatexFallback ? 'detected' : 'fallback';
+  const identityLabel = embeddedIdentityLabels.find(([pattern]) => pattern.test(normalized))?.[1];
   if (!match && import.meta.env?.DEV) {
     console.warn('[font-detect] unresolved:', raw || undefined);
   }
@@ -87,10 +105,10 @@ export function detectEditorFont(name?: string): {
       ? 'serif (LaTeX fallback)'
       : status === 'fallback'
       ? `Unknown font — closest: ${registryFont?.displayName ?? 'Arial'} (compatible)`
-      : `${registryFont?.displayName ?? font}${registryFont?.compatible ? ' (compatible)' : ''}`,
+      : identityLabel ?? `${registryFont?.displayName ?? font}${registryFont?.compatible ? ' (compatible)' : ''}`,
     status,
     bold: /bold|bd/i.test(raw),
-    italic: /italic|oblique|it/i.test(raw),
+    italic: /italic|oblique/i.test(raw),
   };
 }
 
