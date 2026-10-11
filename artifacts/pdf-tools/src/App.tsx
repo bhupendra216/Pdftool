@@ -9,6 +9,7 @@ import { ScrollToTop } from '@/components/shared/ScrollToTop';
 // Pages
 const Home = lazy(() => import('@/pages/Home').then((mod) => ({ default: mod.Home })));
 const ToolsIndex = lazy(() => import('@/pages/ToolsIndex').then((mod) => ({ default: mod.ToolsIndex })));
+const CategoryPage = lazy(() => import('@/pages/CategoryPage').then((mod) => ({ default: mod.CategoryPage })));
 const ToolDetail = lazy(() => import('@/pages/ToolDetail').then((mod) => ({ default: mod.ToolDetail })));
 const MergePdfPage = lazy(() => import('@/pages/merge-pdf'));
 const PdfToExcelPage = lazy(() => import('@/pages/pdf-to-excel'));
@@ -53,6 +54,7 @@ function Router() {
       <Switch>
         <Route path="/" component={Home} />
         <Route path="/tools" component={ToolsIndex} />
+        <Route path="/categories/:id" component={CategoryPage} />
         {/* Explicit tool routes placed before the dynamic catch-all */}
         <Route path="/tools/merge-pdf" component={MergePdfPage} />
         <Route path="/tools/pdf-to-excel" component={PdfToExcelPage} />
