@@ -1,6 +1,7 @@
 export type PageState = {
   id: string;
   pageNumber: number;
+  originalPageNumber: number;
   sourcePageIndex: number;
   rotation: number;
   selected: boolean;

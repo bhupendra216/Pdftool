@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 type Page = {
   id: string;
   pageNumber: number;
+  originalPageNumber: number;
   sourcePageIndex: number;
   rotation: number;
   selected: boolean;
@@ -103,17 +104,14 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
   const aspectRatioWidth = 3; // width
   const aspectRatioHeight = 4; // height (portrait pages)
   const innerThumbHeight = Math.max(100, Math.round((cardWidth * aspectRatioHeight) / aspectRatioWidth));
-  // Make navy container just slightly larger than the thumbnail (small padding)
   const navyPadding = 2;
-  const scaledThumbHeight = innerThumbHeight + navyPadding; // navy container = thumbnail + small padding
-  const footerHeight = 30; // space for rotation badge and labels (reduced)
-  const wrapperVerticalPadding = 6; // total top+bottom padding from card wrapper (p-1)
-  const rowHeight = scaledThumbHeight + footerHeight + wrapperVerticalPadding;
+  const scaledThumbHeight = innerThumbHeight + navyPadding;
   const rowCount = Math.max(1, Math.ceil(pages.length / columns));
   const virtualizer = useVirtualizer({
     count: rowCount,
     getScrollElement: () => containerRef.current,
-    estimateSize: () => Math.min(rowHeight, 160),
+    estimateSize: () => innerThumbHeight + 48,
+    gap,
     overscan: 2,
   });
 
@@ -316,7 +314,7 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
                 >
                   <img
                     src={zoomUrl}
-                    alt={`Page ${zoomPage.pageNumber} preview`}
+                    alt={`Page ${zoomPage.originalPageNumber} preview`}
                     className="max-h-full max-w-full rounded-xl bg-white object-contain"
                     style={{ width: "100%", height: "100%", objectFit: "contain", pointerEvents: "none" }}
                     draggable={false}
@@ -336,6 +334,7 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
               <div
                 key={virtualRow.key}
                 data-index={virtualRow.index}
+                ref={virtualizer.measureElement}
                 style={{
                   position: "absolute",
                   top: 0,
@@ -344,7 +343,7 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
               >
-                <div className="grid" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gap: `${gap}px` }}>
+                <div className="grid" style={{ gridTemplateColumns: `repeat(${columns}, minmax(0, 1fr))`, gridAutoRows: "auto", gap: `${gap}px` }}>
                   {visiblePages.map((page, offset) => {
                     const index = startIndex + offset;
                     const actualIndex = pages.findIndex((candidate) => candidate.id === page.id);
@@ -366,14 +365,12 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
                         onDragOver={(e) => !isRotateMode && onDragOver(effectiveIndex, e)}
                         onDrop={(e) => !isRotateMode && onDrop(effectiveIndex, e)}
                         onClick={(e) => (isRotateMode ? undefined : toggleSelect(effectiveIndex, e as any))}
-                        className={`group relative rounded-[24px] border p-1 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${!isRotateMode && page.selected ? "border-primary/60 bg-primary/10 shadow-[0_18px_60px_-35px_rgba(59,130,246,0.55)]" : "border-border/70 bg-card/95"} ${dragIndex !== null && overIndex === effectiveIndex ? "border-primary/70 ring-2 ring-primary-20" : ""}`}
+                        className={`group relative flex flex-col rounded-[24px] border p-1 transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md ${!isRotateMode && page.selected ? "border-primary/60 bg-primary/10 shadow-[0_18px_60px_-35px_rgba(59,130,246,0.55)]" : "border-border/70 bg-card/95"} ${dragIndex !== null && overIndex === effectiveIndex ? "border-primary/70 ring-2 ring-primary-20" : ""}`}
                         style={{
-                          height: `${pageScaledThumbHeight + footerHeight + wrapperVerticalPadding}px`,
                           overflow: "visible",
                           opacity: shouldHide ? 0 : 1,
                           visibility: shouldHide ? "hidden" : "visible",
                           pointerEvents: shouldHide ? "none" : "auto",
-                          contain: "layout paint",
                           transition: "opacity 180ms ease-out, visibility 180ms ease-out, box-shadow 180ms ease-out, transform 180ms ease-out",
                         }}
                         role="listitem"
@@ -408,8 +405,7 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
                           )}
                         </div>
 
-                        <div className="flex h-full flex-col justify-between">
-                          <div className="relative flex items-center justify-center overflow-hidden rounded-[18px] border border-border/40 bg-background/60 p-1" style={{ width: "100%", height: `${pageScaledThumbHeight}px` }}>
+                        <div className="relative flex shrink-0 items-center justify-center overflow-hidden rounded-[18px] border border-border/40 bg-background/60 p-1" style={{ width: "100%", height: `${pageScaledThumbHeight}px` }}>
                             {dragIndex === index && <div className="absolute inset-0 bg-primary/10" />}
                             {thumbnailUrl ? (
                               <div
@@ -426,9 +422,9 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
                               >
                                 <img
                                   src={thumbnailUrl}
-                                  alt={`Page ${page.pageNumber}`}
+                                  alt={`Page ${page.originalPageNumber}`}
                                   className="max-h-full max-w-full rounded-[14px] bg-white object-contain shadow-sm dark:bg-slate-950"
-                                  style={{ width: "100%", height: "100%", objectFit: "contain" }}
+                                  style={{ display: "block", width: "100%", height: "100%", maxWidth: "100%", margin: "0 auto", objectFit: "contain" }}
                                   onLoad={(e) => {
                                     try {
                                       const natW = (e.currentTarget as HTMLImageElement).naturalWidth || 1;
@@ -460,15 +456,15 @@ export function OrganizeGrid({ pages, onUpdate, onRotate, onDelete, onExtract, o
                             )}
                           </div>
 
-                          <div className="mt-3 flex items-center justify-between gap-2">
-                            <div className="text-sm font-semibold text-foreground">Page {page.pageNumber}</div>
+                        <div className="mt-3 flex min-h-6 items-center justify-between gap-2">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <div className="text-sm font-semibold text-foreground">Page {page.originalPageNumber}</div>
                             {!isRotateMode ? (page.selected ? <Badge className="rounded-full bg-primary/10 text-primary">Selected</Badge> : <Badge variant="outline" className="rounded-full">Ready</Badge>) : <Badge variant="outline" className="rounded-full">Ready</Badge>}
                           </div>
+                          {!isRotateMode && (
+                            <div className="shrink-0 cursor-grab text-muted-foreground/80 transition-colors hover:text-foreground" title="Drag to reorder"><GripVertical size={18} /></div>
+                          )}
                         </div>
-
-                        {!isRotateMode && (
-                          <div className="absolute bottom-3 left-3 cursor-grab text-muted-foreground/80 transition-colors hover:text-foreground" title="Drag to reorder"><GripVertical size={18} /></div>
-                        )}
                       </div>
                     );
                   })}

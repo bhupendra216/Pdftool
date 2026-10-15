@@ -108,6 +108,14 @@
     { "source": "/pdf-ocr", "destination": "/tools/ocr-image-to-text", "permanent": true },
     { "source": "/download-pdf", "destination": "/tools/download-pdf", "permanent": true },
     { "source": "/search-free-pdfs", "destination": "/tools/search-free-pdfs", "permanent": true },
-    { "source": "/latex-to-text", "destination": "/tools/latex-to-text", "permanent": true }
+    { "source": "/latex-to-text", "destination": "/tools/latex-to-text", "permanent": true },
+    { "source": "/ai-chat-pdf", "destination": "/tools/ai-chat-pdf", "permanent": true },
+    { "source": "/ai-redact-pdf", "destination": "/tools/ai-redact-pdf", "permanent": true },
+    { "source": "/research-assistant", "destination": "/tools/research-assistant", "permanent": true },
+    { "source": "/ai-summary-pdf", "destination": "/tools/ai-summary-pdf", "permanent": true }
+    ,{ "source": "/ai-review-pdf", "destination": "/tools/ai-review-pdf", "permanent": true }
+    ,{ "source": "/ai-translate-pdf", "destination": "/tools/ai-translate-pdf", "permanent": true }
+    ,{ "source": "/quiz-generator", "destination": "/tools/quiz-generator", "permanent": true }
+    ,{ "source": "/invoice-extractor", "destination": "/tools/invoice-extractor", "permanent": true }
   ]
 }

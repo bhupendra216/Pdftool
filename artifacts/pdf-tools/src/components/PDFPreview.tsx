@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import * as pdfjsLib from 'pdfjs-dist';
-import 'pdfjs-dist/build/pdf.worker.mjs';
+import '@/lib/client-pdf';
 
 interface PDFPreviewProps {
   file: File | null;

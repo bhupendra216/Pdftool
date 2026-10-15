@@ -314,7 +314,7 @@ export function ToolDetail(props?: any) {
   const [totalPages, setTotalPages] = useState<number | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
-  const [pdfPages, setPdfPages] = useState<Array<{ id: string; pageNumber: number; sourcePageIndex: number; rotation: number; selected: boolean; thumbnailUrl?: string | null }>>([]);
+  const [pdfPages, setPdfPages] = useState<Array<{ id: string; pageNumber: number; originalPageNumber: number; sourcePageIndex: number; rotation: number; selected: boolean; thumbnailUrl?: string | null }>>([]);
   const thumbnailCacheRef = useRef<Map<string, Array<string | null>>>(new Map());
   const [thumbnailZoom, setThumbnailZoom] = useState<number>(100);
   const [draggedPageIndex, setDraggedPageIndex] = useState<number | null>(null);
@@ -699,10 +699,12 @@ export function ToolDetail(props?: any) {
       const pageCount = pdf.getPageCount();
 
       setTotalPages(pageCount);
+      const pageSetId = globalThis.crypto?.randomUUID?.() ?? `${Date.now()}-${Math.random().toString(36).slice(2)}`;
       setPdfPages(
         Array.from({ length: pageCount }, (_, index) => ({
-          id: `${file.name}-${index + 1}`,
+          id: `${pageSetId}-${index + 1}`,
           pageNumber: index + 1,
+          originalPageNumber: index + 1,
           sourcePageIndex: index,
           rotation: 0,
           selected: false,

@@ -1,43 +1,45 @@
-import { useMemo } from 'react';
-import { Link } from 'wouter';
-import { ArrowRight } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { FaqSection } from '@/components/shared/FaqSection';
-import { SITE_URL } from '@/lib/site-config';
-import { useSEOAdvanced } from '@/hooks/use-seo';
+import { useMemo } from "react";
+import { Link } from "wouter";
+import { ArrowRight } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { FaqSection } from "@/components/shared/FaqSection";
+import { SITE_URL } from "@/lib/site-config";
+import { useSEOAdvanced } from "@/hooks/use-seo";
 
 const comparisonFaqs = [
   {
-    question: 'Is PDFKira free?',
-    answer: 'PDFKira offers a free core set of PDF tools for common workflows such as merging, splitting, compressing, converting, and organizing documents without a mandatory sign-up.',
+    question: "Is PDFKira free?",
+    answer: "PDFKira offers a free core set of PDF tools for common workflows such as merging, splitting, compressing, converting, and organizing documents without a mandatory sign-up.",
   },
   {
-    question: 'Do I need to sign up?',
-    answer: 'No account is required for the core workflow on PDFKira. You can use the tool directly in the browser for quick one-off tasks.',
+    question: "Do I need to sign up?",
+    answer: "No account is required for the core workflow on PDFKira. You can use the tool directly in the browser for quick one-off tasks.",
   },
   {
-    question: 'Is iLovePDF better than Smallpdf?',
-    answer: 'It depends on the workflow. iLovePDF is known for a large library of tools, while Smallpdf is often chosen for a more polished interface and a more focused document workflow. PDFKira is a straightforward alternative when you want a simple, browser-based experience without a sign-up barrier.',
+    question: "Is iLovePDF better than Smallpdf?",
+    answer:
+      "It depends on the workflow. iLovePDF is known for a large library of tools, while Smallpdf is often chosen for a more polished interface and a more focused document workflow. PDFKira is a straightforward alternative when you want a simple, browser-based experience without a sign-up barrier.",
   },
   {
-    question: 'Which tool is better for a quick task?',
-    answer: 'For simple, everyday tasks, PDFKira is a strong option if you want a fast and minimal workflow. The best choice depends on whether you need a broad tool library, a polished premium experience, or a quick no-signup tool for basic file work.',
+    question: "Which tool is better for a quick task?",
+    answer:
+      "For simple, everyday tasks, PDFKira is a strong option if you want a fast and minimal workflow. The best choice depends on whether you need a broad tool library, a polished premium experience, or a quick no-signup tool for basic file work.",
   },
   {
-    question: 'When should I prefer PDFKira?',
-    answer: 'PDFKira is a good fit when you want a quick PDF workflow without creating an account and prefer a clean, focused experience for common document tasks.',
+    question: "When should I prefer PDFKira?",
+    answer: "PDFKira is a good fit when you want a quick PDF workflow without creating an account and prefer a clean, focused experience for common document tasks.",
   },
 ];
 
 const comparisonRows = [
-  ['Free usage limits', 'Daily caps', 'About 2 tasks/day', 'Free core tools'],
-  ['Sign up required', 'For some tools', 'For most use', 'No'],
-  ['Ads', 'Yes (free tier)', 'Minimal', 'Minimal'],
-  ['Speed', 'Good', 'Good', 'Fast and simple'],
-  ['File size limits', 'Yes', 'Yes (free tier)', 'Varies by task'],
-  ['Privacy / file retention', 'Auto-delete claimed', 'Auto-delete claimed', 'Privacy-first browser workflow'],
-  ['Price', 'Paid plan for full access', 'Subscription-based', 'Free'],
-  ['No-signup option', 'Partial', 'Partial', 'Yes'],
+  ["Free tool access", "Varies by tool", "Varies by plan", "Free core tools"],
+  ["Sign up required", "For some tools", "For most use", "No"],
+  ["Ads", "Yes (free tier)", "Minimal", "Minimal"],
+  ["Speed", "Good", "Good", "Fast and simple"],
+  ["File size limits", "Yes", "Yes (free tier)", "Varies by task"],
+  ["Privacy / file retention", "Auto-delete claimed", "Auto-delete claimed", "Privacy-first browser workflow"],
+  ["Price", "Paid plan for full access", "Subscription-based", "Free"],
+  ["No-signup option", "Partial", "Partial", "Yes"],
 ];
 
 export default function CompareIlovepdfVsSmallpdfVsPdfkiraPage() {
@@ -45,13 +47,13 @@ export default function CompareIlovepdfVsSmallpdfVsPdfkiraPage() {
 
   const faqJsonLd = useMemo(
     () => ({
-      '@context': 'https://schema.org',
-      '@type': 'FAQPage',
+      "@context": "https://schema.org",
+      "@type": "FAQPage",
       mainEntity: comparisonFaqs.map((faq) => ({
-        '@type': 'Question',
+        "@type": "Question",
         name: faq.question,
         acceptedAnswer: {
-          '@type': 'Answer',
+          "@type": "Answer",
           text: faq.answer,
         },
       })),
@@ -60,15 +62,15 @@ export default function CompareIlovepdfVsSmallpdfVsPdfkiraPage() {
   );
 
   useSEOAdvanced({
-    title: 'iLovePDF vs Smallpdf vs PDFKira',
-    description: 'Compare iLovePDF, Smallpdf, and PDFKira by features, free access, and privacy to find the right PDF workflow for you. Review options and choose a tool.',
+    title: "iLovePDF vs Smallpdf vs PDFKira",
+    description: "Compare iLovePDF, Smallpdf, and PDFKira by features, free access, and privacy to find the right PDF workflow for you. Review options and choose a tool.",
     canonical: canonicalUrl,
     jsonLd: [
       {
-        '@context': 'https://schema.org',
-        '@type': 'WebPage',
-        name: 'iLovePDF vs Smallpdf vs PDFKira',
-        description: 'Compare iLovePDF, Smallpdf, and PDFKira by features, free access, and privacy to find the right PDF workflow for you. Review options and choose a tool.',
+        "@context": "https://schema.org",
+        "@type": "WebPage",
+        name: "iLovePDF vs Smallpdf vs PDFKira",
+        description: "Compare iLovePDF, Smallpdf, and PDFKira by features, free access, and privacy to find the right PDF workflow for you. Review options and choose a tool.",
         url: canonicalUrl,
       },
       faqJsonLd,
@@ -87,7 +89,8 @@ export default function CompareIlovepdfVsSmallpdfVsPdfkiraPage() {
       <main className="container mx-auto max-w-5xl px-4 py-10 md:px-6 md:py-16">
         <section className="mb-12">
           <p className="text-lg leading-8 text-muted-foreground">
-            When you are choosing between online PDF tools, the best option depends on whether you need a broad tool library, a polished premium interface, or a simple no-sign-up workflow. This comparison breaks down iLovePDF, Smallpdf, and PDFKira so you can match the tool to the job.
+            When you are choosing between online PDF tools, the best option depends on whether you need a broad tool library, a polished premium interface, or a simple no-sign-up workflow. This comparison breaks down iLovePDF, Smallpdf, and
+            PDFKira so you can match the tool to the job.
           </p>
         </section>
 
@@ -95,7 +98,8 @@ export default function CompareIlovepdfVsSmallpdfVsPdfkiraPage() {
           <h2 className="mb-6 text-3xl font-bold tracking-tight text-foreground md:text-4xl">iLovePDF</h2>
           <div className="space-y-6 rounded-3xl border border-border bg-card p-6 md:p-8">
             <p className="text-base leading-7 text-muted-foreground">
-              iLovePDF is a well-known online PDF platform with a broad library of tools for document tasks. It is often popular with users who want familiar PDF operations in one place, especially when they need to work across mobile and desktop devices.
+              iLovePDF is a well-known online PDF platform with a broad library of tools for document tasks. It is often popular with users who want familiar PDF operations in one place, especially when they need to work across mobile and
+              desktop devices.
             </p>
 
             <div>
@@ -127,7 +131,8 @@ export default function CompareIlovepdfVsSmallpdfVsPdfkiraPage() {
           <h2 className="mb-6 text-3xl font-bold tracking-tight text-foreground md:text-4xl">Smallpdf</h2>
           <div className="space-y-6 rounded-3xl border border-border bg-card p-6 md:p-8">
             <p className="text-base leading-7 text-muted-foreground">
-              Smallpdf is a popular PDF tool known for a cleaner interface and a more polished user experience. It is often used for common tasks such as compression, conversion, and document cleanup, especially when users want a streamlined workflow.
+              Smallpdf is a popular PDF tool known for a cleaner interface and a more polished user experience. It is often used for common tasks such as compression, conversion, and document cleanup, especially when users want a
+              streamlined workflow.
             </p>
 
             <div>
@@ -142,7 +147,7 @@ export default function CompareIlovepdfVsSmallpdfVsPdfkiraPage() {
             <div>
               <h3 className="mb-3 text-xl font-semibold text-foreground">Disadvantages</h3>
               <ul className="list-disc space-y-2 pl-6 text-base leading-7 text-muted-foreground">
-                <li>Very limited free usage (historically around 2 tasks per day)</li>
+                <li>Some features require a paid plan</li>
                 <li>Subscription is often needed for real use</li>
                 <li>Some users report frustration with auto-renewing subscription plans</li>
               </ul>
@@ -168,7 +173,7 @@ export default function CompareIlovepdfVsSmallpdfVsPdfkiraPage() {
               </thead>
               <tbody className="text-muted-foreground">
                 {comparisonRows.map(([feature, left, middle, right], index) => (
-                  <tr key={feature} className={index % 2 === 0 ? 'bg-background' : 'bg-card/60'}>
+                  <tr key={feature} className={index % 2 === 0 ? "bg-background" : "bg-card/60"}>
                     <td className="border-b border-border px-4 py-3 font-medium text-foreground">{feature}</td>
                     <td className="border-b border-border px-4 py-3">{left}</td>
                     <td className="border-b border-border px-4 py-3">{middle}</td>
