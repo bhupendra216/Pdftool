@@ -6,6 +6,8 @@ export type PdfTextLineGroup = {
   baselineY: number;
   boundingBox: { x: number; y: number; width: number; height: number };
   dominantFontSize: number;
+  ascent?: number;
+  descent?: number;
   runs: Array<{
     str: string;
     fontName?: string;
@@ -14,6 +16,8 @@ export type PdfTextLineGroup = {
     fontSize?: number;
     bold?: boolean;
     italic?: boolean;
+    ascent?: number;
+    descent?: number;
     x: number;
     y: number;
     width: number;
@@ -48,6 +52,8 @@ export function groupTextItemsIntoLines(textItems: any[] = [], tolerance = 2) {
       fontSize,
       bold: /bold/i.test(fontName),
       italic: /italic|oblique/i.test(fontName),
+      ascent: Number.isFinite(item.ascent) ? Number(item.ascent) : undefined,
+      descent: Number.isFinite(item.descent) ? Number(item.descent) : undefined,
       x,
       y,
       width,
@@ -69,6 +75,8 @@ export function groupTextItemsIntoLines(textItems: any[] = [], tolerance = 2) {
       current.boundingBox.height = top - bottom;
       current.runs.push(run);
       current.dominantFontSize = current.runs[Math.floor(current.runs.length / 2)]?.fontSize ?? fontSize;
+      if (run.ascent !== undefined) current.ascent = Math.max(current.ascent ?? run.ascent, run.ascent);
+      if (run.descent !== undefined) current.descent = Math.min(current.descent ?? run.descent, run.descent);
       continue;
     }
 
@@ -80,8 +88,33 @@ export function groupTextItemsIntoLines(textItems: any[] = [], tolerance = 2) {
       baselineY: y,
       boundingBox: { x, y, width, height },
       dominantFontSize: fontSize,
+      ascent: run.ascent,
+      descent: run.descent,
       runs: [run],
     });
   }
   return groups;
+}
+
+export function inferTextMargins(groups: PdfTextLineGroup[]) {
+  if (!groups.length) return null;
+  const fontSizes = groups.map((group) => group.dominantFontSize).sort((left, right) => left - right);
+  const medianFontSize = fontSizes[Math.floor(fontSizes.length / 2)];
+  const bodyLines = groups.filter((group) => group.dominantFontSize <= medianFontSize * 1.35);
+  const lines = bodyLines.length ? bodyLines : groups;
+  const left = Math.min(...lines.map((group) => group.boundingBox.x));
+  const right = Math.max(...lines.map((group) => group.boundingBox.x + group.boundingBox.width));
+  return { left, right };
+}
+
+export function findOverlappingTextLines(
+  candidateRects: Array<{ x: number; y: number; width: number; height: number }>,
+  groups: PdfTextLineGroup[],
+  excludedGroupId?: string,
+) {
+  return groups.filter((group) => group.id !== excludedGroupId && candidateRects.some((rect) => {
+    const other = group.boundingBox;
+    return rect.x < other.x + other.width && rect.x + rect.width > other.x &&
+      rect.y < other.y + other.height && rect.y + rect.height > other.y;
+  }));
 }

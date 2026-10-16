@@ -5,16 +5,27 @@ import saveAs from 'file-saver';
 import { AlignCenter, AlignLeft, AlignRight, Bold, Highlighter, Link2, Plus, Redo2, Italic, Underline, Undo2, Upload } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { groupTextItemsIntoLines, type PdfTextLineGroup } from '../lib/pdf-text-lines';
-import { createImageOnlyPdf, type RasterPdfPage } from '../lib/image-only-pdf';
-import { pdfToViewport, viewportToPdf, type PdfRect } from '../lib/pdf-coords';
-import { getSafeTextGeometry, validateTextItemGeometry } from '../lib/pdf-text-geometry';
-import { detectEditorFont, FONT_REGISTRY, cssFamilyFor, getEditorFontAliasMatch, normalizePdfFontName, standardFontFor, type EditorFontFamily, type FontDetectionStatus } from '../lib/fonts/registry';
+import { findOverlappingTextLines, groupTextItemsIntoLines, inferTextMargins, type PdfTextLineGroup } from '../lib/pdf-text-lines';
+import { replacePdfPagesWithImages, type ReplacementRasterPdfPage } from '../lib/image-only-pdf';
+import { getPdfViewportBounds, pdfToViewport, viewportToPdf, type PdfRect } from '../lib/pdf-coords';
+import { getOriginalLineMaskRect, getReplacementBaseline, getSafeTextGeometry, medianRgbColor, roundPdfFontSize, validateTextItemGeometry } from '../lib/pdf-text-geometry';
+import { detectEditorFont, editorFontVariant, embedEditorFont, FONT_REGISTRY, getCachedEditorTextMetrics, loadEditorPreviewFonts, loadEditorTextMetrics, cssFamilyFor, getEditorFontAliasMatch, normalizePdfFontName, splitTextForPdf, type EditorFontFamily, type FontDetectionHints, type FontDetectionStatus, type PdfTextFontRun } from '../lib/fonts/registry';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
 
 type FontFamily = EditorFontFamily;
 type TextAlignment = 'left' | 'center' | 'right';
+
+type PdfJsFontObject = FontDetectionHints & {
+  name?: string;
+};
+
+type PdfTextStyle = FontDetectionHints & {
+  fontFamily?: string;
+  fontDetectionHints?: FontDetectionHints;
+  ascent?: number;
+  descent?: number;
+};
 
 type TextItem = {
   id: string;
@@ -26,6 +37,7 @@ type TextItem = {
   anchorX?: number;
   pdfX: number;
   pdfY: number;
+  originalBaselineY?: number;
   width?: number;
   height?: number;
   fontName: string;
@@ -38,6 +50,8 @@ type TextItem = {
   groupId?: string;
   isAdded?: boolean;
   maskColor?: string;
+  ascent?: number;
+  descent?: number;
   bold?: boolean;
   italic?: boolean;
   underline?: boolean;
@@ -131,13 +145,8 @@ function wrapPdfText(text: string, width: number, measure: (value: string) => nu
   return lines.length ? lines : [''];
 }
 
-function getMaskRect(rect: PdfRect): PdfRect {
-  return {
-    x: rect.x - MASK_PADDING_PT,
-    y: rect.y - MASK_PADDING_PT,
-    width: rect.width + MASK_PADDING_PT * 2,
-    height: rect.height + MASK_PADDING_PT * 2,
-  };
+function measurePdfTextRuns(runs: PdfTextFontRun[], size: number) {
+  return runs.reduce((width, run) => width + run.font.widthOfTextAtSize(run.text, size), 0);
 }
 
 function sampleRingColor(context: CanvasRenderingContext2D, rect: PdfRect) {
@@ -151,7 +160,7 @@ function sampleRingColor(context: CanvasRenderingContext2D, rect: PdfRect) {
   const regionRight = Math.min(context.canvas.width, right + pad);
   const regionBottom = Math.min(context.canvas.height, bottom + pad);
   const pixels = context.getImageData(regionLeft, regionTop, regionRight - regionLeft, regionBottom - regionTop);
-  const colors = new Map<string, number>();
+  const colors: Array<[number, number, number]> = [];
   for (let y = regionTop; y < regionBottom; y += 1) {
     for (let x = regionLeft; x < regionRight; x += 1) {
       if (x >= left && x < right && y >= top && y < bottom) continue;
@@ -159,16 +168,12 @@ function sampleRingColor(context: CanvasRenderingContext2D, rect: PdfRect) {
       const red = pixels.data[index];
       const green = pixels.data[index + 1];
       const blue = pixels.data[index + 2];
-      const luminance = 0.2126 * red + 0.7152 * green + 0.0722 * blue;
-      if (luminance < 120) continue;
-      const color = [red, green, blue].map((channel) =>
-        Math.min(255, Math.round(channel / 8) * 8).toString(16).padStart(2, '0')).join('');
-      colors.set(color, (colors.get(color) ?? 0) + 1);
+      colors.push([red, green, blue]);
     }
   }
-  const mode = [...colors.entries()].sort((leftColor, rightColor) => rightColor[1] - leftColor[1])[0]?.[0];
-  if (!mode) throw new Error('The page background could not be sampled around this text.');
-  return `#${mode}`;
+  const median = medianRgbColor(colors);
+  if (!median) throw new Error('The page background could not be sampled around this text.');
+  return median;
 }
 
 function sampleTextColor(context: CanvasRenderingContext2D, rect: PdfRect, backgroundColor: string) {
@@ -245,6 +250,33 @@ function inferTextAlignment(group: PdfTextLineGroup, pageItems: TextItem[]) {
   return { alignment: 'left' as const, anchorX: undefined, pdfRect: group.boundingBox };
 }
 
+function getTextOverflowWarning(entry: TextItem, page: PageLayout) {
+  const metrics = getCachedEditorTextMetrics(entry.fontFamily, editorFontVariant(entry.bold, entry.italic));
+  if (!metrics) return undefined;
+  const lines = wrapPdfText(entry.text, entry.pdfRect.width, (line) => metrics.widthOfTextAtSize(line, entry.fontSize));
+  if (lines.length < 2) return undefined;
+  const originalBottom = (entry.maskRect ?? entry.pdfRect).y;
+  const baseline = entry.originalBaselineY ?? entry.pdfY;
+  const lineHeight = metrics.heightAtSize(entry.fontSize) * 1.2;
+  const textHeight = metrics.heightAtSize(entry.fontSize);
+  const overflowRects = lines.flatMap((line, index) => {
+    if (index === 0) return [];
+    const lineBaseline = baseline - index * lineHeight;
+    const width = metrics.widthOfTextAtSize(line, entry.fontSize);
+    const x = entry.alignment === 'center' && entry.anchorX !== undefined
+      ? entry.anchorX - width / 2
+      : entry.alignment === 'right' && entry.anchorX !== undefined
+        ? entry.anchorX - width
+        : entry.pdfRect.x;
+    const y = lineBaseline - textHeight * 0.25;
+    if (y >= originalBottom) return [];
+    return [{ x, y, width, height: textHeight }];
+  });
+  return findOverlappingTextLines(overflowRects, page.lineGroups, entry.groupId).length
+    ? 'Wrapped text extends below its original line and overlaps nearby PDF text.'
+    : undefined;
+}
+
 async function readFileBytes(file: File) {
   const buffer = await file.arrayBuffer();
   if (!buffer.byteLength) throw new Error('The PDF file is empty.');
@@ -263,14 +295,18 @@ async function loadPageLayouts(pdfJsBytes: Uint8Array) {
     const viewport = page.getViewport({ scale: 1 });
     const content = await page.getTextContent();
     const styles = Object.fromEntries(Object.entries(content.styles ?? {}).map(([fontId, style]) => {
-      let embeddedFontName: string | undefined;
+      let fontObject: PdfJsFontObject | undefined;
       try {
-        embeddedFontName = page.commonObjs.get(fontId)?.name;
+        fontObject = page.commonObjs.get(fontId) as PdfJsFontObject;
       } catch {
-        embeddedFontName = undefined;
+        fontObject = undefined;
       }
-      return [fontId, embeddedFontName ? { ...style, fontFamily: embeddedFontName } : style];
-    }));
+      return [fontId, fontObject ? {
+        ...style,
+        fontFamily: fontObject.name ?? style.fontFamily,
+        fontDetectionHints: fontObject,
+      } : style];
+    })) as Record<string, PdfTextStyle>;
     const textItems: TextItem[] = content.items
       .filter((item: any) => typeof item?.str === 'string' && item.str.trim())
       .map((item: any, index: number) => {
@@ -292,6 +328,7 @@ async function loadPageLayouts(pdfJsBytes: Uint8Array) {
         const validation = validateTextItemGeometry(item, styles);
         if (!validation.ok) console.warn('[edit-pdf] using guarded text bounds', validation.reason);
         const fontName = String(item.fontName ?? '');
+        const fontStyle = styles[fontName] as { ascent?: number; descent?: number } | undefined;
         return {
           id: `page-${pageNumber}-item-${index}`,
           pageNumber,
@@ -303,8 +340,10 @@ async function loadPageLayouts(pdfJsBytes: Uint8Array) {
           width: pdfRect.width,
           height: pdfRect.height,
           fontName,
-          fontFamily: detectEditorFont(styles[fontName]?.fontFamily ?? fontName).font,
-          fontSize: clamp(Number(safe.fontSize) || itemHeight, 8, 72),
+          fontFamily: detectEditorFont(styles[fontName]?.fontFamily ?? fontName, styles[fontName]?.fontDetectionHints).font,
+          fontSize: roundPdfFontSize(Number(item.height) || Number(safe.fontSize) || itemHeight),
+          ascent: Number.isFinite(fontStyle?.ascent) ? Number(fontStyle?.ascent) * safe.fontSize : undefined,
+          descent: Number.isFinite(fontStyle?.descent) ? Number(fontStyle?.descent) * safe.fontSize : undefined,
           color: '#111111',
           type: 'text' as const,
         };
@@ -346,6 +385,7 @@ function PdfTextEditor() {
   const [saved, setSaved] = useState(false);
   const [history, setHistory] = useState<PageHistory>({ past: [], future: [] });
   const [renderVersion, setRenderVersion] = useState(0);
+  const [fontMetricsVersion, setFontMetricsVersion] = useState(0);
   const panelTextRef = useRef<HTMLTextAreaElement | null>(null);
   const baseCanvasRefs = useRef<Record<number, HTMLCanvasElement | null>>({});
   const overlayCanvasRefs = useRef<Record<number, HTMLCanvasElement | null>>({});
@@ -358,6 +398,42 @@ function PdfTextEditor() {
   const currentDraftRef = useRef<TextItem | null>(null);
   const renderTasksRef = useRef<Set<{ promise: Promise<void>; cancel: () => void }>>(new Set());
   currentDraftRef.current = draft;
+
+  useEffect(() => {
+    const entries = [...edits, ...(draft ? [draft] : [])].filter((entry) => entry.type === 'text');
+    const uniqueEntries = new Map(entries.map((entry) => [
+      `${entry.fontFamily}:${editorFontVariant(entry.bold, entry.italic)}`,
+      entry,
+    ]));
+    if (!uniqueEntries.size) return;
+    let cancelled = false;
+    void Promise.all([...uniqueEntries.values()].map(async (entry) => {
+      const variant = editorFontVariant(entry.bold, entry.italic);
+      await Promise.all([
+        loadEditorTextMetrics(entry.fontFamily, variant),
+        loadEditorPreviewFonts(entry.fontFamily, variant),
+      ]);
+    })).then(() => {
+      if (!cancelled) setFontMetricsVersion((version) => version + 1);
+    }).catch((reason: unknown) => {
+      if (!cancelled) setError(reason instanceof Error ? reason.message : 'Could not load the selected font.');
+    });
+    return () => { cancelled = true; };
+  }, [draft?.fontFamily, draft?.bold, draft?.italic, edits]);
+
+  useEffect(() => {
+    if (!draft || draft.manualWidth || (!draft.isAdded && draft.text === draft.originalText)) return;
+    const metrics = getCachedEditorTextMetrics(draft.fontFamily, editorFontVariant(draft.bold, draft.italic));
+    if (!metrics) return;
+    const width = Math.max(40, ...draft.text.split(/\r?\n/).map((line) => metrics.widthOfTextAtSize(line, draft.fontSize) + 8));
+    if (Math.abs(width - draft.pdfRect.width) < 0.01) return;
+    setDraft((current) => {
+      if (!current || current.manualWidth) return current;
+      const next = { ...current, pdfRect: { ...current.pdfRect, width } };
+      currentDraftRef.current = next;
+      return next;
+    });
+  }, [draft, fontMetricsVersion]);
 
   useEffect(() => () => {
     if (savedTimeoutRef.current !== null) window.clearTimeout(savedTimeoutRef.current);
@@ -519,7 +595,7 @@ function PdfTextEditor() {
       }
       if (draft?.pageNumber === page.pageNumber) drawPreviewEntry(context, draft, viewport);
     }
-  }, [draft, edits, pageLayouts, renderVersion, pdfDocument]);
+  }, [draft, edits, fontMetricsVersion, pageLayouts, renderVersion, pdfDocument]);
 
   useEffect(() => {
     if (!pageLayouts.length) return;
@@ -597,9 +673,13 @@ function PdfTextEditor() {
     const rawFontName = resolvedStyle?.fontFamily;
     const normalizedFontName = normalizePdfFontName(rawFontName ?? '');
     const aliasMatch = getEditorFontAliasMatch(rawFontName);
-    const detectedFont = detectEditorFont(rawFontName);
+    const detectedFont = detectEditorFont(rawFontName, resolvedStyle?.fontDetectionHints);
     const color = existing?.color ?? getTextColor(pageNumber, group);
     const originalRect = { ...group.boundingBox };
+    const maskRect = getOriginalLineMaskRect(originalRect, group.baselineY, group.dominantFontSize, {
+      ascent: group.ascent,
+      descent: group.descent,
+    }, MASK_PADDING_PT);
     const detected = inferTextAlignment(group, pageLayouts.find((page) => page.pageNumber === pageNumber)?.textItems ?? []);
     const pdfRect = { ...detected.pdfRect };
     const entry: TextItem = {
@@ -610,13 +690,14 @@ function PdfTextEditor() {
         text: group.text,
         originalText: group.text,
         pdfRect,
-        maskRect: originalRect,
+        maskRect,
         anchorX: detected.anchorX,
         pdfX: pdfRect.x,
         pdfY: group.baselineY,
+        originalBaselineY: group.baselineY,
         fontName: textItem?.fontName ?? 'Helvetica',
         fontFamily: detectedFont.font,
-        fontSize: clamp(group.dominantFontSize, 8, 72),
+        fontSize: roundPdfFontSize(group.dominantFontSize),
         color,
         type: 'text' as const,
         maskColor: getMaskColor(pageNumber, originalRect),
@@ -657,16 +738,60 @@ function PdfTextEditor() {
       if (!current) return current;
       const next = { ...current, ...update };
       if (typeof update.text === 'string' && !current.manualWidth) {
-        const longestLine = update.text.split(/\r?\n/).reduce((longest, line) => Math.max(longest, line.length), 0);
-        next.pdfRect = { ...next.pdfRect, width: Math.max(40, longestLine * next.fontSize * 0.52 + 8) };
+        const metrics = getCachedEditorTextMetrics(current.fontFamily, editorFontVariant(current.bold, current.italic));
+        const width = metrics
+          ? Math.max(40, ...update.text.split(/\r?\n/).map((line) => metrics.widthOfTextAtSize(line, next.fontSize) + 8))
+          : Math.max(40, ...update.text.split(/\r?\n/).map((line) => line.length * next.fontSize * 0.52 + 8));
+        next.pdfRect = { ...next.pdfRect, width };
       }
       currentDraftRef.current = next;
       return next;
     });
   };
 
+  const centerDraftOnPage = async () => {
+    if (!draft) return;
+    const layout = pageLayouts.find((page) => page.pageNumber === draft.pageNumber);
+    if (!layout) return;
+    const pageBounds = getPdfViewportBounds(layout.viewport);
+    const centerX = pageBounds.x + pageBounds.width / 2;
+    const variant = editorFontVariant(draft.bold, draft.italic);
+    const metrics = await loadEditorTextMetrics(draft.fontFamily, variant);
+    await loadEditorPreviewFonts(draft.fontFamily, variant);
+    const width = Math.max(1, ...draft.text.split(/\r?\n/).map((line) => metrics.widthOfTextAtSize(line, draft.fontSize)));
+    setDraftProperty({
+      pdfRect: { ...draft.pdfRect, x: centerX - width / 2, width },
+      pdfX: centerX - width / 2,
+      anchorX: centerX,
+      alignment: 'center',
+    });
+  };
+
+  const fitDraftToMargins = () => {
+    if (!draft) return;
+    const layout = pageLayouts.find((page) => page.pageNumber === draft.pageNumber);
+    if (!layout) return;
+    const margins = inferTextMargins(layout.lineGroups.filter((group) => group.id !== draft.groupId));
+    if (!margins) return;
+    const pageBounds = getPdfViewportBounds(layout.viewport);
+    const left = clamp(margins.left, pageBounds.x, pageBounds.x + pageBounds.width);
+    const right = clamp(margins.right, left, pageBounds.x + pageBounds.width);
+    const anchorX = draft.alignment === 'center'
+      ? left + (right - left) / 2
+      : draft.alignment === 'right' ? right : undefined;
+    setDraftProperty({
+      pdfRect: { ...draft.pdfRect, x: left, width: right - left },
+      pdfX: left,
+      anchorX,
+    });
+  };
+
   const deleteGroup = (pageNumber: number, group: PdfTextLineGroup) => {
     const pdfRect = { ...group.boundingBox };
+    const maskRect = getOriginalLineMaskRect(pdfRect, group.baselineY, group.dominantFontSize, {
+      ascent: group.ascent,
+      descent: group.descent,
+    }, MASK_PADDING_PT);
     const textItem = group.items[0] as TextItem | undefined;
     const deletion: TextItem = {
       id: `delete-${Date.now()}`,
@@ -675,7 +800,7 @@ function PdfTextEditor() {
       text: '',
       originalText: group.text,
       pdfRect,
-      maskRect: pdfRect,
+      maskRect,
       pdfX: pdfRect.x,
       pdfY: group.baselineY,
       fontName: textItem?.fontName ?? 'Helvetica',
@@ -837,6 +962,9 @@ function PdfTextEditor() {
         : currentDraftRef.current.anchorX + deltaX,
       pdfX: current.startPdfRect.x + deltaX,
       pdfY: current.startPdfRect.y + current.startPdfRect.height + deltaY,
+      originalBaselineY: currentDraftRef.current?.originalBaselineY === undefined
+        ? undefined
+        : currentDraftRef.current.originalBaselineY + deltaY,
     });
   };
 
@@ -854,16 +982,19 @@ function PdfTextEditor() {
     try {
       const source = await PDFDocument.load(sourcePdfBytes);
       const output = await PDFDocument.create();
-      const fontCache = new Map<string, Awaited<ReturnType<typeof output.embedFont>>>();
-      const getFont = async (entry: TextItem) => {
-        const variant = entry.bold ? entry.italic ? 'boldItalic' : 'bold' : entry.italic ? 'italic' : 'regular';
+      const fontCache = new Map<string, { primary: Awaited<ReturnType<typeof output.embedFont>>; fallback: Awaited<ReturnType<typeof output.embedFont>> }>();
+      const getFonts = async (entry: TextItem) => {
+        const variant = editorFontVariant(entry.bold, entry.italic);
         const key = `${entry.fontFamily}:${variant}`;
         const cached = fontCache.get(key);
         if (cached) return cached;
-        // pdf-lib embeds the full font per call — never call embedFont inside draw loops.
-        const font = await output.embedFont(standardFontFor(entry.fontFamily, variant), { subset: true });
-        fontCache.set(key, font);
-        return font;
+        const primary = await embedEditorFont(output, entry.fontFamily, variant);
+        const fallback = entry.fontFamily === 'Noto Sans'
+          ? primary
+          : await embedEditorFont(output, 'Noto Sans', variant);
+        const fonts = { primary, fallback };
+        fontCache.set(key, fonts);
+        return fonts;
       };
       const sourcePages = source.getPages();
       for (let index = 0; index < sourcePages.length; index += 1) {
@@ -872,7 +1003,13 @@ function PdfTextEditor() {
         const pageEdits = finalEdits.filter((entry) => entry.pageNumber === index + 1);
         for (const entry of pageEdits) {
           try {
-            const rect = getMaskRect(entry.maskRect ?? entry.pdfRect);
+            const rect = entry.maskRect ?? getOriginalLineMaskRect(
+              entry.pdfRect,
+              entry.pdfY,
+              entry.fontSize,
+              { ascent: entry.ascent, descent: entry.descent },
+              MASK_PADDING_PT,
+            );
             if (entry.groupId || entry.type === 'delete') {
             if (!entry.maskColor) throw new Error('The original background could not be sampled for this text mask.');
             page.drawRectangle({
@@ -895,13 +1032,15 @@ function PdfTextEditor() {
                 color: colorToPdf(entry.highlightColor),
               });
             }
-            const font = await getFont(entry);
-            const size = clamp(entry.fontSize, 8, 72);
-            const lines = wrapPdfText(entry.text, entry.pdfRect.width, (line) => font.widthOfTextAtSize(line, size));
-            const lineHeight = size * 1.2;
-            const baseline = entry.pdfY || (entry.pdfRect.y + entry.pdfRect.height - size);
+            const fonts = await getFonts(entry);
+            const size = entry.fontSize;
+            const lines = wrapPdfText(entry.text, entry.pdfRect.width, (line) =>
+              measurePdfTextRuns(splitTextForPdf(line, fonts.primary, fonts.fallback), size));
+            const lineHeight = fonts.primary.heightAtSize(size) * 1.2;
+            const baseline = entry.originalBaselineY ?? entry.pdfY ?? (entry.pdfRect.y + entry.pdfRect.height - size);
             lines.forEach((line, lineIndex) => {
-              const lineWidth = font.widthOfTextAtSize(line, size);
+              const runs = splitTextForPdf(line, fonts.primary, fonts.fallback);
+              const lineWidth = measurePdfTextRuns(runs, size);
               const x = entry.alignment === 'right' && entry.anchorX !== undefined
                 ? entry.anchorX - lineWidth
                 : entry.alignment === 'center' && entry.anchorX !== undefined
@@ -909,14 +1048,18 @@ function PdfTextEditor() {
                   : entry.pdfRect.x + (entry.alignment === 'center'
                     ? (entry.pdfRect.width - lineWidth) / 2
                     : entry.alignment === 'right' ? entry.pdfRect.width - lineWidth : 0);
-              const y = baseline - lineIndex * lineHeight;
-              page.drawText(line, {
-                x,
-                y,
-                size,
-                font,
-                color: colorToPdf(entry.color),
-              });
+              const y = getReplacementBaseline(baseline, lineIndex, lineHeight);
+              let runX = x;
+              for (const run of runs) {
+                page.drawText(run.text, {
+                  x: runX,
+                  y,
+                  size,
+                  font: run.font,
+                  color: colorToPdf(entry.color),
+                });
+                runX += run.font.widthOfTextAtSize(run.text, size);
+              }
               if (entry.underline) {
                 page.drawLine({
                   start: { x, y: y - size * 0.12 },
@@ -966,8 +1109,9 @@ function PdfTextEditor() {
       }
       if (finalEdits.some((entry) => entry.type === 'delete')) {
         const rendered = await pdfjsLib.getDocument({ data: bytes }).promise;
-        const rasterPages: RasterPdfPage[] = [];
-        for (let pageNumber = 1; pageNumber <= rendered.numPages; pageNumber += 1) {
+        const deletionPages = new Set(finalEdits.filter((entry) => entry.type === 'delete').map((entry) => entry.pageNumber));
+        const rasterPages: ReplacementRasterPdfPage[] = [];
+        for (const pageNumber of deletionPages) {
           const page = await rendered.getPage(pageNumber);
           const base = page.getViewport({ scale: 1 });
           const scale = Math.min(2, 5000 / Math.max(base.width, base.height));
@@ -978,9 +1122,9 @@ function PdfTextEditor() {
           const context = canvas.getContext('2d');
           if (!context) throw new Error(`Could not flatten page ${pageNumber}.`);
           await page.render({ canvas, canvasContext: context, viewport }).promise;
-          rasterPages.push({ imageDataUrl: canvas.toDataURL('image/png'), width: base.width, height: base.height });
+          rasterPages.push({ pageNumber, imageDataUrl: canvas.toDataURL('image/png'), width: base.width, height: base.height });
         }
-        bytes = await createImageOnlyPdf(rasterPages);
+        bytes = await replacePdfPagesWithImages(bytes, rasterPages);
       }
       const downloadBytes = new Uint8Array(bytes.length);
       downloadBytes.set(bytes);
@@ -1003,6 +1147,8 @@ function PdfTextEditor() {
     ? [...edits.filter((entry) => entry.id !== draft.id && !(draft.groupId && entry.groupId === draft.groupId)), draft]
     : edits;
   const pendingCount = pendingEdits.length;
+  const draftPage = draft ? pageLayouts.find((page) => page.pageNumber === draft.pageNumber) : undefined;
+  const draftOverflowWarning = draft && draftPage ? getTextOverflowWarning(draft, draftPage) : undefined;
   const renderFormatPanel = (className: string) => draft && (
     <div data-pdf-edit-area className={`rounded-2xl border border-border bg-card p-4 shadow-lg ${className}`}>
       <div className="mb-3 flex items-center justify-between">
@@ -1012,6 +1158,7 @@ function PdfTextEditor() {
           <Button variant="outline" size="icon" aria-label="Redo" title="Redo" disabled={!history.future.length} onClick={redo}><Redo2 /></Button>
         </div>
       </div>
+      {draftOverflowWarning && <p role="status" className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-foreground">{draftOverflowWarning}</p>}
       <label className="mb-3 block text-xs text-muted-foreground">Text
         <textarea
           aria-label="Text"
@@ -1025,7 +1172,7 @@ function PdfTextEditor() {
       </label>
       <label
         className={`mb-3 block text-xs text-muted-foreground ${draft.fontDetectionStatus === 'fallback' ? 'decoration-dotted underline underline-offset-2' : ''}`}
-        title={draft.fontDetectionStatus === 'fallback' ? "This PDF doesn't record its font names, so we can't auto-detect." : undefined}
+        title={draft.fontDetectionStatus === 'fallback' ? draft.fontDetectionLabel : undefined}
       >Font family
         <input
           aria-label="Search fonts"
@@ -1062,7 +1209,7 @@ function PdfTextEditor() {
         </select>
       </label>
       <label className="mb-3 block text-xs text-muted-foreground">Font size (pt)
-        <input className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground" type="number" min={8} max={72} step={0.001} value={draft.fontSize} onChange={(event) => setDraftProperty({ fontSize: clamp(Number(event.target.value) || 8, 8, 72) })} />
+        <input className="mt-1 h-9 w-full rounded-md border border-border bg-background px-2 text-sm text-foreground" type="number" min={8} max={72} step={0.01} value={Number(draft.fontSize.toFixed(2))} onChange={(event) => setDraftProperty({ fontSize: clamp(Number(event.target.value) || 8, 8, 72) })} />
       </label>
       <div className="mb-3 flex flex-wrap gap-1">
         <Button type="button" variant={draft.bold ? 'default' : 'outline'} size="icon" aria-label="Bold" onClick={() => setDraftProperty({ bold: !draft.bold })}><Bold /></Button>
@@ -1098,6 +1245,10 @@ function PdfTextEditor() {
           ['center', AlignCenter],
           ['right', AlignRight],
         ] as const).map(([alignment, Icon]) => <Button key={alignment} variant={draft.alignment === alignment ? 'default' : 'outline'} size="icon" aria-label={`Align ${alignment}`} onClick={() => setDraftProperty({ alignment })}><Icon /></Button>)}
+      </div>
+      <div className="mb-4 flex flex-wrap gap-2">
+        <Button type="button" variant="outline" size="sm" onClick={() => void centerDraftOnPage()}>Center on page</Button>
+        <Button type="button" variant="outline" size="sm" onClick={fitDraftToMargins}>Fit to margins</Button>
       </div>
       <div className="flex gap-2">
         <Button variant="outline" className="flex-1" onClick={() => { currentDraftRef.current = null; setDraft(null); }}>Cancel</Button>
@@ -1218,6 +1369,7 @@ function PdfTextEditor() {
                   {draft?.pageNumber === page.pageNumber && cssViewport && (() => {
                     const rect = pdfToViewport(cssViewport, draft.pdfRect);
                     const fontCssSize = draft.fontSize * (width / page.viewportWidth);
+                    const draftMetrics = getCachedEditorTextMetrics(draft.fontFamily, editorFontVariant(draft.bold, draft.italic));
                     return <div data-pdf-edit-area className="absolute z-20 border border-blue-500 shadow-sm" style={{
                       left: rect.x,
                       top: rect.y,
@@ -1232,7 +1384,7 @@ function PdfTextEditor() {
                       fontStyle: draft.italic ? 'italic' : 'normal',
                       textDecoration: draft.underline ? 'underline' : 'none',
                       textAlign: draft.alignment ?? 'left',
-                      lineHeight: 1.2,
+                      lineHeight: draftMetrics ? draftMetrics.heightAtSize(draft.fontSize) * 1.2 / draft.fontSize : 1.2,
                       whiteSpace: 'pre-wrap',
                       overflowWrap: 'anywhere',
                     }}>
@@ -1300,7 +1452,7 @@ function PdfTextEditor() {
 }
 
 function drawPreviewMask(context: CanvasRenderingContext2D, entry: TextItem, viewport: any) {
-  const mask = pdfToViewport(viewport, getMaskRect(entry.maskRect ?? entry.pdfRect));
+  const mask = pdfToViewport(viewport, entry.maskRect ?? entry.pdfRect);
   if (!entry.maskColor) return;
   context.save();
   context.fillStyle = entry.maskColor;
@@ -1324,29 +1476,21 @@ function drawPreviewEntry(context: CanvasRenderingContext2D, entry: TextItem, vi
   context.font = `${entry.italic ? 'italic ' : ''}${entry.bold ? 'bold ' : ''}${size}px ${cssFontFamily(entry.fontFamily)}`;
   context.fillStyle = entry.color;
   context.textBaseline = 'alphabetic';
-  const lines: string[] = [];
-  const maxWidth = pdfToViewport(viewport, entry.pdfRect).width;
-  let current = '';
-  for (const paragraph of entry.text.split(/\r?\n/)) {
-    for (const word of paragraph.split(/\s+/).filter(Boolean)) {
-      const candidate = current ? `${current} ${word}` : word;
-      if (current && context.measureText(candidate).width > maxWidth) {
-        lines.push(current);
-        current = word;
-      } else current = candidate;
-    }
-    lines.push(current);
-    current = '';
-  }
+  const metrics = getCachedEditorTextMetrics(entry.fontFamily, editorFontVariant(entry.bold, entry.italic));
+  const lines = wrapPdfText(entry.text, entry.pdfRect.width, (line) => metrics
+    ? metrics.widthOfTextAtSize(line, entry.fontSize)
+    : context.measureText(line).width / viewport.scale);
+  const maxWidth = entry.pdfRect.width * viewport.scale;
+  const lineHeight = (metrics?.heightAtSize(entry.fontSize) ?? entry.fontSize) * 1.2 * viewport.scale;
   lines.forEach((line, index) => {
-    const width = context.measureText(line).width;
+    const width = (metrics?.widthOfTextAtSize(line, entry.fontSize) ?? context.measureText(line).width / viewport.scale) * viewport.scale;
     const x = entry.alignment === 'center' && entry.anchorX !== undefined
       ? anchor - width / 2
       : entry.alignment === 'right' && entry.anchorX !== undefined
         ? anchor - width
         : entry.alignment === 'center' ? baseline.x + (maxWidth - width) / 2
           : entry.alignment === 'right' ? baseline.x + maxWidth - width : baseline.x;
-    const y = baseline.y + index * size * 1.2;
+    const y = baseline.y + index * lineHeight;
     context.fillText(line, x, y);
     if (entry.underline) {
       context.beginPath();

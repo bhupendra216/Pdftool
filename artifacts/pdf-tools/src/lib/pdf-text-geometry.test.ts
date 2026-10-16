@@ -11,11 +11,55 @@ import { describe, it } from 'node:test';
   setMatrixTransform() { return this; }
 };
 
-const { getSafeTextGeometry, validateTextItemGeometry } = await import('./pdf-text-geometry');
+const { getOriginalLineMaskRect, getSafeTextGeometry, medianRgbColor, roundPdfFontSize, validateTextItemGeometry } = await import('./pdf-text-geometry');
 const { groupTextItemsIntoLines } = await import('../pages/edit-pdf-mvp');
+const { findOverlappingTextLines, inferTextMargins } = await import('./pdf-text-lines');
 const { reorderFiles } = await import('../components/shared/FilePreviewList');
 
 describe('pdf text geometry validation', () => {
+  it('samples the mask background using a per-channel median', () => {
+    assert.equal(medianRgbColor([[0, 255, 100], [100, 0, 200], [255, 100, 0]]), '#646464');
+  });
+
+  it('detects overlap with other extracted lines while excluding the edited line', () => {
+    const groups = [
+      { id: 'edited', pageNumber: 1, items: [], text: 'Edit', baselineY: 100, boundingBox: { x: 20, y: 90, width: 80, height: 12 }, dominantFontSize: 12, runs: [] },
+      { id: 'next', pageNumber: 1, items: [], text: 'Next line', baselineY: 75, boundingBox: { x: 20, y: 65, width: 100, height: 12 }, dominantFontSize: 12, runs: [] },
+    ];
+    assert.deepEqual(findOverlappingTextLines([{ x: 30, y: 68, width: 70, height: 20 }], groups, 'edited').map((group) => group.id), ['next']);
+  });
+
+  it('infers page text margins from body-sized lines instead of a large title', () => {
+    const margins = inferTextMargins([
+      { id: 'title', pageNumber: 1, items: [], text: 'Title', baselineY: 700, boundingBox: { x: 20, y: 690, width: 560, height: 32 }, dominantFontSize: 32, runs: [] },
+      { id: 'body-a', pageNumber: 1, items: [], text: 'Body A', baselineY: 650, boundingBox: { x: 48, y: 640, width: 440, height: 12 }, dominantFontSize: 12, runs: [] },
+      { id: 'body-b', pageNumber: 1, items: [], text: 'Body B', baselineY: 630, boundingBox: { x: 48, y: 620, width: 500, height: 12 }, dominantFontSize: 12, runs: [] },
+    ]);
+    assert.deepEqual(margins, { left: 48, right: 548 });
+  });
+
+  it('rounds extracted font sizes to two decimals', () => {
+    assert.equal(roundPdfFontSize(23.999999), 24);
+  });
+
+  it('builds a padded mask from the original line width and baseline metrics', () => {
+    assert.deepEqual(getOriginalLineMaskRect(
+      { x: 20, y: 40, width: 80, height: 12 },
+      50,
+      10,
+      { ascent: 7, descent: 3 },
+      1.5,
+    ), { x: 18.5, y: 45.5, width: 83, height: 13 });
+  });
+
+  it('uses conservative ascent and descent estimates when font metrics are unavailable', () => {
+    assert.deepEqual(getOriginalLineMaskRect(
+      { x: 20, y: 40, width: 80, height: 12 },
+      50,
+      10,
+    ), { x: 18.5, y: 46, width: 83, height: 13.5 });
+  });
+
   it('accepts a normal axis-aligned text item', () => {
     const item = {
       str: 'Hello',

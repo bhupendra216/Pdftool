@@ -6,10 +6,24 @@ export type PdfRect = {
 };
 
 type PdfViewport = {
+  width?: number;
+  height?: number;
   convertToPdfPoint(x: number, y: number): number[];
   convertToViewportPoint(x: number, y: number): number[];
-  convertToViewportRectangle?(rect: [number, number, number, number]): number[];
 };
+
+function rectFromPoints(points: number[][]): PdfRect {
+  const xs = points.map(([x]) => x);
+  const ys = points.map(([, y]) => y);
+  const left = Math.min(...xs);
+  const bottom = Math.min(...ys);
+  return {
+    x: left,
+    y: bottom,
+    width: Math.max(...xs) - left,
+    height: Math.max(...ys) - bottom,
+  };
+}
 
 export function viewportToPdf(
   viewport: PdfViewport,
@@ -18,34 +32,26 @@ export function viewportToPdf(
   width: number,
   height: number,
 ): PdfRect {
-  const topLeft = viewport.convertToPdfPoint(x, y);
-  const bottomRight = viewport.convertToPdfPoint(x + width, y + height);
-  return {
-    x: Math.min(topLeft[0], bottomRight[0]),
-    y: Math.min(topLeft[1], bottomRight[1]),
-    width: Math.abs(bottomRight[0] - topLeft[0]),
-    height: Math.abs(bottomRight[1] - topLeft[1]),
-  };
+  return rectFromPoints([
+    viewport.convertToPdfPoint(x, y),
+    viewport.convertToPdfPoint(x + width, y),
+    viewport.convertToPdfPoint(x, y + height),
+    viewport.convertToPdfPoint(x + width, y + height),
+  ]);
 }
 
 export function pdfToViewport(viewport: PdfViewport, pdfRect: PdfRect): PdfRect {
-  const sourceRect: [number, number, number, number] = [
-    pdfRect.x,
-    pdfRect.y,
-    pdfRect.x + pdfRect.width,
-    pdfRect.y + pdfRect.height,
-  ];
-  // PDF.js 6 exposes point conversion but not rectangle conversion; use the same
-  // viewport transform on the rectangle corners in that version.
-  const rect = viewport.convertToViewportRectangle?.(sourceRect) ?? (() => {
-    const first = viewport.convertToViewportPoint(sourceRect[0], sourceRect[1]);
-    const second = viewport.convertToViewportPoint(sourceRect[2], sourceRect[3]);
-    return [first[0], first[1], second[0], second[1]];
-  })();
-  return {
-    x: Math.min(rect[0], rect[2]),
-    y: Math.min(rect[1], rect[3]),
-    width: Math.abs(rect[2] - rect[0]),
-    height: Math.abs(rect[3] - rect[1]),
-  };
+  return rectFromPoints([
+    viewport.convertToViewportPoint(pdfRect.x, pdfRect.y),
+    viewport.convertToViewportPoint(pdfRect.x + pdfRect.width, pdfRect.y),
+    viewport.convertToViewportPoint(pdfRect.x, pdfRect.y + pdfRect.height),
+    viewport.convertToViewportPoint(pdfRect.x + pdfRect.width, pdfRect.y + pdfRect.height),
+  ]);
+}
+
+export function getPdfViewportBounds(viewport: PdfViewport) {
+  if (!Number.isFinite(viewport.width) || !Number.isFinite(viewport.height)) {
+    throw new Error('PDF viewport dimensions are required to determine page bounds.');
+  }
+  return viewportToPdf(viewport, 0, 0, viewport.width ?? 0, viewport.height ?? 0);
 }

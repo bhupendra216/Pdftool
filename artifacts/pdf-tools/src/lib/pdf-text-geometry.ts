@@ -14,6 +14,46 @@ export type PdfTextGeometryMetrics = {
   ok: boolean;
 };
 
+export type PdfTextVerticalMetrics = {
+  ascent?: number;
+  descent?: number;
+};
+
+export function getOriginalLineMaskRect(
+  lineRect: { x: number; y: number; width: number; height: number },
+  baselineY: number,
+  fontSize: number,
+  metrics: PdfTextVerticalMetrics = {},
+  padding = 1.5,
+) {
+  const ascent = Number.isFinite(metrics.ascent) ? Math.max(0, metrics.ascent ?? 0) : fontSize * 0.8;
+  const descent = Number.isFinite(metrics.descent) ? Math.abs(metrics.descent ?? 0) : fontSize * 0.25;
+  const bottom = baselineY - descent;
+  const top = baselineY + ascent;
+  return {
+    x: lineRect.x - padding,
+    y: bottom - padding,
+    width: lineRect.width + padding * 2,
+    height: top - bottom + padding * 2,
+  };
+}
+
+export function medianRgbColor(samples: ReadonlyArray<readonly [number, number, number]>) {
+  if (!samples.length) return null;
+  const channels = [0, 1, 2].map((channel) =>
+    samples.map((sample) => sample[channel]).sort((left, right) => left - right));
+  const middle = Math.floor(samples.length / 2);
+  return `#${channels.map((values) => Math.round(values[middle]).toString(16).padStart(2, '0')).join('')}`;
+}
+
+export function roundPdfFontSize(size: number) {
+  return Math.round(size * 100) / 100;
+}
+
+export function getReplacementBaseline(originalBaselineY: number, lineIndex: number, lineHeight: number) {
+  return originalBaselineY - lineIndex * lineHeight;
+}
+
 const asFiniteNumber = (value: unknown, fallback = 0) => {
   const numericValue = Number(value);
   return Number.isFinite(numericValue) ? numericValue : fallback;
