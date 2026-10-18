@@ -10,6 +10,7 @@ import { aiJobsFaqs } from '../artifacts/pdf-tools/src/data/aiJobsFaqs.ts';
 import { getToolContentRequirements } from '../artifacts/pdf-tools/src/data/toolContentRequirements.ts';
 import { gigCategorySections, gigPlatforms } from '../data/gig-platforms.ts';
 import { toolCategories } from '../artifacts/pdf-tools/src/data/toolCategories.ts';
+import { PDF_TO_MARKDOWN_CONTENT } from '../artifacts/api-server/src/lib/pdfToMarkdownContent.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -197,6 +198,12 @@ function renderBreadcrumbs(items: Array<{ name: string; url?: string }>) {
   ).join('')}</ol></nav>`;
 }
 
+function truncateDescriptionAtWord(value: string, limit = 155) {
+  if (value.length <= limit) return value;
+  const boundary = value.slice(0, limit - 3).lastIndexOf(' ');
+  return `${value.slice(0, boundary > 0 ? boundary : limit - 3).trimEnd()}...`;
+}
+
 function getCategoryForTool(slug: string) {
   return toolCategories.find((category) => category.slugs.includes(slug) && getAvailableToolsForCategory(category).length > 0);
 }
@@ -233,6 +240,101 @@ function renderCategoryPageHtml(category: typeof toolCategories[number], assets:
 }
 
 function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath: string }) {
+  if (tool.slug === PDF_TO_MARKDOWN_CONTENT.slug) {
+    const canonical = `${siteUrl}/tools/${tool.slug}`;
+    const ogImageUrl = resolveAbsoluteImageUrl(resolveToolOgImage(tool.slug, `${siteUrl}/logo.png`));
+    const structuredData = {
+      '@context': 'https://schema.org',
+      '@graph': [
+        {
+          '@type': 'SoftwareApplication',
+          name: PDF_TO_MARKDOWN_CONTENT.title,
+          description: PDF_TO_MARKDOWN_CONTENT.metaDescription,
+          operatingSystem: 'Web',
+          applicationCategory: 'Utility',
+          url: canonical,
+          offers: { '@type': 'Offer', price: 0, priceCurrency: 'USD' },
+          isAccessibleForFree: true,
+          featureList: [...PDF_TO_MARKDOWN_CONTENT.socialFeatureList],
+        },
+        {
+          '@type': 'FAQPage',
+          mainEntity: PDF_TO_MARKDOWN_CONTENT.faqs.map((faq) => ({
+            '@type': 'Question',
+            name: faq.question,
+            acceptedAnswer: { '@type': 'Answer', text: faq.answer },
+          })),
+        },
+        {
+          '@type': 'BreadcrumbList',
+          itemListElement: [
+            { '@type': 'ListItem', position: 1, name: 'Home', item: `${siteUrl}/` },
+            { '@type': 'ListItem', position: 2, name: 'Tools', item: `${siteUrl}/tools` },
+            { '@type': 'ListItem', position: 3, name: PDF_TO_MARKDOWN_CONTENT.title, item: canonical },
+          ],
+        },
+      ],
+    };
+    const specs = [
+      ['Input', PDF_TO_MARKDOWN_CONTENT.technicalSpecs.input],
+      ['Output', PDF_TO_MARKDOWN_CONTENT.technicalSpecs.output],
+      ['Maximum file size', PDF_TO_MARKDOWN_CONTENT.technicalSpecs.maxFileSize],
+      ['Maximum pages', PDF_TO_MARKDOWN_CONTENT.technicalSpecs.maxPages],
+      ['Processing', PDF_TO_MARKDOWN_CONTENT.technicalSpecs.processing],
+      ['Cost', PDF_TO_MARKDOWN_CONTENT.technicalSpecs.cost],
+    ];
+    return `<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>${escapeHtml(PDF_TO_MARKDOWN_CONTENT.seoTitle)}</title>
+    <meta name="description" content="${escapeHtml(PDF_TO_MARKDOWN_CONTENT.metaDescription)}" />
+    <meta name="robots" content="index, follow" />
+    <link rel="canonical" href="${canonical}" />
+    <meta property="og:title" content="${escapeHtml(PDF_TO_MARKDOWN_CONTENT.seoTitle)}" />
+    <meta property="og:description" content="${escapeHtml(PDF_TO_MARKDOWN_CONTENT.metaDescription)}" />
+    <meta property="og:type" content="website" />
+    <meta property="og:url" content="${canonical}" />
+    <meta property="og:image" content="${ogImageUrl}" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="PDF to Markdown Converter on PDFKira" />
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${escapeHtml(PDF_TO_MARKDOWN_CONTENT.seoTitle)}" />
+    <meta name="twitter:description" content="${escapeHtml(PDF_TO_MARKDOWN_CONTENT.metaDescription)}" />
+    <meta name="twitter:image" content="${ogImageUrl}" />
+    <meta name="twitter:image:alt" content="PDF to Markdown Converter on PDFKira" />
+    <link rel="stylesheet" href="${assets.cssPath}" />
+    <style>${SEO_FALLBACK_STYLE}</style>
+    <script type="application/ld+json">${JSON.stringify(structuredData).replace(/</g, '\\u003c')}</script>
+  </head>
+  <body>
+    <div id="seo-fallback" style="display:block">
+      <main>
+        ${renderBreadcrumbs([{ name: 'Home', url: '/' }, { name: 'Tools', url: '/tools' }, { name: PDF_TO_MARKDOWN_CONTENT.title }])}
+        <header>
+          <p>PDFKira</p>
+          <h1>${escapeHtml(PDF_TO_MARKDOWN_CONTENT.title)}</h1>
+          <p>${escapeHtml(PDF_TO_MARKDOWN_CONTENT.intro)}</p>
+        </header>
+        <section><h2>How to use PDF to Markdown</h2><ol>${PDF_TO_MARKDOWN_CONTENT.howToSteps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol></section>
+        <section><h2>Use cases</h2>${PDF_TO_MARKDOWN_CONTENT.useCases.map((item) => `<article><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.description)}</p><p><strong>Example:</strong> ${escapeHtml(item.example)}</p></article>`).join('')}</section>
+        <section><h2>Technical specifications</h2><dl>${specs.map(([label, value]) => `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`).join('')}</dl></section>
+        <section><h2>Privacy and processing</h2><p>${escapeHtml(PDF_TO_MARKDOWN_CONTENT.privacyText)}</p></section>
+        <section><h2>Limitations</h2><ul>${PDF_TO_MARKDOWN_CONTENT.limitations.map((limitation) => `<li>${escapeHtml(limitation)}</li>`).join('')}</ul></section>
+        <section><h2>Frequently asked questions</h2>${PDF_TO_MARKDOWN_CONTENT.faqs.map((faq) => `<article><h3>${escapeHtml(faq.question)}</h3><p>${escapeHtml(faq.answer)}</p></article>`).join('')}</section>
+        <section><h2>Related tools</h2><ul>${PDF_TO_MARKDOWN_CONTENT.relatedTools.map((item) => `<li><a href="/tools/${item.slug}">${escapeHtml(item.name)}</a> — ${escapeHtml(item.reason)}</li>`).join('')}</ul></section>
+      </main>
+    </div>
+    <div id="root"></div>
+    <script type="module" src="${assets.jsPath}"></script>
+    ${SEO_FALLBACK_RUNTIME}
+    <noscript><style>${SEO_NOSCRIPT_STYLE}</style></noscript>
+  </body>
+</html>`;
+  }
+
   const seoEntry = getToolSeoContent(tool.slug);
   const content = getToolContentRequirements(tool);
   const toolOgImage = resolveToolOgImage(tool.slug, `${siteUrl}/logo.png`);
@@ -254,13 +356,13 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${escapeHtml(tool.seoTitle)}</title>
-    <meta name="description" content="${escapeHtml(content.uniqueIntro.slice(0, 155))}" />
+    <meta name="description" content="${escapeHtml(truncateDescriptionAtWord(content.uniqueIntro))}" />
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href="${toolUrl}" />
     <meta property="og:title" content="${escapeHtml(tool.seoTitle)}" />
-    <meta property="og:description" content="${escapeHtml(content.uniqueIntro.slice(0, 155))}" />
+    <meta property="og:description" content="${escapeHtml(truncateDescriptionAtWord(content.uniqueIntro))}" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="${toolUrl}" />
     <meta property="og:image" content="${ogImageUrl}" />
@@ -268,7 +370,7 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
     <meta name="twitter:site" content="@pdfkira" />
     <meta name="twitter:creator" content="@pdfkira" />
     <meta name="twitter:title" content="${escapeHtml(tool.seoTitle)}" />
-    <meta name="twitter:description" content="${escapeHtml(content.uniqueIntro.slice(0, 155))}" />
+    <meta name="twitter:description" content="${escapeHtml(truncateDescriptionAtWord(content.uniqueIntro))}" />
     <meta name="twitter:image" content="${ogImageUrl}" />
 
     <!-- React SPA CSS -->
@@ -1055,6 +1157,21 @@ function verifyGeneratedSeo(
       throw new Error(`Invalid JSON-LD on tool route: ${tool.slug}`);
     }
     const faqPage = structuredData['@graph']?.find((entry: any) => entry['@type'] === 'FAQPage');
+    if (tool.slug === PDF_TO_MARKDOWN_CONTENT.slug) {
+      const breadcrumb = structuredData['@graph']?.find((entry: any) => entry['@type'] === 'BreadcrumbList');
+      if (
+        !faqPage ||
+        faqPage.mainEntity.length !== PDF_TO_MARKDOWN_CONTENT.faqs.length ||
+        !breadcrumb ||
+        !html.includes(`<h1>${escapeHtml(PDF_TO_MARKDOWN_CONTENT.title)}</h1>`) ||
+        !html.includes('<h2>Technical specifications</h2>') ||
+        !html.includes('<h2>Privacy and processing</h2>') ||
+        !html.includes('<h2>Limitations</h2>')
+      ) {
+        throw new Error(`PDF to Markdown SEO fallback does not match its shared content: ${tool.slug}`);
+      }
+      continue;
+    }
     if (!faqPage || faqPage.mainEntity.length < 4 || faqPage.mainEntity.length > 6) {
       throw new Error(`Tool route must have 4-6 structured FAQ entries: ${tool.slug}`);
     }

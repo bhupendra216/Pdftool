@@ -1,3 +1,5 @@
+import { PDF_TO_MARKDOWN_CONTENT } from "../../../api-server/src/lib/pdfToMarkdownContent";
+
 export interface ToolFaq { question: string; answer: string; }
 
 export const suppliedToolFaqs: Record<string, ToolFaq[]> = {
@@ -64,10 +66,7 @@ export const suppliedToolFaqs: Record<string, ToolFaq[]> = {
     { question: "Are headers, footers, and page numbers preserved?", answer: "Yes, they're converted as editable text in the Word document." },
   ],
   'pdf-to-markdown': [
-    { question: "Why convert a PDF to Markdown?", answer: "Markdown is plain text that's perfect for documentation, note apps, websites, and AI workflows (like pasting into chatbots or knowledge bases)." },
-    { question: "What happens to images and tables?", answer: "Text structure converts to Markdown headings, lists, and links. Tables become Markdown tables; images are extracted or referenced depending on the document." },
-    { question: "Will formatting like bold and italics survive?", answer: "Yes. Emphasis, headings, and lists are mapped to their Markdown equivalents automatically." },
-    { question: "Is it good for AI training data or RAG pipelines?", answer: "Yes — clean Markdown is one of the best formats for feeding documents to AI tools, which is why we built this converter." },
+    ...PDF_TO_MARKDOWN_CONTENT.faqs,
   ],
   'word-to-pdf': [
     { question: "Will my Word formatting survive the conversion?", answer: "Fonts, images, tables, and page layout are converted to match your Word document as closely as possible." },

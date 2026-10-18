@@ -1,4 +1,5 @@
 import path from "path";
+import { cpSync } from "node:fs";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { playwright } from "@vitest/browser-playwright";
@@ -20,7 +21,21 @@ export default defineConfig(async () => {
     },
   };
 
-  const plugins = [htmlTransform, react(), tailwindcss(), runtimeErrorOverlay()];
+  const plugins = [
+    htmlTransform,
+    react(),
+    tailwindcss(),
+    runtimeErrorOverlay(),
+    {
+      name: "copy-pdfjs-local-font-assets",
+      closeBundle() {
+        const pdfjsRoot = path.resolve(import.meta.dirname, "node_modules/pdfjs-dist");
+        const outputRoot = path.resolve(import.meta.dirname, "dist/public");
+        cpSync(path.join(pdfjsRoot, "cmaps"), path.join(outputRoot, "cmaps"), { recursive: true });
+        cpSync(path.join(pdfjsRoot, "standard_fonts"), path.join(outputRoot, "standard_fonts"), { recursive: true });
+      },
+    },
+  ];
 
   if (process.env.NODE_ENV !== "production" && process.env.REPL_ID !== undefined) {
     const cartographer = await import("@replit/vite-plugin-cartographer");

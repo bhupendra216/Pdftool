@@ -5,6 +5,7 @@ import { toolContent } from '@/data/toolContent';
 // is static editorial data and contains no Node-only runtime imports,
 // so it is safe to include in the frontend bundle.
 import { tools as apiServerTools } from '../../../api-server/src/lib/content';
+import { PDF_TO_MARKDOWN_CONTENT } from '../../../api-server/src/lib/pdfToMarkdownContent';
 
 export function ensureToolFaqs(
   toolName: string,
@@ -107,6 +108,28 @@ function completeToolBenefits(
 }
 
 export function getToolSeoContent(slug: string): ToolSeoContent | undefined {
+  if (slug === "pdf-to-markdown") {
+    return {
+      slug,
+      howItWorks: [],
+      whyUse: [],
+      howToSteps: [...PDF_TO_MARKDOWN_CONTENT.howToSteps],
+      useCases: PDF_TO_MARKDOWN_CONTENT.useCases.map((item) => ({ ...item })),
+      technicalSpecs: {
+        Input: PDF_TO_MARKDOWN_CONTENT.technicalSpecs.input,
+        Output: PDF_TO_MARKDOWN_CONTENT.technicalSpecs.output,
+        "Maximum file size": PDF_TO_MARKDOWN_CONTENT.technicalSpecs.maxFileSize,
+        "Maximum pages": PDF_TO_MARKDOWN_CONTENT.technicalSpecs.maxPages,
+        Processing: PDF_TO_MARKDOWN_CONTENT.technicalSpecs.processing,
+        Cost: PDF_TO_MARKDOWN_CONTENT.technicalSpecs.cost,
+      },
+      privacyText: PDF_TO_MARKDOWN_CONTENT.privacyText,
+      limitations: [...PDF_TO_MARKDOWN_CONTENT.limitations],
+      relatedTools: PDF_TO_MARKDOWN_CONTENT.relatedTools.map((item) => ({ ...item })),
+      faq: PDF_TO_MARKDOWN_CONTENT.faqs.map((item) => ({ ...item })),
+    };
+  }
+
   const explicit = (TOOL_SEO_CONTENT as any)[slug];
   if (explicit) {
     const apiTool = apiServerTools.find((tool) => tool.slug === slug);

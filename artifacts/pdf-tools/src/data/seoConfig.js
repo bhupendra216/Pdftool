@@ -1,3 +1,5 @@
+import { PDF_TO_MARKDOWN_CONTENT } from '../../../api-server/src/lib/pdfToMarkdownContent.ts';
+
 export const siteName = 'PDFKira';
 export const siteUrl = 'https://pdfkira.com';
 export const defaultTitle = 'PDFKira – Free Online PDF Tools';
@@ -90,6 +92,11 @@ export const toolsSEO = {
       { q: 'Does it work with scanned PDFs?', a: 'OCR-capable workflows can improve results for scanned or image-heavy documents.' },
       { q: 'Are files secure?', a: 'Yes. Processing is performed in a secure, privacy-first workflow.' },
     ],
+  },
+  'pdf-to-markdown': {
+    title: PDF_TO_MARKDOWN_CONTENT.seoTitle,
+    description: PDF_TO_MARKDOWN_CONTENT.metaDescription,
+    ogImage: '/og/pdf-to-markdown.png',
   },
   'word-to-pdf': {
     title: 'Convert Word to PDF Online Free | PDFKira',

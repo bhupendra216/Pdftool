@@ -34,6 +34,17 @@ import { SignPdfTool } from "@/components/shared/SignPdfTool";
 import NotFoundPage from "@/pages/not-found";
 import { removePagesById } from "@/lib/page-state";
 import { parsePageRanges } from "@workspace/pdf-pages";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  createMarkdownDownload,
+  extractMarkdownFromPdf as extractPdfToMarkdown,
+  markdownForDisplay,
+  sanitizeMarkdownBaseName,
+  withPageMarkers,
+  type MarkdownImage,
+} from "@/lib/pdfToMarkdown";
+import { MAX_PDF_SIZE_MB } from "@/lib/pdfToMarkdownConfig";
+import { PDF_TO_MARKDOWN_CONTENT } from "../../../api-server/src/lib/pdfToMarkdownContent";
 
 GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
 
@@ -108,7 +119,7 @@ const getUploadConfig = (slug?: string): UploadConfig => {
     case "pdf-to-markdown":
       return {
         accept: "application/pdf,.pdf",
-        maxSizeMB: 50,
+        maxSizeMB: MAX_PDF_SIZE_MB,
         label: "PDF file",
         description: "or drop a PDF here.",
         supportedFormats: ["PDF"],
@@ -344,6 +355,16 @@ export function ToolDetail(props?: any) {
   const [ocrText, setOcrText] = useState<string>("");
   const [markdownResult, setMarkdownResult] = useState<string>("");
   const [extractedImageCount, setExtractedImageCount] = useState<number>(0);
+  const [skippedImageCount, setSkippedImageCount] = useState<number>(0);
+  const [markdownPages, setMarkdownPages] = useState<string[]>([]);
+  const [markdownImages, setMarkdownImages] = useState<MarkdownImage[]>([]);
+  const [markdownBaseName, setMarkdownBaseName] = useState("document");
+  const [markdownTextFound, setMarkdownTextFound] = useState(false);
+  const [markdownNoTextWarning, setMarkdownNoTextWarning] = useState(false);
+  const [includeImageReferences, setIncludeImageReferences] = useState(true);
+  const [addPageMarkers, setAddPageMarkers] = useState(false);
+  const [markdownEmpty, setMarkdownEmpty] = useState(false);
+  const [markdownCopied, setMarkdownCopied] = useState(false);
   const [watermarkText, setWatermarkText] = useState<string>("CONFIDENTIAL");
   const [watermarkPosition, setWatermarkPosition] = useState<string>("bottom-right");
   const [watermarkLogo, setWatermarkLogo] = useState<File | null>(null);
@@ -621,7 +642,50 @@ export function ToolDetail(props?: any) {
     setPdfToWordOutputFormat("docx");
     setImageBatchItems([]);
     setMarkdownResult("");
+    setMarkdownPages([]);
+    setMarkdownImages([]);
+    setMarkdownBaseName("document");
+    setMarkdownTextFound(false);
+    setMarkdownNoTextWarning(false);
+    setSkippedImageCount(0);
+    setIncludeImageReferences(true);
+    setAddPageMarkers(false);
+    setMarkdownEmpty(false);
+    setMarkdownCopied(false);
   }, [slug]);
+
+  const completeMarkdown = useMemo(
+    () => withPageMarkers(markdownPages, addPageMarkers),
+    [markdownPages, addPageMarkers],
+  );
+  const visibleMarkdown = useMemo(
+    () => markdownForDisplay(completeMarkdown, includeImageReferences),
+    [completeMarkdown, includeImageReferences],
+  );
+
+  useEffect(() => {
+    setMarkdownResult(visibleMarkdown);
+  }, [visibleMarkdown]);
+
+  useEffect(() => {
+    if (tool?.slug !== "pdf-to-markdown" || status !== "success" || markdownPages.length === 0) return;
+    let isCurrent = true;
+    const createDownload = async () => {
+      const download = await createMarkdownDownload(markdownPages, markdownImages, markdownBaseName, addPageMarkers);
+      if (!isCurrent) return;
+      setDownloadUrl(URL.createObjectURL(download.blob));
+      setDownloadFileName(download.fileName);
+      setDownloadSizeBytes(download.blob.size);
+    };
+    void createDownload().catch((error) => {
+      console.error("Could not prepare the Markdown download.", error);
+      setErrorMessage("Could not prepare the Markdown download. Try again.");
+      setStatus("options");
+    });
+    return () => {
+      isCurrent = false;
+    };
+  }, [tool?.slug, status, markdownPages, markdownImages, markdownBaseName, addPageMarkers]);
 
   useEffect(() => {
     return () => {
@@ -1424,355 +1488,12 @@ export function ToolDetail(props?: any) {
       .filter((line) => line.text.length > 0);
   };
 
-  const normalizeMarkdownLine = (line: string) => {
-    const trimmed = line.trim();
-    if (!trimmed) return "";
-    if (/^[\-*•\u2022]\s+/.test(trimmed) || /^[0-9]+\.\s+/.test(trimmed)) {
-      return trimmed;
-    }
-    if (/^[A-Z0-9][A-Z0-9\s\-:\'\(\)]{4,60}$/.test(trimmed) && trimmed === trimmed.toUpperCase()) {
-      return `## ${trimmed}`;
-    }
-    return trimmed;
-  };
-
-  const extractMarkdownFromPdf = async (file: File, onStage?: (stage: string) => void) => {
-    const bytes = await file.arrayBuffer();
-    const pdf = await getDocument({ data: bytes }).promise;
-    const pageCount = pdf.numPages;
-    const pages: string[] = [];
-    const collectedImages: Array<{ filename: string; blob: Blob }> = [];
-
-    for (let pageIndex = 1; pageIndex <= pageCount; pageIndex += 1) {
-      onStage?.(`Extracting text and images from page ${pageIndex} of ${pageCount}...`);
-      const page = await pdf.getPage(pageIndex);
-
-      // extract text lines with y positions
-      const lineObjs = await extractTextLinesFromPage(page); // {text,y}[]
-
-      // extract images from operator list
-      const opList = await page.getOperatorList();
-      const fnArray = opList.fnArray || [];
-      const argsArray = opList.argsArray || [];
-
-      const pageImages: Array<{ filename: string; blob: Blob; y: number }> = [];
-      let imgCounter = 0;
-      const seenImageKeys = new Set<string>();
-      // debug: report operator list sizes
-      // eslint-disable-next-line no-console
-      // debug: operator list length (removed verbose logging)
-
-      let imageOpsFound = false;
-      for (let i = 0; i < fnArray.length; i++) {
-        const fn = fnArray[i];
-        if (fn === OPS.paintImageXObject || fn === OPS.paintInlineImageXObject) imageOpsFound = true;
-        if (fn !== OPS.paintImageXObject && fn !== OPS.paintInlineImageXObject) continue;
-        const args = argsArray[i] || [];
-
-        // attempt to read image object and transform
-        let imgObj: any = null;
-        let transform: any = null;
-
-        if (fn === OPS.paintImageXObject) {
-          // args often [imageName]
-          const name = args[0];
-          transform = args[1] || null;
-          // try several fallbacks to obtain the image object
-          try {
-            if (page.objs && typeof page.objs.get === 'function') {
-              imgObj = page.objs.get(name);
-              // found imgObj via page.objs.get for ${name}
-            }
-          } catch (e) {
-            imgObj = null;
-          }
-          if (!imgObj && page.objs && Object.prototype.hasOwnProperty.call(page.objs, name)) {
-            imgObj = (page.objs as Record<string, any>)[name];
-            // found imgObj via page.objs[name] for ${name}
-          }
-          if (!imgObj && page.objs && (page.objs as any)._objs) {
-            const objs = (page.objs as any)._objs as Record<string, any>;
-            if (objs && objs[name]) {
-              imgObj = objs[name];
-              // found imgObj via page.objs._objs for ${name}
-            }
-          }
-          if (!imgObj && page.commonObjs && typeof (page.commonObjs as any).get === 'function') {
-            try {
-              imgObj = (page.commonObjs as any).get(name);
-              // found imgObj via page.commonObjs.get for ${name}
-            } catch (e) {
-              imgObj = null;
-            }
-          }
-          if (!imgObj && page.commonObjs) {
-            const commonObjs = page.commonObjs as Record<string, any>;
-            if (Object.prototype.hasOwnProperty.call(commonObjs, name)) {
-              imgObj = commonObjs[name];
-              // found imgObj via page.commonObjs[name] for ${name}
-            }
-          }
-        } else if (fn === OPS.paintInlineImageXObject) {
-          // inline image data may be in args[0]
-          imgObj = args[0] || null;
-          transform = args[1] || null;
-        }
-
-        // debug: report operator and args
-        // eslint-disable-next-line no-console
-        // operator debug: fn and args
-        if (!imgObj) {
-          continue;
-        }
-
-        // attempt to determine width/height and draw to canvas
-          let width = imgObj.width || imgObj.w || (imgObj.data && imgObj.data.width) || null;
-          let height = imgObj.height || imgObj.h || (imgObj.data && imgObj.data.height) || null;
-
-          // log a short summary of imgObj to help diagnose missing fields
-          try {
-            const keys = Object.keys(imgObj || {});
-            const keySummary = keys.slice(0, 20).map((k) => {
-              const v = imgObj[k];
-              let info: any = { key: k, type: typeof v };
-              if (v && (v.length || v.byteLength)) info.length = v.length || v.byteLength;
-              if (v && v.constructor && v.constructor.name) info.constructor = v.constructor.name;
-              return info;
-            });
-            const summary: any = {
-              constructor: imgObj?.constructor?.name || typeof imgObj,
-              keys: keySummary,
-              widthPresent: !!(imgObj && (imgObj.width || imgObj.w)),
-              dataPresent: !!(imgObj && imgObj.data),
-              dataLength: imgObj && (imgObj.data?.length || imgObj.data?.byteLength || null),
-            };
-            // eslint-disable-next-line no-console
-            // imgObj summary logged for debugging
-          } catch (e) {
-            // ignore logging errors
-          }
-
-        // skip tiny decorative images (reduced threshold to 2px to avoid false negatives during debugging)
-        if (width != null && height != null && (width < 2 || height < 2)) {
-          // eslint-disable-next-line no-console
-          // skipping tiny image ${width}x${height}
-          continue;
-        }
-
-        try {
-          const canvas = document.createElement("canvas");
-          if (width && height) {
-            canvas.width = width;
-            canvas.height = height;
-          } else if (imgObj instanceof HTMLImageElement) {
-            canvas.width = imgObj.naturalWidth || imgObj.width;
-            canvas.height = imgObj.naturalHeight || imgObj.height;
-          } else if (imgObj.data && imgObj.data.length && imgObj.width && imgObj.height) {
-            canvas.width = imgObj.width;
-            canvas.height = imgObj.height;
-          } else {
-            // fallback: skip if we can't determine size — log for debugging
-            // eslint-disable-next-line no-console
-            // cannot determine size for imgObj on page ${pageIndex} op ${i}, skipping
-            continue;
-          }
-
-          const ctx = canvas.getContext("2d");
-          if (!ctx) continue;
-
-          if (imgObj instanceof HTMLImageElement) {
-            ctx.drawImage(imgObj, 0, 0);
-          } else if (imgObj.data && (imgObj.data instanceof ImageData || imgObj.data instanceof Uint8ClampedArray || Array.isArray(imgObj.data))) {
-            try {
-              // if ImageData
-              if (imgObj.data instanceof ImageData) {
-                ctx.putImageData(imgObj.data, 0, 0);
-              } else {
-                // try create ImageData from raw buffer
-                const sourceData = imgObj.data instanceof Uint8ClampedArray ? imgObj.data : new Uint8ClampedArray(Array.from(imgObj.data as ArrayLike<number>));
-                const materialized = new Uint8ClampedArray(sourceData.length);
-                materialized.set(sourceData);
-                const imageData = new ImageData(materialized, canvas.width, canvas.height);
-                ctx.putImageData(imageData, 0, 0);
-              }
-            } catch (e) {
-              // fallback: try to draw via createImageBitmap
-              try {
-                const blobTemp = new Blob([imgObj.data], { type: "image/png" });
-                // eslint-disable-next-line no-await-in-loop
-                const bitmap = await createImageBitmap(blobTemp);
-                ctx.drawImage(bitmap, 0, 0);
-              } catch (err) {
-                continue;
-              }
-            }
-          } else if (imgObj.src && typeof imgObj.src === 'string') {
-            // some pdfjs builds provide a data URL or src
-            try {
-              // eslint-disable-next-line no-await-in-loop
-              const img = new Image();
-              img.crossOrigin = 'anonymous';
-              await new Promise((res, rej) => {
-                img.onload = () => res(null);
-                img.onerror = rej;
-                img.src = imgObj.src;
-              });
-              ctx.drawImage(img, 0, 0);
-            } catch (e) {
-              // continue to other fallbacks
-            }
-          } else if (imgObj.image) {
-            const candidate = imgObj.image;
-            try {
-              if (candidate instanceof ImageData) {
-                ctx.putImageData(candidate, 0, 0);
-              } else if (candidate instanceof HTMLCanvasElement) {
-                ctx.drawImage(candidate, 0, 0);
-              } else if (candidate instanceof ImageBitmap) {
-                ctx.drawImage(candidate, 0, 0);
-              } else if (candidate instanceof Uint8Array || candidate instanceof Uint8ClampedArray || Array.isArray(candidate)) {
-                const clamped = candidate instanceof Uint8ClampedArray ? candidate : new Uint8ClampedArray(Array.from(candidate as ArrayLike<number>));
-                const materialized = new Uint8ClampedArray(clamped.length);
-                materialized.set(clamped);
-                const imageData = new ImageData(materialized, canvas.width, canvas.height);
-                ctx.putImageData(imageData, 0, 0);
-              } else {
-                // try createImageBitmap on the candidate
-                // eslint-disable-next-line no-await-in-loop
-                const bitmap = await createImageBitmap(candidate);
-                ctx.drawImage(bitmap, 0, 0);
-              }
-            } catch (e) {
-              // fallback
-            }
-          } else if (imgObj.src) {
-            ctx.drawImage(imgObj, 0, 0);
-          } else {
-            continue;
-          }
-
-          // determine y position from transform if available
-          let yPos = 0;
-          if (Array.isArray(transform) && transform.length >= 6) {
-            // transform is [a b c d e f] where e,f are translation
-            yPos = transform[5] || 0;
-          }
-
-          // create blob from canvas (use PNG for lossless)
-          // eslint-disable-next-line no-await-in-loop
-          const blob: Blob | null = await new Promise((resolve) => canvas.toBlob((b) => resolve(b), "image/png"));
-          if (!blob) {
-            // eslint-disable-next-line no-console
-            // canvas.toBlob returned null for page ${pageIndex} op ${i}
-            continue;
-          }
-
-          // debug blob size
-          // eslint-disable-next-line no-console
-          // extracted blob size=${blob.size} bytes for page ${pageIndex} op ${i}
-
-          // dedupe by size + first bytes
-          const keyPrefix = `${canvas.width}x${canvas.height}`;
-          const peek = await blob.slice(0, 128).arrayBuffer();
-          const peekHex = Array.from(new Uint8Array(peek)).slice(0, 32).map((b) => b.toString(16).padStart(2, "0")).join("");
-          const uniqueKey = `${keyPrefix}-${peekHex}`;
-          if (seenImageKeys.has(uniqueKey)) {
-            // eslint-disable-next-line no-console
-            // dedupe skip for key ${uniqueKey}
-            continue;
-          }
-          seenImageKeys.add(uniqueKey);
-
-          imgCounter += 1;
-          const filename = `page-${pageIndex}-img-${imgCounter}.png`;
-          pageImages.push({ filename, blob, y: yPos });
-        } catch (e) {
-          // don't let one image failure break the whole extraction
-          // eslint-disable-next-line no-console
-          console.warn("image extraction failed on page", pageIndex, e);
-          continue;
-        }
-      }
-
-      // debug: report how many images found on this page
-      // eslint-disable-next-line no-console
-      // page ${pageIndex} images found: ${pageImages.length}
-
-      // If image operators were present but we couldn't extract individual XObjects,
-      // fall back to rendering the full page as an image so the visual content is preserved.
-      if (imageOpsFound && pageImages.length === 0) {
-        try {
-          // render page at higher scale for better quality
-          const viewport = page.getViewport({ scale: 2 });
-          const canvas = document.createElement('canvas');
-          canvas.width = Math.round(viewport.width);
-          canvas.height = Math.round(viewport.height);
-          const ctx = canvas.getContext('2d');
-          if (ctx) {
-            // eslint-disable-next-line no-await-in-loop
-            await (page.render({ canvasContext: ctx, viewport } as any).promise as Promise<void>);
-            // eslint-disable-next-line no-await-in-loop
-            const blob = await new Promise<Blob | null>((res) => canvas.toBlob((b) => res(b), 'image/png'));
-            if (blob) {
-              const filename = `page-${pageIndex}-full.png`;
-              pageImages.push({ filename, blob, y: 0 });
-              // eslint-disable-next-line no-console
-              // fallback full-page image created for page ${pageIndex}, size=${blob.size}
-            }
-          }
-        } catch (e) {
-          // ignore fallback failures
-          // eslint-disable-next-line no-console
-          console.warn('pdf->md: full-page render fallback failed for page', pageIndex, e);
-        }
-        // report again after fallback
-        // eslint-disable-next-line no-console
-      // page ${pageIndex} images found (after fallback): ${pageImages.length}
-      }
-
-      // merge text and images by y position (approximate). text y is already bucketed
-      const pieces: Array<{ y: number; type: "text" | "image"; content: string }> = [];
-      for (const ln of lineObjs) pieces.push({ y: ln.y, type: "text", content: ln.text });
-      for (const img of pageImages) pieces.push({ y: img.y, type: "image", content: img.filename });
-
-      pieces.sort((a, b) => b.y - a.y);
-
-      const normalizedParts: string[] = [];
-      for (const p of pieces) {
-        if (p.type === "text") {
-          const nm = normalizeMarkdownLine(p.content);
-          if (nm) normalizedParts.push(nm);
-        } else {
-          normalizedParts.push(`![Page ${pageIndex} image](${"images/" + p.content})`);
-        }
-      }
-
-      // append page header if multi-page
-      if (pageCount > 1) {
-        pages.push(`## Page ${pageIndex}\n\n${normalizedParts.join("\n\n")}`);
-      } else {
-        pages.push(normalizedParts.join("\n\n"));
-      }
-
-      // collect page images to top-level list
-      for (const img of pageImages) {
-        collectedImages.push({ filename: img.filename, blob: img.blob });
-      }
-    }
-
-    const markdown = pages.filter(Boolean).join("\n\n");
-    // debug: total images
-    // eslint-disable-next-line no-console
-    // total images extracted: ${collectedImages.length}
-    return { markdown, images: collectedImages };
-  };
-
   const toolUrl = `${SITE_URL}/tools/${tool?.slug || ''}`;
 
   const pageHeading = useMemo(() => {
     switch (tool?.slug) {
       case "pdf-to-markdown":
-        return "PDF to Markdown Converter";
+        return PDF_TO_MARKDOWN_CONTENT.title;
       case "add-page-numbers":
         return "Add Page Numbers to PDF";
       case "image-converter":
@@ -1803,19 +1524,7 @@ export function ToolDetail(props?: any) {
 
     switch (tool.slug) {
       case "pdf-to-markdown":
-        return (
-          <>
-            <p>
-              PDF to Markdown conversion turns a document into a clean text format that is easy to edit, search, and reuse in documentation, notes, and AI workflows. It is especially useful when you want to move content from a PDF into a Markdown editor, wiki, changelog, or prompt-ready workflow without manual retyping.
-            </p>
-            <p>
-              PDFKira processes the file in your browser and preserves recognizable structure when it is available, including headings, paragraphs, lists, and image references. The result is a Markdown document you can download as a .md file or copy into tools like Obsidian, Notion, GitHub, or other Markdown-based editors.
-            </p>
-            <p>
-              For related document workflows, you can also <Link href="/tools/add-page-numbers">add page numbers to your PDF</Link> or <Link href="/tools/image-converter">convert image files</Link> before or after processing.
-            </p>
-          </>
-        );
+        return <p>{PDF_TO_MARKDOWN_CONTENT.intro}</p>;
       case "merge-pdf":
         return "Combine multiple PDFs into one polished document with a simple drag-and-drop workflow. Ideal for assembling invoices, contracts, presentations, and reports, this tool keeps your files private while letting you reorder content before download. PDFKira makes merging fast and reliable, so you can create a single, shareable PDF in seconds. If you want to continue refining output, related tools below help you split, compress, or organize the final file.";
       case "compress-pdf":
@@ -1852,31 +1561,39 @@ export function ToolDetail(props?: any) {
       {
         '@type': 'ListItem',
         'position': 3,
-        'name': tool?.name || 'Tool',
+        'name': tool?.slug === "pdf-to-markdown" ? PDF_TO_MARKDOWN_CONTENT.title : tool?.name || 'Tool',
         'item': toolUrl
       }
     ]
-  }), [tool?.name, toolUrl]);
+  }), [tool?.name, tool?.slug, toolUrl]);
 
   const applicationJsonLd = useMemo(() => ({
     '@context': 'https://schema.org',
     '@type': 'SoftwareApplication',
-    name: tool?.name || 'PDFKira Tool',
-    description: tool?.seoDescription || tool?.shortDescription || '',
+    name: tool?.slug === "pdf-to-markdown" ? PDF_TO_MARKDOWN_CONTENT.title : tool?.name || 'PDFKira Tool',
+    description: tool?.slug === "pdf-to-markdown" ? PDF_TO_MARKDOWN_CONTENT.metaDescription : tool?.seoDescription || tool?.shortDescription || '',
     applicationCategory: 'Utility',
     operatingSystem: 'Web',
     url: toolUrl,
     offers: { '@type': 'Offer', price: 0, priceCurrency: 'USD' },
-  }), [tool?.name, tool?.seoDescription, tool?.shortDescription, toolUrl]);
+    ...(tool?.slug === "pdf-to-markdown" ? {
+      isAccessibleForFree: true,
+      featureList: [...PDF_TO_MARKDOWN_CONTENT.socialFeatureList],
+    } : {}),
+  }), [tool?.name, tool?.seoDescription, tool?.shortDescription, tool?.slug, toolUrl]);
 
   const toolOgImage = tool?.slug ? resolveToolOgImage(tool.slug) : `${SITE_URL}/logo.png`;
 
   useSEOAdvanced({
-    title: tool?.seoTitle || "Loading...",
-    description: tool?.seoDescription || "PDF tool",
+    title: tool?.slug === "pdf-to-markdown" ? PDF_TO_MARKDOWN_CONTENT.seoTitle : tool?.seoTitle || "Loading...",
+    description: tool?.slug === "pdf-to-markdown" ? PDF_TO_MARKDOWN_CONTENT.metaDescription : tool?.seoDescription || "PDF tool",
     canonical: toolUrl,
     ogImage: toolOgImage,
+    ogImageWidth: tool?.slug === "pdf-to-markdown" ? "1200" : undefined,
+    ogImageHeight: tool?.slug === "pdf-to-markdown" ? "630" : undefined,
+    ogImageAlt: tool?.slug === "pdf-to-markdown" ? "PDF to Markdown Converter on PDFKira" : undefined,
     jsonLd: [applicationJsonLd, breadcrumbJsonLd],
+    appendSiteName: tool?.slug !== "pdf-to-markdown",
   });
 
   if (isLoading) {
@@ -2180,6 +1897,35 @@ export function ToolDetail(props?: any) {
     URL.revokeObjectURL(url);
   };
 
+  const copyMarkdown = async () => {
+    if (!markdownResult) return;
+    try {
+      if (navigator.clipboard?.writeText && window.isSecureContext) {
+        await navigator.clipboard.writeText(markdownResult);
+      } else {
+        const textarea = document.createElement("textarea");
+        textarea.value = markdownResult;
+        textarea.setAttribute("readonly", "");
+        textarea.style.position = "fixed";
+        textarea.style.opacity = "0";
+        document.body.appendChild(textarea);
+        let copied = false;
+        try {
+          textarea.select();
+          copied = document.execCommand("copy");
+        } finally {
+          textarea.remove();
+        }
+        if (!copied) throw new Error("Clipboard copy was not permitted.");
+      }
+      setMarkdownCopied(true);
+      window.setTimeout(() => setMarkdownCopied(false), 2000);
+    } catch (error) {
+      console.error("Could not copy Markdown to the clipboard.", error);
+      setErrorMessage("Could not copy Markdown. Select and copy the text manually.");
+    }
+  };
+
   const handleProcess = async () => {
     if (!canProcess || !tool) return;
 
@@ -2191,8 +1937,11 @@ export function ToolDetail(props?: any) {
     setDownloadShortName(null);
     setPassword("");
     setExtractedImageCount(0);
+    setSkippedImageCount(0);
+    setMarkdownNoTextWarning(false);
+    setMarkdownEmpty(false);
 
-    const interval = setInterval(() => {
+    const interval = tool.slug === "pdf-to-markdown" ? undefined : setInterval(() => {
       setProgress((prev) => {
         const next = prev + Math.floor(Math.random() * 8) + 5;
         const capped = Math.min(95, next);
@@ -2248,7 +1997,7 @@ export function ToolDetail(props?: any) {
             `The selected images total ${mb} MB. This may cause crashes on low-memory devices. Continue?`
           );
           if (!proceed) {
-            clearInterval(interval);
+            if (interval) clearInterval(interval);
             setStatus("options");
             return;
           }
@@ -2331,7 +2080,7 @@ export function ToolDetail(props?: any) {
           setErrorMessage("Some images failed to convert. The rest are ready to download.");
         }
 
-        clearInterval(interval);
+        if (interval) clearInterval(interval);
         return;
       } else if (tool.slug === "merge-pdf") {
         blob = await mergePdfOnServer(files);
@@ -2371,32 +2120,34 @@ export function ToolDetail(props?: any) {
         blob = await convertPdfToWordOnServer(files[0]);
         outputName = stripExtension(files[0].name) + ".docx";
       } else if (tool.slug === "pdf-to-markdown") {
-        const result = await extractMarkdownFromPdf(files[0], setProgressStage) as any;
-        const markdown = result.markdown as string;
-        const images: Array<{ filename: string; blob: Blob }> = result.images || [];
-        const baseName = stripExtension(files[0].name);
-        // derive a short download name from the first word of the file name
-        const firstWordRaw = (baseName || "").split(/[^A-Za-z0-9]+/)[0] || baseName;
-        const firstWord = (firstWordRaw || baseName).replace(/[^A-Za-z0-9]/g, "") || baseName;
-        setMarkdownResult(markdown);
+        const result = await extractPdfToMarkdown(files[0], {
+          onPage: (pageNumber, pageCount) => {
+            setProgressStage(`Reading page ${pageNumber} of ${pageCount}`);
+            setProgress(Math.round(((pageNumber - 1) / pageCount) * 100));
+          },
+          onTextStatus: (textFound) => setMarkdownNoTextWarning(!textFound),
+        });
+        const images = result.images;
+        const baseName = sanitizeMarkdownBaseName(files[0].name);
+        setMarkdownPages(result.pages);
+        setMarkdownImages(images);
+        setMarkdownBaseName(baseName);
+        setMarkdownTextFound(result.textFound);
+        setMarkdownNoTextWarning(!result.textFound);
+        setIncludeImageReferences(true);
+        setAddPageMarkers(false);
+        setExtractedImageCount(images.length);
+        setSkippedImageCount(result.skippedImageCount);
 
-        if (!images || images.length === 0) {
-          blob = new Blob([markdown], { type: "text/markdown;charset=utf-8" });
-          outputName = `${firstWord}.md`;
-          setExtractedImageCount(0);
-        } else {
-          // package markdown + images into a zip
-          const zip = new JSZip();
-          zip.file("document.md", markdown);
-          const imgFolder = zip.folder("images");
-          images.forEach((img) => imgFolder?.file(img.filename, img.blob));
-          const zipBlob = await zip.generateAsync({ type: "blob" });
-          blob = zipBlob;
-          outputName = `${firstWord}.zip`;
-          setExtractedImageCount(images.length);
+        if (!result.textFound && images.length === 0) {
+          setMarkdownEmpty(true);
+          throw new Error("No text found. This PDF may be scanned or image-only. Run it through the OCR PDF tool first.");
         }
-        // remember a short display name for the download button
-        setDownloadShortName(firstWord);
+
+        const download = await createMarkdownDownload(result.pages, images, baseName);
+        blob = download.blob;
+        outputName = download.fileName;
+        setDownloadShortName(baseName);
       } else if (tool.slug === "word-to-pdf") {
         blob = await convertWordToPdfOnServer(files[0]);
         outputName = stripExtension(files[0].name) + ".pdf";
@@ -2493,7 +2244,7 @@ export function ToolDetail(props?: any) {
       setErrorMessage(error?.message || "Failed to process the file. Please try again.");
       setStatus("options");
     } finally {
-      clearInterval(interval);
+      if (interval) clearInterval(interval);
     }
   };
 
@@ -2628,8 +2379,12 @@ export function ToolDetail(props?: any) {
                   )}
 
                   {errorMessage && (
-                    <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                    <div role="alert" className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                       {errorMessage}
+                      {markdownEmpty && <> <Link className="underline" href="/tools/ocr-pdf">Open OCR PDF</Link></>}
+                      {tool?.slug === "pdf-to-markdown" && /password-protected/i.test(errorMessage) && <> <Link className="underline" href="/tools/unlock-pdf">Open Unlock PDF</Link></>}
+                      {tool?.slug === "pdf-to-markdown" && /damaged or is not a valid PDF/i.test(errorMessage) && <> If this is an image-only scan, try <Link className="underline" href="/tools/ocr-pdf">OCR PDF</Link>.</>}
+                      {tool?.slug === "pdf-to-markdown" && skippedImageCount > 0 && <> {extractedImageCount} images extracted. {skippedImageCount} could not be extracted.</>}
                     </div>
                   )}
 
@@ -3150,7 +2905,13 @@ export function ToolDetail(props?: any) {
                     </Button>
                   </div>
                   {errorMessage && (
-                    <p className="mt-4 text-sm text-destructive">{errorMessage}</p>
+                    <p role="alert" className="mt-4 text-sm text-destructive">
+                      {errorMessage}
+                      {markdownEmpty && <> <Link className="underline" href="/tools/ocr-pdf">Open OCR PDF</Link></>}
+                      {tool.slug === "pdf-to-markdown" && /password-protected/i.test(errorMessage) && <> <Link className="underline" href="/tools/unlock-pdf">Open Unlock PDF</Link></>}
+                      {tool.slug === "pdf-to-markdown" && /damaged or is not a valid PDF/i.test(errorMessage) && <> If this is an image-only scan, try <Link className="underline" href="/tools/ocr-pdf">OCR PDF</Link>.</>}
+                      {tool.slug === "pdf-to-markdown" && skippedImageCount > 0 && <> {extractedImageCount} images extracted. {skippedImageCount} could not be extracted.</>}
+                    </p>
                   )}
                 </div>
 
@@ -3606,8 +3367,13 @@ export function ToolDetail(props?: any) {
                     </div>
                   </div>
                   <h3 className="text-2xl font-bold mb-3 text-center">Processing your file...</h3>
-                  <p className="text-center text-muted-foreground mb-6">{progressStage}</p>
-                  <Progress value={progress} className="h-3 mb-4" />
+                  <p aria-live="polite" className="text-center text-muted-foreground mb-6">{progressStage}</p>
+                  {tool.slug === "pdf-to-markdown" && markdownNoTextWarning && (
+                    <p role="status" className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-center">
+                      No text found. This PDF may be scanned or image-only. Run it through the <Link className="underline" href="/tools/ocr-pdf">OCR PDF tool</Link> first.
+                    </p>
+                  )}
+                  <Progress aria-label="Conversion progress" value={progress} className="h-3 mb-4" />
                   <p className="text-center text-sm font-medium text-muted-foreground">{progress}% complete</p>
                   <div className="mt-6 grid gap-3 sm:grid-cols-3">
                     {[
@@ -3771,15 +3537,46 @@ export function ToolDetail(props?: any) {
                       </div>
                       <h3 className="text-2xl font-bold mb-4 text-center">Markdown conversion complete</h3>
                       <p className="text-center text-muted-foreground mb-6">
-                        {extractedImageCount > 0
-                          ? `Markdown + ${extractedImageCount} image${extractedImageCount === 1 ? "" : "s"} ready. The download contains a document.md and an images/ folder.`
-                          : "Your PDF has been converted to Markdown and is ready to download or copy."}
+                        {!markdownTextFound
+                          ? <>No text found. This PDF may be scanned or image-only. Run it through the <Link className="underline" href="/tools/ocr-pdf">OCR PDF tool</Link> first. Only images were found. The ZIP contains {extractedImageCount} image{extractedImageCount === 1 ? "" : "s"}; no text was extracted.</>
+                          : extractedImageCount > 0
+                            ? `Markdown and ${extractedImageCount} image${extractedImageCount === 1 ? "" : "s"} are ready. The ZIP contains the Markdown file and an images/ folder.`
+                            : "Your PDF has been converted to Markdown and is ready to download or copy."}
                       </p>
+                      {skippedImageCount > 0 && (
+                        <p role="status" className="mb-6 text-center text-sm text-muted-foreground">
+                          {extractedImageCount} images extracted. {skippedImageCount} could not be extracted.
+                        </p>
+                      )}
+
+                      <div className="mb-4 flex flex-wrap items-center gap-x-6 gap-y-3 text-sm">
+                        <label className="flex items-center gap-2">
+                          <Checkbox
+                            checked={includeImageReferences}
+                            onCheckedChange={(checked) => setIncludeImageReferences(checked === true)}
+                            disabled={extractedImageCount === 0}
+                            aria-label="Include image references"
+                          />
+                          <span>Include image references</span>
+                        </label>
+                        {extractedImageCount > 0 && (
+                          <span className="text-muted-foreground">Images are only included in the ZIP download.</span>
+                        )}
+                        <label className="flex items-center gap-2">
+                          <Checkbox
+                            checked={addPageMarkers}
+                            onCheckedChange={(checked) => setAddPageMarkers(checked === true)}
+                            aria-label="Add page markers"
+                          />
+                          <span>Add page markers</span>
+                        </label>
+                      </div>
 
                       <div className="mb-6 rounded-3xl border border-border/70 bg-card/80 p-4">
                         <textarea
                           readOnly
                           value={markdownResult}
+                          aria-label="Markdown conversion result"
                           className="min-h-[320px] w-full rounded-3xl border border-border bg-background p-4 text-sm leading-relaxed text-foreground"
                         />
                       </div>
@@ -3790,7 +3587,28 @@ export function ToolDetail(props?: any) {
                               {extractedImageCount > 0 ? "Download ZIP" : "Download Markdown"}
                             </a>
                           </Button>
-                          <Button variant="outline" size="lg" className="w-full rounded-2xl h-14 text-lg" onClick={() => { setStatus("idle"); setFiles([]); setDownloadUrl(null); setMarkdownResult(""); setDownloadShortName(null); }}>
+                          <Button
+                            variant="outline"
+                            size="lg"
+                            className="w-full rounded-2xl h-14 text-lg"
+                            onClick={copyMarkdown}
+                            disabled={!markdownResult}
+                            aria-label="Copy Markdown"
+                          >
+                            {markdownCopied ? "Copied" : "Copy Markdown"}
+                          </Button>
+                          <span aria-live="polite" className="sr-only">{markdownCopied ? "Markdown copied to clipboard." : ""}</span>
+                          <Button variant="outline" size="lg" className="w-full rounded-2xl h-14 text-lg" onClick={() => {
+                            setStatus("idle");
+                            setFiles([]);
+                            setDownloadUrl(null);
+                            setMarkdownResult("");
+                            setMarkdownPages([]);
+                            setMarkdownImages([]);
+                            setMarkdownTextFound(false);
+                            setMarkdownEmpty(false);
+                            setDownloadShortName(null);
+                          }}>
                           Start Over
                         </Button>
                       </div>

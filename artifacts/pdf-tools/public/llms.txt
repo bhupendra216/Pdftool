@@ -1,12 +1,21 @@
 # PDFKira - Free Online PDF Tools
 
-> PDFKira is a free, privacy-first online PDF toolkit that processes all files locally in your browser. No uploads to servers, no sign-ups, no watermarks.
+> PDFKira is an online PDF toolkit. Processing and limits vary by tool; see each tool page for its specific behavior.
 
 ## About
-PDFKira offers a complete suite of PDF tools for students, professionals, and businesses. All operations run client-side using WebAssembly (WASM) for fast, secure processing. Files are automatically deleted after use.
+PDFKira offers PDF tools for students, professionals, and businesses. Some tools process files in the browser, while others may use server-side processing. Check the individual tool page for accurate privacy and file-limit details.
 
 **Website**: https://pdfkira.com
-**Privacy**: https://pdfkira.com/privacy (if you have one) or describe: 100% local processing, no server uploads.
+**Privacy**: https://pdfkira.com/privacy
+
+### PDF to Markdown
+
+- **URL**: https://pdfkira.com/tools/pdf-to-markdown
+- **Processing**: PDF.js extracts text and supported embedded images in your browser; the PDF is not uploaded by this conversion workflow.
+- **Input limit**: 50 MB and up to 300 pages.
+- **Output**: Markdown (`.md`) for text-only conversions; a ZIP containing Markdown and extracted images when supported images are included.
+- **Scanned PDFs**: No OCR is performed. Image-only PDFs produce no text; supported embedded images may still be extracted into a ZIP.
+- **Tables and formatting**: Text positioning is approximated; tables are not guaranteed to become Markdown tables, and original bold/italic styling is not reliably preserved.
 
 ---
 
@@ -21,6 +30,12 @@ PDFKira offers a complete suite of PDF tools for students, professionals, and bu
 - **Word to PDF**: https://pdfkira.com/tools/word-to-pdf
 - **Excel to PDF**: https://pdfkira.com/tools/excel-to-pdf
 - **JPG to PDF**: https://pdfkira.com/tools/jpg-to-pdf
+
+## Processing details
+
+- **PDF to Markdown**: Convert a text-based PDF to Markdown in your browser. Your PDF is never uploaded. Free, no sign-up, up to 50 MB.
+- **Server-processed tools**: Tools such as Merge PDF, Split PDF, PDF to Word, Protect PDF, Unlock PDF, image conversion, compression, and page operations may upload files to PDFKira over HTTPS for processing. Processing and retention details vary by tool; consult the [Privacy Policy](https://pdfkira.com/privacy).
+- **Other tools**: Processing location and file limits vary. Check the individual tool page and the [Privacy Policy](https://pdfkira.com/privacy).
 
 ### Edit PDF
 - **Edit PDF (Text & Images)**: https://pdfkira.com/tools/edit-pdf
@@ -48,18 +63,17 @@ PDFKira offers a complete suite of PDF tools for students, professionals, and bu
 
 ## Key Features Across All Tools
 
-- **100% Client-Side Processing**: Your files never leave your browser. No uploads to any server.
+- **Tool-specific Processing**: Processing location and privacy behavior vary by tool; consult the individual tool page.
 - **No Registration Required**: Use all tools instantly without creating an account.
-- **No File Size Limits**: Process large PDFs without restrictions.
-- **No Watermarks**: Output files are clean and professional.
-- **Automatic File Deletion**: All temporary files are removed after processing.
+- **File Limits**: Limits vary by tool. PDF to Markdown accepts files up to 50 MB and 300 pages.
+- **Watermarks**: Whether an output contains a watermark depends on the selected operation; see its tool page.
 - **Free to Use**: Completely free during MVP phase.
 
 ---
 
 ## Why Choose PDFKira?
 
-PDFKira is built for users who value privacy, speed, and simplicity. Unlike many "free" PDF tools that secretly charge credit cards or upload your documents to unknown servers, PDFKira processes everything locally using WebAssembly. This means your sensitive documents stay on your device and are never exposed to the internet.
+PDFKira aims to provide straightforward PDF workflows. Processing location, capabilities, and limits depend on the selected tool; consult its page before use.
 
 ---
 
@@ -67,8 +81,8 @@ PDFKira is built for users who value privacy, speed, and simplicity. Unlike many
 
 PDFKira is built with:
 - **React + TypeScript + Vite** for the frontend
-- **pdf.js** for PDF rendering and display
-- **@pdf-kit/pdf-lib** (WASM-powered) for PDF manipulation
+- **pdfjs-dist** for PDF parsing, text extraction, and rendering in browser workflows
+- **pdf-lib** for PDF manipulation in the workflows that use it
 - **Deployed on Vercel** for fast global delivery
 
 ---
@@ -81,4 +95,3 @@ PDFKira is built with:
 ---
 
 *Last updated: August 2026*
-

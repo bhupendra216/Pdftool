@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <rect width="1200" height="630" fill="#f8fafc"/>
+  <rect x="64" y="64" width="1072" height="502" rx="36" fill="#ffffff" stroke="#e2e8f0" stroke-width="2"/>
+  <circle cx="102" cy="108" r="10" fill="#2563eb"/>
+  <text x="130" y="117" fill="#475569" font-family="Arial, sans-serif" font-size="24" font-weight="600">PDFKira</text>
+  <text x="100" y="300" fill="#0f172a" font-family="Arial, sans-serif" font-size="66" font-weight="700">PDF to Markdown</text>
+  <text x="100" y="370" fill="#64748b" font-family="Arial, sans-serif" font-size="30">Convert text-based PDFs in your browser</text>
+  <text x="100" y="430" fill="#2563eb" font-family="Arial, sans-serif" font-size="28" font-weight="600">Private · Markdown · Free</text>
+</svg>

@@ -12,6 +12,8 @@ export interface FaqItem {
   answer: string;
 }
 
+import { PDF_TO_MARKDOWN_CONTENT } from "./pdfToMarkdownContent";
+
 export interface ToolRecord {
   slug: string;
   name: string;
@@ -286,29 +288,16 @@ const toolCatalog: ToolRecord[] = [
   },
   {
     slug: "pdf-to-markdown",
-    name: "PDF to Markdown Converter",
-    shortDescription: "Turn a PDF into clean Markdown for docs, notes, AI workflows, and developer-friendly editing.",
+    name: PDF_TO_MARKDOWN_CONTENT.title,
+    shortDescription: PDF_TO_MARKDOWN_CONTENT.intro,
     category: "Convert",
     icon: "FileText",
     popular: true,
     status: "available",
-    seoTitle: "PDF to Markdown Converter Online — Free | PDFKira",
-    seoDescription: "Convert PDF to Markdown in your browser and export structured text for notes, documentation, or AI workflows. Upload a PDF and try the free converter.",
-    steps: ["Upload a PDF document to convert.", "Review the generated Markdown output and structure.", "Download the .md file or copy the text for editing, publishing, or AI workflows."],
-    faqs: [
-      {
-        question: "Does this upload my PDF to a server?",
-        answer: "No. The conversion runs in your browser, so your PDF stays on your device while the Markdown is generated locally.",
-      },
-      {
-        question: "What kinds of PDF content does it handle well?",
-        answer: "It works best with text-heavy PDFs, headings, paragraphs, lists, and scanned pages with readable content. Headings, lists, and image references are represented in Markdown when they are detected.",
-      },
-      {
-        question: "How are tables and images handled?",
-        answer: "Tables are represented as text where the source structure is readable, and images are included as Markdown image references when they are detected during extraction.",
-      },
-    ],
+    seoTitle: PDF_TO_MARKDOWN_CONTENT.seoTitle,
+    seoDescription: PDF_TO_MARKDOWN_CONTENT.metaDescription,
+    steps: [...PDF_TO_MARKDOWN_CONTENT.howToSteps],
+    faqs: [...PDF_TO_MARKDOWN_CONTENT.faqs],
     blogSlug: null,
   },
   {

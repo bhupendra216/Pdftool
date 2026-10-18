@@ -22,6 +22,10 @@ function updateMeta(selector: string, value: string) {
   metaTag.setAttribute("content", value);
 }
 
+function removeMeta(selector: string) {
+  document.querySelector(selector)?.remove();
+}
+
 function resolveSocialImage(image?: string) {
   if (!image) return defaultSocialImage;
   if (image.startsWith('http')) return image;
@@ -33,14 +37,22 @@ export function useSEO({
   description,
   ogImage = defaultSocialImage,
   twitterImage,
+  ogImageWidth,
+  ogImageHeight,
+  ogImageAlt,
+  appendSiteName = true,
 }: {
   title: string;
   description?: string;
   ogImage?: string;
   twitterImage?: string;
+  ogImageWidth?: string;
+  ogImageHeight?: string;
+  ogImageAlt?: string;
+  appendSiteName?: boolean;
 }) {
   useEffect(() => {
-    const pageTitle = title.includes(siteName) ? title : `${title} | ${siteName}`;
+    const pageTitle = !appendSiteName || title.includes(siteName) ? title : `${title} | ${siteName}`;
     const pathname = window.location.pathname.toLowerCase().replace(/\/+$/, '') || '/';
     const canonical = `${SITE_URL}${pathname}`;
     const resolvedOgImage = resolveSocialImage(ogImage);
@@ -61,6 +73,17 @@ export function useSEO({
     updateMeta('meta[name="twitter:title"]', pageTitle);
     updateMeta('meta[property="og:image"]', resolvedOgImage);
     updateMeta('meta[name="twitter:image"]', resolvedTwitterImage);
+    if (ogImageWidth) updateMeta('meta[property="og:image:width"]', ogImageWidth);
+    else removeMeta('meta[property="og:image:width"]');
+    if (ogImageHeight) updateMeta('meta[property="og:image:height"]', ogImageHeight);
+    else removeMeta('meta[property="og:image:height"]');
+    if (ogImageAlt) {
+      updateMeta('meta[property="og:image:alt"]', ogImageAlt);
+      updateMeta('meta[name="twitter:image:alt"]', ogImageAlt);
+    } else {
+      removeMeta('meta[property="og:image:alt"]');
+      removeMeta('meta[name="twitter:image:alt"]');
+    }
 
     if (description) {
       let metaDescription = document.querySelector('meta[name="description"]');
@@ -74,7 +97,7 @@ export function useSEO({
       updateMeta('meta[property="og:description"]', description);
       updateMeta('meta[name="twitter:description"]', description);
     }
-  }, [title, description, ogImage, twitterImage]);
+  }, [title, description, ogImage, twitterImage, ogImageWidth, ogImageHeight, ogImageAlt, appendSiteName]);
 }
 
 export function useSEOAdvanced({
@@ -85,6 +108,10 @@ export function useSEOAdvanced({
   robots,
   ogImage,
   twitterImage,
+  ogImageWidth,
+  ogImageHeight,
+  ogImageAlt,
+  appendSiteName,
 }: {
   title: string;
   description?: string;
@@ -93,8 +120,12 @@ export function useSEOAdvanced({
   robots?: string;
   ogImage?: string;
   twitterImage?: string;
+  ogImageWidth?: string;
+  ogImageHeight?: string;
+  ogImageAlt?: string;
+  appendSiteName?: boolean;
 }) {
-  useSEO({ title, description, ogImage, twitterImage });
+  useSEO({ title, description, ogImage, twitterImage, ogImageWidth, ogImageHeight, ogImageAlt, appendSiteName });
 
   useEffect(() => {
     // Prefer explicit canonical, otherwise build from SITE_URL + current path
