@@ -68,7 +68,6 @@ export default defineConfig(async () => {
       rollupOptions: {
         input: {
           main: path.resolve(import.meta.dirname, "index.html"),
-          askPdfAiLab: path.resolve(import.meta.dirname, "labs/ask-pdf-ai.html"),
         },
         output: {
           manualChunks(id) {

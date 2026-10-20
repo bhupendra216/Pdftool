@@ -9,10 +9,6 @@
   ],
   "rewrites": [
     {
-      "source": "/labs/ask-pdf-ai",
-      "destination": "/labs/ask-pdf-ai.html"
-    },
-    {
       "source": "/api/(.*)",
       "destination": "/api/$1"
     }
