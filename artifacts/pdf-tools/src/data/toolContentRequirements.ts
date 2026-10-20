@@ -1,9 +1,10 @@
 import type { ToolRecord } from '../../../api-server/src/lib/content';
 import { getSuppliedToolFaqs } from './toolFaqs';
+import toolContent from './toolContent.js';
 
 export interface ToolContentRequirements {
   uniqueIntro: string;
-  useCases: Array<{ title: string; description: string; example: string }>;
+  useCases: Array<{ title: string; description: string; example?: string }>;
   howToSteps: Array<{ step: number; title: string; description: string }>;
   faqs: Array<{ question: string; answer: string }>;
   limitations: string[];
@@ -17,23 +18,10 @@ export interface ToolContentRequirements {
     type: 'browser-only' | 'server-processed' | 'hybrid';
     description: string;
   };
-  relatedTools: Array<{ tool: string; reason: string }>;
+  relatedTools: Array<{ tool: string; reason?: string }>;
   proTips?: string[];
   commonMistakes?: string[];
 }
-
-const relatedBySlug: Record<string, string[]> = {
-  'delete-pages': ['merge-pdf', 'split-pdf', 'organize-pdf', 'compress-pdf'],
-  'merge-pdf': ['split-pdf', 'organize-pdf', 'compress-pdf', 'delete-pages'],
-  'split-pdf': ['merge-pdf', 'delete-pages', 'organize-pdf', 'compress-pdf'],
-  'compress-pdf': ['merge-pdf', 'pdf-to-jpg', 'pdf-to-word', 'organize-pdf'],
-  'pdf-to-jpg': ['jpg-to-pdf', 'compress-pdf', 'pdf-to-word', 'split-pdf'],
-  'jpg-to-pdf': ['pdf-to-jpg', 'merge-pdf', 'compress-pdf', 'organize-pdf'],
-  'pdf-to-excel': ['pdf-to-word', 'pdf-to-markdown', 'ocr-pdf', 'compress-pdf'],
-  'ocr-pdf': ['pdf-to-word', 'pdf-to-text', 'pdf-to-markdown', 'pdf-to-excel'],
-  'protect-pdf': ['unlock-pdf', 'sign-pdf', 'watermark-pdf', 'merge-pdf'],
-  'unlock-pdf': ['protect-pdf', 'edit-pdf', 'delete-pages', 'organize-pdf'],
-};
 
 const customDeletePages: ToolContentRequirements = {
   uniqueIntro:
@@ -77,6 +65,45 @@ const customDeletePages: ToolContentRequirements = {
   commonMistakes: ['Selecting a page by appearance without checking its page number', 'Deleting the source file before reviewing the downloaded copy'],
 };
 
+const resumeBuilderContent: ToolContentRequirements = {
+  uniqueIntro:
+    'Create and edit a resume in your browser with sections for your summary, education, experience, skills, and more. Your resume is saved in this browser and is not uploaded; use the browser print dialog to print or save it as a PDF.',
+  useCases: [
+    { title: 'Create a job resume', description: 'Add contact details and organize experience, skills, and education for a job application.' },
+    { title: 'Prepare a higher-study CV', description: 'Arrange education, projects, publications, awards, and community work for an academic application.' },
+    { title: 'Export a shareable copy', description: 'Review the live preview, then use the browser print dialog to print or save the resume as PDF.' },
+  ],
+  howToSteps: [
+    { step: 1, title: 'Edit your details', description: 'Replace the fictional sample contact information and update the summary, education, skills, and other sections.' },
+    { step: 2, title: 'Organize the resume', description: 'Choose Job or Higher study mode, reorder sections, and add or hide sections as needed.' },
+    { step: 3, title: 'Review the preview', description: 'Check the resume content and choose A4 or Letter page size and optional compact spacing.' },
+    { step: 4, title: 'Print or save as PDF', description: 'Open the browser print dialog and select a printer or its Save as PDF option.' },
+  ],
+  faqs: [
+    { question: 'Is my resume uploaded?', answer: 'No. Resume content is kept in this browser using local storage. The builder does not upload resume content.' },
+    { question: 'How do I create a PDF?', answer: 'Select Print or save as PDF and use the browser print dialog. The builder does not create or upload a PDF through a server.' },
+    { question: 'Can I export or import my resume?', answer: 'Yes. You can export a JSON copy or import a supported resume JSON file up to 2 MB.' },
+    { question: 'What page sizes are available?', answer: 'The print page size can be set to A4 or Letter before opening the print dialog.' },
+  ],
+  limitations: [
+    'Resume data is saved in the current browser; clearing browser storage or using another device does not transfer it.',
+    'PDF output is produced by the browser print dialog, so final pagination and printer settings depend on the browser.',
+    'JSON import is limited to files up to 2 MB and to the fields supported by the builder.',
+  ],
+  technicalSpecs: {
+    inputFormats: ['No resume file required', 'Optional JSON import (up to 2 MB)'],
+    outputFormats: ['Browser print dialog / Save as PDF', 'JSON export'],
+    maxFileSize: '2 MB for optional JSON import; no document upload',
+    processingTime: 'Edits and preview update in the browser',
+  },
+  privacyModel: {
+    type: 'browser-only',
+    description: 'Resume data is stored in this browser and is not uploaded by the builder. Printing or saving a PDF uses the browser print dialog.',
+  },
+  relatedTools: [],
+  proTips: ['Replace or clear every sample item before sharing your resume.', 'Keep a JSON export if you want a portable backup.'],
+};
+
 function titleCase(slug: string) {
   return slug.split('-').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
 }
@@ -84,23 +111,20 @@ function titleCase(slug: string) {
 export function getToolContentRequirements(tool: ToolRecord): ToolContentRequirements {
   const suppliedFaqs = getSuppliedToolFaqs(tool.slug);
   if (tool.slug === 'delete-pages') return suppliedFaqs ? { ...customDeletePages, faqs: suppliedFaqs } : customDeletePages;
+  if (tool.slug === 'resume-builder') return resumeBuilderContent;
 
   const name = tool.name || titleCase(tool.slug);
-  const relatedSlugs = relatedBySlug[tool.slug] || ['merge-pdf', 'split-pdf', 'compress-pdf', 'organize-pdf'];
-  const relatedTools = relatedSlugs
+  const authoredContent = Object.entries(toolContent).find(([slug]) => slug === tool.slug)?.[1];
+  const relatedTools = authoredContent?.relatedTools
     .filter((slug) => slug !== tool.slug)
     .slice(0, 4)
-    .map((slug) => ({ tool: `/tools/${slug}`, reason: `Use ${titleCase(slug)} when your next document step requires a related PDF workflow.` }));
+    .map((slug) => ({ tool: `/tools/${slug}` })) ?? [];
+  const useCases = authoredContent?.useCases.map(({ title, description }) => ({ title, description })) ?? [];
   const subject = tool.shortDescription.replace(/[.]+$/, '');
 
   return {
     uniqueIntro: `${name} helps you ${subject.toLowerCase()}. It is designed for a focused browser workflow: choose a document, review the available options, and download a separate result without changing your original file. It can be useful for students, office teams, freelancers, and anyone who needs a quick document operation without installing a full desktop suite.`,
-    useCases: [
-      { title: 'Prepare a document for sharing', description: `Use ${name} when a document needs a focused, shareable version before it is sent to a client, colleague, or class.`, example: `Start with a copy of a report, run ${name}, then open the result before sending it.` },
-      { title: 'Handle routine office work', description: `Repeatable ${name} tasks can save time when invoices, applications, meeting documents, or project files need the same treatment.`, example: `Process a finished work document after checking its page order and file name.` },
-      { title: 'Work with a document on the go', description: `A current browser is enough for a quick ${name} workflow when you are using a different computer or do not have a PDF application installed.`, example: `Use the tool from a laptop, tablet, or shared workstation and download the result locally.` },
-      { title: 'Create a clean archival copy', description: `Use the output as a separate version for an archive, handoff, or upload while retaining the original as a reference copy.`, example: `Compare the processed file with the original before replacing an older working copy.` },
-    ],
+    useCases,
     howToSteps: [
       { step: 1, title: 'Choose your file', description: `Open ${name} and select a source file from your device. Confirm that you have permission to process its contents.` },
       { step: 2, title: 'Review the document', description: 'Check the preview and visible options before starting so the selected input and intended output are clear.' },

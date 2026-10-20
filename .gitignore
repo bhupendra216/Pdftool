@@ -5,6 +5,8 @@ dist
 tmp
 out-tsc
 *.tsbuildinfo
+/public/assets/
+/artifacts/pdf-tools/public/assets/
 .expo
 .expo-shared
 

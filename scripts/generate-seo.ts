@@ -433,14 +433,14 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
 
         <section><h2>About ${escapeHtml(tool.name)}</h2><p>${escapeHtml(content.uniqueIntro)}</p></section>
         <section><h2>How to use ${escapeHtml(tool.name)}</h2><ol>${steps}</ol></section>
-        <section><h2>Common use cases</h2>${content.useCases.map((item) => `<article><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.description)}</p><p><strong>Example:</strong> ${escapeHtml(item.example)}</p></article>`).join('')}</section>
+        ${content.useCases.length ? `<section><h2>Common use cases</h2>${content.useCases.map((item) => `<article><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.description)}</p>${item.example ? `<p><strong>Example:</strong> ${escapeHtml(item.example)}</p>` : ''}</article>`).join('')}</section>` : ''}
         <section><h2>Technical specifications</h2><dl><dt>Input formats</dt><dd>${escapeHtml(content.technicalSpecs.inputFormats.join(', '))}</dd><dt>Output formats</dt><dd>${escapeHtml(content.technicalSpecs.outputFormats.join(', '))}</dd><dt>Maximum file size</dt><dd>${escapeHtml(content.technicalSpecs.maxFileSize)}</dd><dt>Typical processing time</dt><dd>${escapeHtml(content.technicalSpecs.processingTime)}</dd></dl></section>
         <section><h2>Privacy and processing</h2><p>${escapeHtml(content.privacyModel.description)}</p><p>Processing model: ${escapeHtml(content.privacyModel.type)}.</p></section>
         <section><h2>Limitations and considerations</h2><ul>${content.limitations.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>
         <section><h2>Why use this tool</h2>${whyUseHtml}</section>
         <section><h2>Frequently asked questions</h2><ul>${contentFaqs.map((faq) => `<li><h3>${escapeHtml(faq.question)}</h3><p>${escapeHtml(faq.answer)}</p></li>`).join('')}</ul></section>
         ${renderToolInternalLinks(tool)}
-        <section><h2>Related tools</h2><ul>${content.relatedTools.map((item) => `<li><a href="${escapeHtml(item.tool)}">${escapeHtml(item.tool.replace('/tools/', '').split('-').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' '))}</a> — ${escapeHtml(item.reason)}</li>`).join('')}</ul></section>
+        ${content.relatedTools.length ? `<section><h2>Related tools</h2><ul>${content.relatedTools.map((item) => `<li><a href="${escapeHtml(item.tool)}">${escapeHtml(item.tool.replace('/tools/', '').split('-').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' '))}</a>${item.reason ? ` — ${escapeHtml(item.reason)}` : ''}</li>`).join('')}</ul></section>` : ''}
         ${content.proTips?.length ? `<section><h2>Pro tips</h2><ul>${content.proTips.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>` : ''}
         ${content.commonMistakes?.length ? `<section><h2>Common mistakes to avoid</h2><ul>${content.commonMistakes.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>` : ''}
 

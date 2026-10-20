@@ -45,6 +45,7 @@ import {
 } from "@/lib/pdfToMarkdown";
 import { MAX_PDF_SIZE_MB } from "@/lib/pdfToMarkdownConfig";
 import { PDF_TO_MARKDOWN_CONTENT } from "../../../api-server/src/lib/pdfToMarkdownContent";
+import { tools as staticToolCatalog } from "../../../api-server/src/lib/content";
 
 GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
 
@@ -285,7 +286,8 @@ export function ToolDetail(props?: any) {
   const rawSlug = forcedSlug ?? params.slug ?? props?.params?.slug;
   const { data: catalogTools = [] } = useListTools();
   const slug = resolveToolSlug(rawSlug, catalogTools);
-  const fallbackTool = {
+  const staticTool = staticToolCatalog.find((catalogTool) => catalogTool.slug === slug);
+  const fallbackTool = staticTool ?? {
     slug: slug ?? "",
     name: "",
     status: "comingSoon",
@@ -296,9 +298,10 @@ export function ToolDetail(props?: any) {
     blogSlug: "",
     description: "",
   } as any;
-  const { data: tool = fallbackTool, isLoading, isError } = useGetTool(slug ?? "", {
+  const { data: apiTool, isLoading, isError } = useGetTool(slug ?? "", {
     query: { enabled: !!slug, queryKey: ["getTool", slug ?? ""] },
   });
+  const tool = apiTool ?? fallbackTool;
   const { data: siteFaqs } = useListFaqs();
   const { data: blogPost } = useGetBlogPost(tool?.blogSlug || "", {
     query: { enabled: !!tool?.blogSlug, queryKey: ["getBlogPost", tool?.blogSlug] } as any,
@@ -1596,7 +1599,7 @@ export function ToolDetail(props?: any) {
     appendSiteName: tool?.slug !== "pdf-to-markdown",
   });
 
-  if (isLoading) {
+  if (isLoading && !staticTool) {
     return (
       <div className="container mx-auto px-4 py-20 max-w-4xl space-y-8">
         <BrandMark className="justify-center" logoClassName="h-10" wordmarkClassName="text-lg" />
@@ -1613,7 +1616,7 @@ export function ToolDetail(props?: any) {
     const fallbackSlug = resolveToolSlug(rawSlug, catalogTools) || tool?.slug;
     const hasStaticFallback = !!(fallbackSlug && TOOL_SEO_CONTENT[fallbackSlug]);
     const prerenderedFallbackExists = typeof window !== 'undefined' && !!document.getElementById('seo-fallback');
-    if (!hasStaticFallback && !prerenderedFallbackExists) return <NotFoundPage />;
+    if (!staticTool && !hasStaticFallback && !prerenderedFallbackExists) return <NotFoundPage />;
     // otherwise continue rendering so the static `ToolSeoSection` or prerendered fallback can show SEO content
   }
 

@@ -1,0 +1,776 @@
+import { expect, it, vi } from "vitest";
+import { PDFDocument } from "pdf-lib";
+import { cdp, page } from "vitest/browser";
+import { act, createElement } from "react";
+import { createRoot } from "react-dom/client";
+import { renderToStaticMarkup } from "react-dom/server";
+import {
+  applyModeOrder,
+  clearSampleData,
+  createBlankPublication,
+  createBlankResume,
+  createSampleResume,
+  DEFAULT_TYPOGRAPHY,
+  findMatchingAuthor,
+  isShareableDriveLink,
+  HIGHER_STUDY_ORDER,
+  INITIAL_VISIBLE_ORDER,
+  normalizePublicationLink,
+  normalizeResumeItemLink,
+  PAGE_CONTENT_HEIGHT_MM,
+  PAGE_CONTENT_WIDTH_MM,
+  PAGE_HEIGHT_MM,
+  PAGE_MARGIN_MM,
+  PAGE_PAGINATION_BUFFER_MM,
+  PAGE_PAGINATION_HEIGHT_MM,
+  PAGE_WIDTH_MM,
+  parseDescription,
+  publicationAuthorIndices,
+  publicationGroups,
+  preserveTypography,
+  sampleItemCount,
+  STORAGE_KEY,
+  TYPOGRAPHY_FONTS,
+  TYPOGRAPHY_RANGES,
+  validateResumeImport,
+} from "./model";
+import { Description, getPaperStyle, PublicationCitation, ResumeBuilder } from "./ResumeBuilder";
+import { paginateBlocks } from "./pagination";
+import { createResumePdf, downloadBlob } from "./pdf-export";
+import resumeBuilderCss from "./resume-builder.css?raw";
+import { getToolContentRequirements } from "@/data/toolContentRequirements";
+import { tools } from "../../../../api-server/src/lib/content";
+
+function contrastRatio(background: [number, number, number], foreground: [number, number, number]) {
+  const luminance = ([hue, saturation, lightness]: [number, number, number]) => {
+    const chroma = (1 - Math.abs(2 * lightness / 100 - 1)) * saturation / 100;
+    const section = hue / 60;
+    const secondary = chroma * (1 - Math.abs(section % 2 - 1));
+    const rgb = section < 1 ? [chroma, secondary, 0]
+      : section < 2 ? [secondary, chroma, 0]
+      : section < 3 ? [0, chroma, secondary]
+      : section < 4 ? [0, secondary, chroma]
+      : section < 5 ? [secondary, 0, chroma]
+      : [chroma, 0, secondary];
+    const offset = lightness / 100 - chroma / 2;
+    const linear = rgb.map((channel) => {
+      const value = channel + offset;
+      return value <= 0.04045 ? value / 12.92 : ((value + 0.055) / 1.055) ** 2.4;
+    });
+    return linear[0] * 0.2126 + linear[1] * 0.7152 + linear[2] * 0.0722;
+  };
+  const values = [luminance(background), luminance(foreground)].sort((left, right) => right - left);
+  return (values[0] + 0.05) / (values[1] + 0.05);
+}
+
+const samplePublication = () => createSampleResume().sections.find((section) => section.type === "publications")!.publications[0];
+
+it("starts with visible sections in Job order and a single sample publication", () => {
+  const resume = createSampleResume();
+  expect(resume.sections.filter((section) => section.visible).map((section) => section.type)).toEqual(INITIAL_VISIBLE_ORDER);
+  expect(resume.sections.filter((section) => !section.visible).map((section) => section.type)).toEqual(["projects", "custom"]);
+  const publication = resume.sections.find((section) => section.type === "publications");
+  expect(publication?.publications).toHaveLength(1);
+  expect(publication?.publications[0]).toMatchObject({
+    authors: ["J. Coauthor*", "C. Example*", "R. Researcher"],
+    selectedAuthorIndex: 1,
+    type: "Conference paper",
+    status: "Published",
+    title: "Example Title of a Research Paper",
+    venue: "Proceedings of the Example Conference",
+    year: "2025",
+    link: "https://example.com/doi",
+    role: "Implemented the experiments and wrote the methods section.",
+    sample: true,
+  });
+  expect(publication?.publicationOptions).toEqual({ numberedStyle: false, groupByType: false, shortenAuthors: false });
+  expect(sampleItemCount(resume)).toBe(16);
+});
+
+it("keeps the sample resume fictional, marker-free, and ordered for the selected mode", () => {
+  const resume = createSampleResume();
+  expect(resume.contact.fullName).toBe("Casey Example");
+  expect(resume.contact.email).toBe("casey.example@example.com");
+  expect(resume.contact.phone).toBe("+1 555-010-2040");
+  expect(resume.sections.find((section) => section.type === "summary")?.summary)
+    .toBe("Early-career operations coordinator who improves team workflows and keeps projects moving.");
+  expect(resume.sections.flatMap((section) => section.entries).map((entry) => entry.organization)).toContain("Cedar Grove Cooperative");
+  expect(resume.contact.links.every((link) => new URL(link.url).hostname.endsWith(".example"))).toBe(true);
+  expect(resume.sections.find((section) => section.type === "certifications")?.entries[0]).toMatchObject({
+    title: "Project Management Foundations",
+    organization: "Example Learning Institute",
+    dates: "2024",
+    link: "https://drive.google.com/drive/folders/1st88kUbePzHfxMK-8-Jwzd1fFysvf-IG",
+    sample: true,
+  });
+  expect(resume.sections.find((section) => section.type === "awards")?.entries[0]).toMatchObject({
+    title: "Community Service Recognition",
+    organization: "North Coast College",
+    dates: "2023",
+    link: "https://drive.google.com/drive/folders/1x1pobVV1iK7PNMCBSDxRW_z8e7WhtsPz",
+    sample: true,
+  });
+  expect(applyModeOrder(resume.sections, "Higher study", false).map((section) => section.type)).toEqual(HIGHER_STUDY_ORDER);
+  expect(applyModeOrder(resume.sections, "Higher study", false).find((section) => section.type === "publications")?.visible).toBe(true);
+});
+
+it("renders a single Summary textarea without generic entry controls", () => {
+  const markup = renderToStaticMarkup(createElement(ResumeBuilder));
+  const doc = new DOMParser().parseFromString(markup, "text/html");
+  const summaryCard = doc.querySelector('[aria-label="Summary section"]');
+  expect(summaryCard).not.toBeNull();
+  expect(summaryCard?.querySelectorAll("textarea")).toHaveLength(1);
+  expect(summaryCard?.querySelector("textarea")?.getAttribute("placeholder"))
+    .toBe("Two or three lines: who you are and what you want next.");
+  expect(summaryCard?.textContent).not.toContain("Add entry");
+  expect(summaryCard?.textContent).not.toContain("Remove entry");
+  expect(summaryCard?.textContent).not.toContain("Move entry");
+  expect(markup).not.toContain("i. Early-career");
+  expect(markup).toContain("Early-career operations coordinator who improves team workflows and keeps projects moving.");
+  expect(markup).toContain("Sample data: 16 sample items remain.");
+  expect(markup).toContain("How to list publications");
+  expect(markup).toContain("List all authors in the order printed on the paper. Never move yourself up.");
+  expect(markup).toContain("Text and fonts");
+  expect(markup).toContain("Fonts come from your device. If one isn’t installed, a similar font is used, and the PDF keeps the font you see on screen.");
+  expect(markup).toContain("Most resumes use 10 to 12 pt body text.");
+});
+
+it("renders summary paragraphs and only turns explicit dash or bullet prefixes into bullets", () => {
+  const markup = renderToStaticMarkup(createElement(Description, {
+    text: "Plain paragraph\n- A dash bullet\n• A dot bullet\ni. Not a list marker",
+  }));
+  expect(markup).toContain("<p>Plain paragraph</p>");
+  expect(markup).toContain("<li>A dash bullet</li>");
+  expect(markup).toContain("<li>A dot bullet</li>");
+  expect(markup).toContain("<p>i. Not a list marker</p>");
+  expect(parseDescription("- A\nA paragraph\n• B")).toEqual([
+    { kind: "bullet", text: "A" },
+    { kind: "paragraph", text: "A paragraph" },
+    { kind: "bullet", text: "B" },
+  ]);
+});
+
+it("migrates old Summary and Publications entries without dropping their text", () => {
+  const old = JSON.parse(JSON.stringify(createSampleResume())) as ReturnType<typeof createSampleResume>;
+  old.version = 1;
+  delete (old as Partial<typeof old>).typography;
+  for (const item of old.sections) {
+    for (const entry of item.entries) delete (entry as Partial<typeof entry>).link;
+  }
+  const summary = old.sections.find((section) => section.type === "summary")!;
+  summary.entries = [
+    { id: "summary-sample", title: "", organization: "", location: "", dates: "", description: "i. First sample line", sample: true },
+    { id: "summary-empty", title: "", organization: "", location: "", dates: "", description: "  ", sample: false },
+    { id: "summary-second", title: "", organization: "", location: "", dates: "", description: "Second paragraph", sample: false },
+    { id: "summary-extra", title: "Legacy title text", organization: "", location: "", dates: "", description: "", sample: false },
+  ];
+  const publications = old.sections.find((section) => section.type === "publications")!;
+  publications.entries = [{
+    id: "old-publication",
+    title: "Old paper title",
+    organization: "Old venue",
+    location: "Old location",
+    dates: "2024",
+    description: "Old contribution details",
+    sample: false,
+  }];
+  for (const section of old.sections) {
+    delete (section as Partial<typeof section>).summary;
+    delete (section as Partial<typeof section>).summarySample;
+    delete (section as Partial<typeof section>).publications;
+    delete (section as Partial<typeof section>).publicationOptions;
+  }
+  const migrated = validateResumeImport(old);
+  expect(migrated.sections.find((section) => section.type === "summary")).toMatchObject({
+    summary: "First sample line\nSecond paragraph\nLegacy title text",
+    summarySample: true,
+    entries: [],
+  });
+  expect(migrated.sections.find((section) => section.type === "publications")?.publications[0]).toMatchObject({
+    title: "Old paper title",
+    venue: "Old venue",
+    year: "2024",
+    role: "Old contribution details\nLocation: Old location",
+  });
+  expect(migrated.version).toBe(2);
+  expect(migrated.typography).toEqual(DEFAULT_TYPOGRAPHY);
+});
+
+it("matches exactly one full or initial-and-surname author and rejects ambiguity", () => {
+  expect(findMatchingAuthor(["J. Person", "casey example*"], "Casey Example")).toBe(1);
+  expect(findMatchingAuthor(["J. Person", "C. Example†"], "Casey Example")).toBe(1);
+  expect(findMatchingAuthor(["Casey Example", "C. Example*"], "Casey Example")).toBeNull();
+  expect(findMatchingAuthor(["C. Example"], "Casey Johnson")).toBeNull();
+  const imported = JSON.parse(JSON.stringify(createSampleResume())) as ReturnType<typeof createSampleResume>;
+  const publication = imported.sections.find((section) => section.type === "publications")!.publications[0];
+  publication.authors = ["C. Example*", "R. Researcher"];
+  publication.selectedAuthorIndex = null;
+  delete (publication as Partial<typeof publication>).selectedAuthorIndex;
+  expect(validateResumeImport(imported).sections.find((section) => section.type === "publications")?.publications[0].selectedAuthorIndex).toBe(0);
+});
+
+it("keeps publication author order, selected emphasis, author marks, status, and italic venue", () => {
+  const publication = {
+    ...samplePublication(),
+    authors: ["J. Coauthor*", "C. Example†", "R. Researcher"],
+    selectedAuthorIndex: 1,
+    status: "Under review" as const,
+  };
+  const markup = renderToStaticMarkup(createElement(PublicationCitation, {
+    publication, number: 1, numbered: false, shortenAuthors: false,
+  }));
+  expect(markup.indexOf("J. Coauthor*")).toBeLessThan(markup.indexOf("C. Example†"));
+  expect(markup.indexOf("C. Example†")).toBeLessThan(markup.indexOf("R. Researcher"));
+  expect(markup).toContain("<strong>C. Example†</strong>");
+  expect(markup).toContain(" (under review).");
+  expect(markup).toContain("<em>Proceedings of the Example Conference</em>");
+  expect(markup).toContain("2025 (under review)");
+});
+
+it("renders all non-published status suffixes", () => {
+  const base = samplePublication();
+  for (const [status, text] of [
+    ["Accepted", "(accepted)"],
+    ["Under review", "(under review)"],
+    ["In preparation", "(in preparation)"],
+  ] as const) {
+    const markup = renderToStaticMarkup(createElement(PublicationCitation, {
+      publication: { ...base, status }, number: 1, numbered: false, shortenAuthors: false,
+    }));
+    expect(markup).toContain(text);
+  }
+});
+
+it("renders publication titles as links without displaying the raw URL", () => {
+  expect(normalizePublicationLink("https://example.com/doi")).toBe("https://example.com/doi");
+  expect(normalizePublicationLink("http://example.com/doi")).toBe("http://example.com/doi");
+  expect(normalizePublicationLink("  https://example.com/doi  ")).toBe("https://example.com/doi");
+  expect(normalizePublicationLink("javascript:alert(1)")).toBeNull();
+  expect(normalizePublicationLink("data:text/html,hello")).toBeNull();
+  expect(normalizePublicationLink("file:///tmp/resume")).toBeNull();
+  expect(normalizePublicationLink("mailto:hello@example.com")).toBeNull();
+  expect(normalizePublicationLink("10.1234/example.doi")).toBe("https://doi.org/10.1234/example.doi");
+  expect(normalizePublicationLink("doi:10.12345/example.doi")).toBe("https://doi.org/10.12345/example.doi");
+  expect(normalizePublicationLink(`https://example.com/${"x".repeat(2_040)}`)).toBeNull();
+  const base = samplePublication();
+  const safeMarkup = renderToStaticMarkup(createElement(PublicationCitation, {
+    publication: { ...base, link: "https://example.com/doi" }, number: 1, numbered: false, shortenAuthors: false,
+  }));
+  const parsed = new DOMParser().parseFromString(safeMarkup, "text/html");
+  expect(parsed.querySelector("a")?.textContent).toBe("Example Title of a Research Paper");
+  expect(parsed.querySelector("a")?.getAttribute("href")).toBe("https://example.com/doi");
+  expect(parsed.querySelector("a")?.getAttribute("target")).toBe("_blank");
+  expect(parsed.querySelector("a")?.getAttribute("rel")).toBe("noopener noreferrer");
+  expect(parsed.body.textContent).not.toContain("https://example.com/doi");
+  const unsafeMarkup = renderToStaticMarkup(createElement(PublicationCitation, {
+    publication: { ...base, link: "javascript:alert(1)" }, number: 1, numbered: false, shortenAuthors: false,
+  }));
+  expect(new DOMParser().parseFromString(unsafeMarkup, "text/html").querySelector("a")).toBeNull();
+  expect(unsafeMarkup).not.toContain("javascript:");
+  expect(resumeBuilderCss).toContain(".rb-paper a { color: inherit; text-decoration: var(--rb-link-decoration); }");
+  expect(resumeBuilderCss).toContain("body.rb-print-mode .rb-paper a { color: #000 !important; text-decoration: none !important;");
+  expect(resumeBuilderCss).not.toMatch(/a::after|a:after|attr\\(href\\)/);
+});
+
+it("uses fixed A4 dimensions, ignores an old page-size field, and prints fixed-margin sheets", () => {
+  expect([PAGE_WIDTH_MM, PAGE_HEIGHT_MM, PAGE_MARGIN_MM, PAGE_CONTENT_WIDTH_MM, PAGE_CONTENT_HEIGHT_MM,
+    PAGE_PAGINATION_BUFFER_MM, PAGE_PAGINATION_HEIGHT_MM])
+    .toEqual([210, 297, 20, 170, 257, 2, 255]);
+  const oldResume = { ...createSampleResume(), pageSize: "Letter" };
+  const imported = validateResumeImport(oldResume);
+  expect("pageSize" in imported).toBe(false);
+  expect(JSON.stringify(imported)).not.toContain("pageSize");
+  expect(resumeBuilderCss).toContain("@page { size: A4; margin: 0; }");
+  expect(resumeBuilderCss).toContain("width: var(--rb-content-width); height: var(--rb-content-height);");
+  expect(resumeBuilderCss).toContain("body.rb-print-mode .rb-page-wrap:last-child");
+  const markup = renderToStaticMarkup(createElement(ResumeBuilder));
+  expect(markup).not.toContain("Page size");
+  expect(markup).not.toContain("Letter");
+  expect(markup).toContain("Download file");
+  expect(markup).not.toContain("Print or save as PDF");
+  expect(markup).not.toContain("In the print dialog choose A4");
+});
+
+it("creates a downloadable A4 PDF with the resume name as its filename", async () => {
+  const pdfBytes = await createResumePdf(createSampleResume());
+  const pdf = await PDFDocument.load(pdfBytes);
+  expect(pdf.getPageCount()).toBeGreaterThan(0);
+  expect(pdf.getTitle()).toBe("Casey Example - Resume");
+  expect(pdf.getPage(0).getSize().width).toBeCloseTo(PAGE_WIDTH_MM * 72 / 25.4, 2);
+  expect(pdf.getPage(0).getSize().height).toBeCloseTo(PAGE_HEIGHT_MM * 72 / 25.4, 2);
+
+  const createUrl = vi.spyOn(URL, "createObjectURL").mockReturnValue("blob:resume-download");
+  const revokeUrl = vi.spyOn(URL, "revokeObjectURL").mockImplementation(() => undefined);
+  let downloadedFilename = "";
+  const click = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (this: HTMLAnchorElement) {
+    downloadedFilename = this.download;
+  });
+  try {
+    downloadBlob(new Blob([pdfBytes], { type: "application/pdf" }), "Casey Example.pdf");
+    expect(downloadedFilename).toBe("Casey Example.pdf");
+    expect(createUrl).toHaveBeenCalledWith(expect.objectContaining({ type: "application/pdf" }));
+    expect(click).toHaveBeenCalledOnce();
+  } finally {
+    createUrl.mockRestore();
+    revokeUrl.mockRestore();
+    click.mockRestore();
+  }
+});
+
+it("renders a long resume into measured A4 sheets without overflowing page content", async () => {
+  window.localStorage.removeItem(STORAGE_KEY);
+  const resume = createSampleResume();
+  const summary = resume.sections.find((section) => section.type === "summary");
+  if (!summary) throw new Error("The sample resume must include Summary.");
+  summary.summary = "Experienced coordinator who improves team workflows and keeps projects moving. ".repeat(700);
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(resume));
+  const host = document.createElement("div");
+  const style = document.createElement("style");
+  style.textContent = resumeBuilderCss;
+  document.head.append(style);
+  document.body.append(host);
+  const root = createRoot(host);
+  const previousActEnvironment = globalThis.IS_REACT_ACT_ENVIRONMENT;
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  try {
+    await act(async () => root.render(createElement(ResumeBuilder)));
+    await new Promise((resolve) => window.setTimeout(resolve, 600));
+    await act(async () => Promise.resolve());
+    const previewButton = Array.from(host.querySelectorAll("button")).find((button) => button.textContent?.trim() === "Preview");
+    expect(previewButton).toBeDefined();
+    await act(async () => previewButton?.click());
+    await new Promise((resolve) => window.setTimeout(resolve, 150));
+    await act(async () => Promise.resolve());
+    const sheets = host.querySelectorAll<HTMLElement>(".rb-page-wrap");
+    const count = Number(host.querySelector(".rb-page-count")?.textContent?.match(/\d+/)?.[0]);
+    expect(count).toBeGreaterThan(1);
+    expect(sheets).toHaveLength(count);
+    expect(host.querySelector(".rb-page-label")?.textContent).toBe(`Page 1 of ${count}`);
+    const measureContent = host.querySelector<HTMLElement>(".rb-measure-paper .rb-page-content");
+    expect(measureContent?.style.width).toBe("170mm");
+    expect(measureContent?.style.height).toBe("257mm");
+    const sheet = host.querySelector<HTMLElement>(".rb-page-wrap .rb-paper");
+    expect(sheet?.style.width).toBe("210mm");
+    expect(sheet?.style.height).toBe("297mm");
+    expect(sheet?.style.padding).toBe("20mm");
+    for (const sheet of sheets) {
+      const content = sheet.querySelector<HTMLElement>(".rb-page-content");
+      expect(content).not.toBeNull();
+      expect(content!.scrollHeight).toBeLessThanOrEqual(content!.clientHeight);
+      const contentTop = content!.getBoundingClientRect().top;
+      const contentBottom = Math.max(...Array.from(
+        content!.querySelectorAll<HTMLElement>(".rb-page-block"),
+        (block) => block.getBoundingClientRect().bottom,
+      ));
+      expect(contentBottom - contentTop).toBeLessThanOrEqual(PAGE_PAGINATION_HEIGHT_MM * 96 / 25.4);
+    }
+    const bufferedHeight = PAGE_PAGINATION_HEIGHT_MM * 96 / 25.4;
+    const simpleBlocks = [{ id: "under-one-page", height: 40 }];
+    expect(paginateBlocks(simpleBlocks, bufferedHeight)).toHaveLength(1);
+    expect(paginateBlocks(simpleBlocks, bufferedHeight)).toEqual(paginateBlocks(simpleBlocks, bufferedHeight));
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    style.remove();
+    window.localStorage.removeItem(STORAGE_KEY);
+    globalThis.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+  }
+});
+
+it("measures at natural width while Edit is active and the narrow preview pane is hidden", async () => {
+  await page.viewport(390, 844);
+  window.localStorage.removeItem(STORAGE_KEY);
+  const host = document.createElement("div");
+  const style = document.createElement("style");
+  style.textContent = resumeBuilderCss;
+  document.head.append(style);
+  document.body.append(host);
+  const root = createRoot(host);
+  const previousActEnvironment = globalThis.IS_REACT_ACT_ENVIRONMENT;
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  try {
+    await act(async () => root.render(createElement(ResumeBuilder)));
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+    const layout = host.querySelector<HTMLElement>(".rb-layout");
+    const preview = host.querySelector<HTMLElement>(".rb-preview-pane");
+    const measuring = host.querySelector<HTMLElement>(".rb-measure-paper");
+    const measuredContent = measuring?.querySelector<HTMLElement>(".rb-page-content");
+    const paper = host.querySelector<HTMLElement>(".rb-preview-pane .rb-paper");
+    expect(layout?.dataset.mobileView).toBe("edit");
+    expect(preview).not.toBeNull();
+    expect(getComputedStyle(preview!).display).toBe("none");
+    expect(measuring?.getAttribute("aria-hidden")).toBe("true");
+    expect(measuring?.hasAttribute("inert")).toBe(true);
+    expect(getComputedStyle(measuring!).display).not.toBe("none");
+    expect(measuring!.getBoundingClientRect().height).toBeGreaterThan(0);
+    expect(measuredContent?.style.width).toBe("170mm");
+    expect(measuredContent!.getBoundingClientRect().width).toBeCloseTo(170 * 96 / 25.4, 0);
+    expect(getComputedStyle(measuring!).getPropertyValue("--rb-body-size"))
+      .toBe(getComputedStyle(paper!).getPropertyValue("--rb-body-size"));
+    expect(host.querySelectorAll(".rb-page-wrap").length).toBeGreaterThan(0);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    style.remove();
+    window.localStorage.removeItem(STORAGE_KEY);
+    globalThis.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+    await page.viewport(1280, 900);
+  }
+});
+
+it("prints visible sheets while Edit is active at a narrow viewport", async () => {
+  await page.viewport(390, 844);
+  window.localStorage.removeItem(STORAGE_KEY);
+  const host = document.createElement("div");
+  const style = document.createElement("style");
+  style.textContent = resumeBuilderCss;
+  document.head.append(style);
+  document.body.append(host);
+  const root = createRoot(host);
+  const previousActEnvironment = globalThis.IS_REACT_ACT_ENVIRONMENT;
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  const session = cdp();
+  try {
+    await act(async () => root.render(createElement(ResumeBuilder)));
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+    const layout = host.querySelector<HTMLElement>(".rb-layout");
+    const preview = host.querySelector<HTMLElement>(".rb-preview-pane");
+    expect(layout?.dataset.mobileView).toBe("edit");
+    expect(getComputedStyle(preview!).display).toBe("none");
+
+    await session.send("Emulation.setEmulatedMedia", { media: "print" });
+    expect(window.matchMedia("print").matches).toBe(true);
+    expect(getComputedStyle(preview!).display).toBe("block");
+    expect(getComputedStyle(preview!).visibility).toBe("visible");
+    const sheets = host.querySelectorAll<HTMLElement>(".rb-page-wrap");
+    expect(sheets.length).toBeGreaterThan(0);
+    for (const sheet of sheets) {
+      const paper = sheet.querySelector<HTMLElement>(".rb-paper");
+      expect(paper).not.toBeNull();
+      expect(getComputedStyle(paper!).visibility).toBe("visible");
+      expect(getComputedStyle(paper!).display).toBe("block");
+      expect(getComputedStyle(paper!).transform).toBe("none");
+    }
+  } finally {
+    await session.send("Emulation.setEmulatedMedia", { media: "screen" });
+    await act(async () => root.unmount());
+    host.remove();
+    style.remove();
+    window.localStorage.removeItem(STORAGE_KEY);
+    globalThis.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+    await page.viewport(1280, 900);
+  }
+});
+
+it("renders award and certification titles as safe clickable links and preserves phone as text", () => {
+  const markup = renderToStaticMarkup(createElement(ResumeBuilder));
+  const doc = new DOMParser().parseFromString(markup, "text/html");
+  const certLink = "https://drive.google.com/drive/folders/1st88kUbePzHfxMK-8-Jwzd1fFysvf-IG";
+  const awardLink = "https://drive.google.com/drive/folders/1x1pobVV1iK7PNMCBSDxRW_z8e7WhtsPz";
+  expect(doc.querySelector(`a[href="${certLink}"]`)?.textContent).toBe("Project Management Foundations");
+  expect(doc.querySelector(`a[href="${awardLink}"]`)?.textContent).toBe("Community Service Recognition");
+  expect(doc.querySelector(`a[href="${certLink}"]`)?.getAttribute("target")).toBe("_blank");
+  expect(doc.querySelector(`a[href="${awardLink}"]`)?.getAttribute("rel")).toBe("noopener noreferrer");
+  expect(doc.body.textContent).not.toContain(certLink);
+  expect(doc.body.textContent).not.toContain(awardLink);
+  expect(doc.body.textContent).toContain("Paste a link to your certificate or award letter from Google Drive, Dropbox, OneDrive or your own site.");
+  expect(doc.body.textContent).toContain("Check that sharing is set to ‘Anyone with the link can view’.");
+  expect(doc.querySelector('a[href^="tel:"]')).toBeNull();
+  expect(doc.querySelector('a[href="mailto:casey.example@example.com"]')?.getAttribute("rel")).toBe("noopener noreferrer");
+  expect(isShareableDriveLink(certLink)).toBe(true);
+  expect(isShareableDriveLink("https://example.com")).toBe(false);
+  expect(normalizeResumeItemLink(" https://example.com/certificate ")).toBe("https://example.com/certificate");
+  for (const invalid of ["javascript:alert(1)", "data:text/html,x", "file:///tmp/x", "mailto:person@example.com"]) {
+    expect(normalizeResumeItemLink(invalid)).toBeNull();
+  }
+});
+
+it("removes resume entries and publications without a render error", async () => {
+  window.localStorage.removeItem(STORAGE_KEY);
+  const host = document.createElement("div");
+  const style = document.createElement("style");
+  style.textContent = resumeBuilderCss;
+  document.head.append(style);
+  document.body.append(host);
+  const root = createRoot(host);
+  const previousActEnvironment = globalThis.IS_REACT_ACT_ENVIRONMENT;
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  try {
+    await act(async () => root.render(createElement(ResumeBuilder)));
+    await new Promise((resolve) => window.setTimeout(resolve, 250));
+    const experience = host.querySelector('[aria-label="Experience section"]');
+    expect(experience?.querySelectorAll(".rb-entry-form")).toHaveLength(1);
+    const removeExperience = experience?.querySelector<HTMLButtonElement>('[aria-label="Remove entry 1"]');
+    expect(removeExperience).not.toBeNull();
+    await act(async () => removeExperience?.click());
+    expect(experience?.querySelectorAll(".rb-entry-form")).toHaveLength(0);
+
+    const publications = host.querySelector('[aria-label="Publications section"]');
+    const removePublication = publications?.querySelector<HTMLButtonElement>('[aria-label="Remove publication 1"]');
+    expect(removePublication).not.toBeNull();
+    await act(async () => removePublication?.click());
+    expect(publications?.querySelectorAll(".rb-publication-form")).toHaveLength(0);
+    await new Promise((resolve) => window.setTimeout(resolve, 150));
+    const saved = validateResumeImport(JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null"));
+    expect(saved.sections.find((section) => section.type === "experience")?.entries).toHaveLength(0);
+    expect(saved.sections.find((section) => section.type === "publications")?.publications).toHaveLength(0);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    style.remove();
+    window.localStorage.removeItem(STORAGE_KEY);
+    globalThis.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+  }
+});
+
+it("starts with and saves a fresh sample when a saved draft exists before refresh", async () => {
+  const oldDraft = createBlankResume();
+  oldDraft.contact.fullName = "Previously saved user";
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(oldDraft));
+  const host = document.createElement("div");
+  const style = document.createElement("style");
+  style.textContent = resumeBuilderCss;
+  document.head.append(style);
+  document.body.append(host);
+  const root = createRoot(host);
+  const previousActEnvironment = globalThis.IS_REACT_ACT_ENVIRONMENT;
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  try {
+    await act(async () => root.render(createElement(ResumeBuilder)));
+    expect(host.querySelector(".rb-name")?.textContent).toBe("Casey Example");
+    expect(host.textContent).toContain("Sample data: 16 sample items remain.");
+    const persisted = validateResumeImport(JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null"));
+    expect(persisted.contact.fullName).toBe("Casey Example");
+    expect(sampleItemCount(persisted)).toBe(16);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    style.remove();
+    window.localStorage.removeItem(STORAGE_KEY);
+    globalThis.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+  }
+});
+
+it("preserves sample link fields through sample actions and validates link fields in JSON", () => {
+  const resume = createSampleResume();
+  expect(resume.sections.find((section) => section.type === "certifications")?.entries[0].sample).toBe(true);
+  expect(resume.sections.find((section) => section.type === "awards")?.entries[0].sample).toBe(true);
+  const cleared = clearSampleData(resume);
+  expect(cleared.sections.find((section) => section.type === "certifications")?.entries).toEqual([]);
+  expect(cleared.sections.find((section) => section.type === "awards")?.entries).toEqual([]);
+  expect(createBlankResume().sections.find((section) => section.type === "certifications")?.entries).toEqual([]);
+  expect(createBlankResume().sections.find((section) => section.type === "awards")?.entries).toEqual([]);
+
+  const json = JSON.parse(JSON.stringify(resume));
+  json.sections.find((section: { type: string }) => section.type === "awards").entries[0].link = "javascript:alert(1)";
+  expect(() => validateResumeImport(json)).toThrow("must use http or https and be at most 2048 characters");
+  json.sections.find((section: { type: string }) => section.type === "awards").entries[0].link = `https://example.com/${"x".repeat(2048)}`;
+  expect(() => validateResumeImport(json)).toThrow("at most 2048 characters");
+});
+
+it("supports numbering, type grouping order, and short author lists", () => {
+  const base = samplePublication();
+  const numbered = renderToStaticMarkup(createElement(PublicationCitation, {
+    publication: base, number: 3, numbered: true, shortenAuthors: false,
+  }));
+  expect(numbered).toContain("[3]");
+
+  const publications = [
+    { ...base, type: "Other" as const, id: "other" },
+    { ...base, type: "Journal article" as const, id: "journal" },
+    { ...base, type: "Thesis" as const, id: "thesis" },
+    { ...base, type: "Conference paper" as const, id: "conference" },
+  ];
+  expect(publicationGroups(publications).map((group) => group.type)).toEqual([
+    "Journal article", "Conference paper", "Thesis", "Other",
+  ]);
+  expect(publicationAuthorIndices({ ...base, authors: ["A", "B", "C", "D", "E", "F", "G"], selectedAuthorIndex: 5 }, true))
+    .toEqual([0, 1, 2]);
+  expect(publicationAuthorIndices({ ...base, authors: ["A", "B", "C", "D", "E", "F", "G"], selectedAuthorIndex: null }, true))
+    .toEqual([0, 1, 2]);
+  const shortened = renderToStaticMarkup(createElement(PublicationCitation, {
+    publication: { ...base, authors: ["A One", "B Two", "C Three", "D Four", "E Five", "F Six", "G Seven"], selectedAuthorIndex: 5 },
+    number: 1, numbered: false, shortenAuthors: true,
+  }));
+  expect(shortened).toContain("…");
+  expect(shortened).toContain("<strong>F Six</strong>");
+  expect(shortened).toContain("et al.");
+  const shortenedWithoutSelection = renderToStaticMarkup(createElement(PublicationCitation, {
+    publication: { ...base, authors: ["A One", "B Two", "C Three", "D Four", "E Five", "F Six", "G Seven"], selectedAuthorIndex: null },
+    number: 1, numbered: false, shortenAuthors: true,
+  }));
+  expect(new DOMParser().parseFromString(shortenedWithoutSelection, "text/html").body.textContent)
+    .toContain("A One, B Two, C Three, …, et al. Example Title of a Research Paper");
+  expect(shortenedWithoutSelection).not.toContain("<strong>");
+});
+
+it("counts sample publications, clears their content, and keeps blank starts and entries empty", () => {
+  const sample = createSampleResume();
+  const cleared = clearSampleData(sample);
+  expect(cleared.sections.find((section) => section.type === "publications")).toMatchObject({
+    visible: true,
+    publications: [],
+  });
+  expect(sampleItemCount(cleared)).toBe(0);
+  const blank = createBlankResume();
+  expect(blank.sections.find((section) => section.type === "publications")).toMatchObject({
+    visible: true,
+    publications: [],
+  });
+  expect(blank.sections.find((section) => section.type === "summary")).toMatchObject({ summary: "", summarySample: false });
+  expect(sampleItemCount(createSampleResume())).toBe(sampleItemCount(clearSampleData(createBlankResume())) + 16);
+  expect(createBlankPublication()).toMatchObject({
+    title: "", authors: [], selectedAuthorIndex: null, venue: "", year: "", link: "", role: "", sample: false,
+  });
+});
+
+it("drops unknown import fields and rejects invalid publication data and overlong text", () => {
+  const valid = createSampleResume();
+  expect(validateResumeImport(JSON.parse(JSON.stringify(valid)))).toEqual(valid);
+  const unknownFields = JSON.parse(JSON.stringify(valid));
+  unknownFields.unexpected = true;
+  unknownFields.contact.unexpected = "discard";
+  const sanitized = validateResumeImport(unknownFields);
+  expect(sanitized).not.toHaveProperty("unexpected");
+  expect(sanitized.contact).not.toHaveProperty("unexpected");
+  const invalidLink = JSON.parse(JSON.stringify(valid));
+  invalidLink.sections.find((section: { type: string }) => section.type === "publications").publications[0].link = "data:text/html,hello";
+  expect(() => validateResumeImport(invalidLink)).toThrow("http or https URL or a valid DOI");
+  invalidLink.sections.find((section: { type: string }) => section.type === "publications").publications[0].link = "javascript:alert(1)";
+  expect(() => validateResumeImport(invalidLink)).toThrow("http or https URL or a valid DOI");
+  const invalidType = JSON.parse(JSON.stringify(valid));
+  invalidType.sections.find((section: { type: string }) => section.type === "publications").publications[0].type = "Magazine";
+  expect(() => validateResumeImport(invalidType)).toThrow("supported publication type");
+  const invalidStatus = JSON.parse(JSON.stringify(valid));
+  invalidStatus.sections.find((section: { type: string }) => section.type === "publications").publications[0].status = "Rejected";
+  expect(() => validateResumeImport(invalidStatus)).toThrow("supported publication status");
+  const tooLong = JSON.parse(JSON.stringify(valid));
+  tooLong.sections.find((section: { type: string }) => section.type === "publications").publications[0].title = "x".repeat(501);
+  expect(() => validateResumeImport(tooLong)).toThrow("at most 500 characters");
+});
+
+it("escapes user text in summaries and every publication field", () => {
+  const unsafe = "<img onerror=alert(1)>";
+  const summaryMarkup = renderToStaticMarkup(createElement(Description, { text: unsafe }));
+  const publicationMarkup = renderToStaticMarkup(createElement(PublicationCitation, {
+    publication: { ...samplePublication(), title: unsafe, authors: [unsafe], venue: unsafe, year: unsafe, link: "", role: unsafe },
+    number: 1, numbered: false, shortenAuthors: false,
+  }));
+  expect(summaryMarkup).toContain("&lt;img onerror=alert(1)&gt;");
+  expect(publicationMarkup.match(/&lt;img onerror=alert\(1\)&gt;/g)).toHaveLength(5);
+  expect(publicationMarkup).not.toContain("<img");
+});
+
+it("generates accurate public-page copy for the browser-only resume builder", () => {
+  const tool = tools.find(({ slug }) => slug === "resume-builder");
+  if (!tool) throw new Error("Resume Builder is missing from the public tool catalog.");
+  const content = getToolContentRequirements(tool);
+
+  expect(content.privacyModel.type).toBe("browser-only");
+  expect(content.uniqueIntro).toContain("not uploaded");
+  expect(content.technicalSpecs.outputFormats).toContain("Browser print dialog / Save as PDF");
+  expect(content.technicalSpecs.maxFileSize).toContain("2 MB");
+  expect(content.howToSteps.map(({ title }) => title)).toContain("Print or save as PDF");
+  expect(content.uniqueIntro).not.toContain("choose a document");
+});
+
+it("keeps primary text token contrast at WCAG AA in both themes", () => {
+  const themePairs: Array<[string, [number, number, number], [number, number, number]]> = [
+    ["light foreground on background", [40, 20, 98], [220, 40, 15]],
+    ["light muted text on background", [40, 20, 98], [220, 15, 45]],
+    ["light card text", [0, 0, 100], [220, 40, 15]],
+    ["light primary button", [222, 47, 20], [0, 0, 100]],
+    ["light secondary button", [150, 20, 92], [150, 40, 20]],
+    ["dark foreground on background", [220, 40, 4], [40, 20, 98]],
+    ["dark muted text on background", [220, 40, 4], [220, 15, 65]],
+    ["dark card text", [220, 40, 6], [40, 20, 98]],
+    ["dark primary button", [222, 47, 80], [220, 40, 4]],
+    ["dark secondary button", [220, 20, 15], [40, 20, 98]],
+  ];
+  for (const [pair, background, foreground] of themePairs) {
+    expect(contrastRatio(background, foreground), pair).toBeGreaterThanOrEqual(4.5);
+  }
+});
+
+it("uses baseline typography defaults that reproduce the existing pixel sizes", () => {
+  const style = getPaperStyle(DEFAULT_TYPOGRAPHY);
+  expect(style["--rb-font-family"]).toBe("Georgia, serif");
+  expect(style["--rb-name-size"]).toBe("24.8px");
+  expect(style["--rb-section-size"]).toBe("16px");
+  expect(style["--rb-subheading-size"]).toBe("15.2px");
+  expect(style["--rb-body-size"]).toBe("16px");
+  expect(style["--rb-contact-size"]).toBe("calc(var(--rb-body-size) * 0.82)");
+  expect(style["--rb-organization-size"]).toBe("calc(var(--rb-subheading-size) * 0.9052631578947368)");
+  expect(style["--rb-location-size"]).toBe("calc(var(--rb-subheading-size) * 0.9052631578947368)");
+  expect(style["--rb-date-size"]).toBe("calc(var(--rb-subheading-size) * 0.8631578947368421)");
+  expect(style["--rb-link-decoration"]).toBe("underline");
+  expect(DEFAULT_TYPOGRAPHY.namePt * 1.333).toBeCloseTo(24.8, 8);
+  expect(DEFAULT_TYPOGRAPHY.sectionHeadingPt * 1.333).toBeCloseTo(16, 8);
+  expect(DEFAULT_TYPOGRAPHY.subheadingPt * 1.333).toBeCloseTo(15.2, 8);
+  expect(DEFAULT_TYPOGRAPHY.bodyPt * 1.333).toBeCloseTo(16, 8);
+  expect(Math.round(DEFAULT_TYPOGRAPHY.namePt * 2) / 2).toBe(18.5);
+  expect(Math.round(DEFAULT_TYPOGRAPHY.sectionHeadingPt * 2) / 2).toBe(12);
+  expect(Math.round(DEFAULT_TYPOGRAPHY.subheadingPt * 2) / 2).toBe(11.5);
+  expect(Math.round(DEFAULT_TYPOGRAPHY.bodyPt * 2) / 2).toBe(12);
+  expect(resumeBuilderCss).toContain("font-size: var(--rb-name-size)");
+  expect(resumeBuilderCss).toContain("font-size: var(--rb-section-size)");
+  expect(resumeBuilderCss).toContain("font-size: var(--rb-subheading-size)");
+  expect(resumeBuilderCss).toContain("font-size: var(--rb-body-size)");
+  expect(resumeBuilderCss).toContain("font-size: var(--rb-contact-size) !important");
+  expect(resumeBuilderCss).toContain("font-size: var(--rb-organization-size) !important");
+  expect(resumeBuilderCss).toContain("font-size: var(--rb-date-size) !important");
+  expect(resumeBuilderCss.slice(resumeBuilderCss.indexOf("@media print"))).not.toMatch(/font-size:\s*[\d.]+(?:px|rem|pt)/);
+});
+
+it("applies every system font choice and validates persisted typography safely", () => {
+  expect(TYPOGRAPHY_FONTS.map(({ id }) => id)).toEqual([
+    "default", "times-new-roman", "georgia", "cambria", "arial", "calibri",
+  ]);
+  const resume = createSampleResume();
+  for (const font of TYPOGRAPHY_FONTS) {
+    expect(getPaperStyle({ ...DEFAULT_TYPOGRAPHY, font: font.id })["--rb-font-family"]).toBe(font.stack);
+  }
+  const imported = validateResumeImport(JSON.parse(JSON.stringify(resume)));
+  expect(imported.typography).toEqual(DEFAULT_TYPOGRAPHY);
+  const changed = JSON.parse(JSON.stringify(resume));
+  changed.typography = {
+    font: "not-a-font",
+    namePt: 100,
+    sectionHeadingPt: 5,
+    subheadingPt: 12.5,
+    bodyPt: 20,
+    underlineLinks: false,
+    ignored: true,
+  };
+  const normalized = validateResumeImport(changed);
+  expect(normalized.typography).toEqual({
+    font: DEFAULT_TYPOGRAPHY.font,
+    namePt: TYPOGRAPHY_RANGES.namePt.max,
+    sectionHeadingPt: TYPOGRAPHY_RANGES.sectionHeadingPt.min,
+    subheadingPt: 12.5,
+    bodyPt: TYPOGRAPHY_RANGES.bodyPt.max,
+    underlineLinks: false,
+  });
+  const invalidSize = JSON.parse(JSON.stringify(resume));
+  invalidSize.typography.bodyPt = "large";
+  expect(() => validateResumeImport(invalidSize)).toThrow("typography.bodyPt must be a number");
+  expect(getPaperStyle({ ...DEFAULT_TYPOGRAPHY, underlineLinks: false })["--rb-link-decoration"]).toBe("none");
+});
+
+it("preserves typography across resume resets", () => {
+  const changed = { ...DEFAULT_TYPOGRAPHY, bodyPt: 14, font: "arial" as const };
+  expect(preserveTypography(createSampleResume(), changed).typography).toEqual(changed);
+  expect(preserveTypography(createBlankResume(), changed).typography).toEqual(changed);
+  const longResume = createSampleResume();
+  longResume.sections.find((section) => section.type === "summary")!.summary = "A".repeat(7_000);
+  expect(preserveTypography(clearSampleData(longResume), changed).typography).toEqual(changed);
+  const restoredDefaults = validateResumeImport({
+    ...longResume,
+    typography: {
+      ...changed,
+      font: "invalid-font",
+      ignored: "dropped",
+    },
+  });
+  expect(restoredDefaults.typography.font).toBe(DEFAULT_TYPOGRAPHY.font);
+});

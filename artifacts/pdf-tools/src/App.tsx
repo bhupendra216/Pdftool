@@ -38,6 +38,7 @@ const NotFound = lazy(() => import('@/pages/not-found'));
 const DownloadPdfPage = lazy(() => import('@/pages/download-pdf'));
 const CompareIlovepdfVsSmallpdfVsPdfkiraPage = lazy(() => import('@/pages/compare-ilovepdf-vs-smallpdf-vs-pdfkira'));
 const DirtyPdfPage = lazy(() => import('@/pages/dirty-pdf'));
+const ResumeBuilderPage = lazy(() => import('@/pages/resume-builder'));
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -72,6 +73,7 @@ function Router() {
         <Route path="/tools/remove-background" component={RemoveBackgroundPage} />
         <Route path="/tools/add-background" component={AddBackgroundPage} />
         <Route path="/tools/latex-to-text" component={LatexToTextPage} />
+        <Route path="/tools/resume-builder" component={ResumeBuilderPage} />
         <Route path="/tools/:slug" component={ToolDetail} />
         {/* Root-level legacy aliases for backward compatibility */}
         <Route path="/blog" component={BlogIndex} />

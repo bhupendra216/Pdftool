@@ -1,6 +1,24 @@
 import type { ToolSeoContent } from '@/components/Content/ToolSeoSection';
 
 export const TOOL_SEO_CONTENT: Record<string, ToolSeoContent> = {
+  'resume-builder': {
+    slug: 'resume-builder',
+    howItWorks: [
+      { title: 'Edit your resume', description: 'Update your contact details and resume sections in the browser.' },
+      { title: 'Review and arrange', description: 'Use the live preview, section controls, and resume modes to organize your content.' },
+      { title: 'Print or save as PDF', description: 'Use the browser print dialog to print or save the resume as a PDF.' },
+    ],
+    whyUse: [
+      { title: 'Build a resume in the browser', description: 'Edit summaries, education, experience, skills, and other sections without installing a separate application.' },
+      { title: 'Choose a job or study layout', description: 'Use the Job or Higher study mode to reorder sections for the application you are preparing.' },
+      { title: 'Keep resume content on your device', description: 'The builder stores resume data in browser local storage and does not upload it.' },
+    ],
+    faq: [
+      { question: 'Is my resume uploaded?', answer: 'No. Resume content stays in browser storage and is not uploaded by the builder.' },
+      { question: 'How do I save my resume as a PDF?', answer: 'Use Print or save as PDF, then choose Save as PDF in the browser print dialog.' },
+      { question: 'Can I keep a backup?', answer: 'Yes. Export the resume as JSON and keep that file somewhere safe.' },
+    ],
+  },
   'transform-pdf': {
     slug: 'transform-pdf',
     howItWorks: [

@@ -752,6 +752,29 @@ const toolCatalog: ToolRecord[] = [
     ],
     blogSlug: null,
   },
+  {
+    slug: "resume-builder",
+    name: "Resume & CV Builder",
+    shortDescription: "Build, edit, and print a polished resume in your browser.",
+    category: "Career",
+    icon: "FileText",
+    popular: false,
+    status: "available",
+    seoTitle: "Resume & CV Builder Online | PDFKira",
+    seoDescription: "Create and format a resume in your browser. Your resume stays on your device; print or save it as a PDF.",
+    steps: [
+      "Add your contact details, summary, education, experience, skills, and other sections.",
+      "Arrange sections and review the live resume preview.",
+      "Print or save your finished resume as a PDF.",
+    ],
+    faqs: [
+      {
+        question: "Is my resume uploaded?",
+        answer: "No. Resume content is saved in this browser and is not uploaded by the builder.",
+      },
+    ],
+    blogSlug: null,
+  },
 ];
 
 export const tools = toolCatalog.filter((tool) => !privateToolSlugs.has(tool.slug));

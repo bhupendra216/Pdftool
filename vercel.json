@@ -9,6 +9,10 @@
   ],
   "rewrites": [
     {
+      "source": "/labs/ask-pdf-ai",
+      "destination": "/labs/ask-pdf-ai.html"
+    },
+    {
       "source": "/api/(.*)",
       "destination": "/api/$1"
     }
@@ -41,6 +45,15 @@
       ]
     },
     {
+      "source": "/labs/(.*)",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "noindex, nofollow"
+        }
+      ]
+    },
+    {
       "source": "/og-images/(.*)",
       "headers": [
         {
@@ -58,6 +71,8 @@
       "destination": "https://pdfkira.com/:path*",
       "statusCode": 301
     },
+    { "source": "/labs/resume-builder.html", "destination": "/tools/resume-builder", "permanent": true },
+    { "source": "/labs/resume-builder", "destination": "/tools/resume-builder", "permanent": true },
     { "source": "/tools/dirty-pdf", "destination": "/tools/transform-pdf", "permanent": true },
     { "source": "/merge-pdf", "destination": "/tools/merge-pdf", "permanent": true },
     { "source": "/merge", "destination": "/tools/merge-pdf", "permanent": true },

@@ -66,6 +66,10 @@ export default defineConfig(async () => {
       emptyOutDir: true,
       assetsDir: "assets",
       rollupOptions: {
+        input: {
+          main: path.resolve(import.meta.dirname, "index.html"),
+          askPdfAiLab: path.resolve(import.meta.dirname, "labs/ask-pdf-ai.html"),
+        },
         output: {
           manualChunks(id) {
             if (id.includes("node_modules")) {
@@ -86,7 +90,7 @@ export default defineConfig(async () => {
     },
     server: {
       port,
-      strictPort: true,
+      strictPort: false,
       host: "0.0.0.0",
       allowedHosts: true,
       proxy: {
