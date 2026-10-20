@@ -1,5 +1,6 @@
 import { expect, it, vi } from "vitest";
 import { PDFDocument } from "pdf-lib";
+import * as pdfjsLib from "pdfjs-dist";
 import { cdp, page } from "vitest/browser";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
@@ -268,6 +269,9 @@ it("renders publication titles as links without displaying the raw URL", () => {
   expect(new DOMParser().parseFromString(unsafeMarkup, "text/html").querySelector("a")).toBeNull();
   expect(unsafeMarkup).not.toContain("javascript:");
   expect(resumeBuilderCss).toContain(".rb-paper a { color: inherit; text-decoration: var(--rb-link-decoration); }");
+  expect(resumeBuilderCss).toContain(".rb-section-rule::before");
+  expect(resumeBuilderCss).not.toMatch(/\.rb-paper h2\s*\{[^}]*border-bottom/);
+  expect(resumeBuilderCss).not.toMatch(/\.rb-contact-line\s*\{[^}]*border-bottom/);
   expect(resumeBuilderCss).toContain("body.rb-print-mode .rb-paper a { color: #000 !important; text-decoration: none !important;");
   expect(resumeBuilderCss).not.toMatch(/a::after|a:after|attr\\(href\\)/);
 });
@@ -314,6 +318,75 @@ it("creates a downloadable A4 PDF with the resume name as its filename", async (
     createUrl.mockRestore();
     revokeUrl.mockRestore();
     click.mockRestore();
+  }
+});
+
+it("keeps downloaded PDF links and entry alignment consistent with the preview", async () => {
+  const pdfBytes = await createResumePdf(createSampleResume());
+  pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
+  const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(pdfBytes) }).promise;
+  const pages = await Promise.all(Array.from({ length: pdf.numPages }, async (_, index) => {
+    const content = await (await pdf.getPage(index + 1)).getTextContent();
+    return content.items.flatMap((item) => "str" in item ? [item] : []);
+  }));
+  const annotations = await Promise.all(Array.from({ length: pdf.numPages }, async (_, index) =>
+    (await pdf.getPage(index + 1)).getAnnotations(),
+  ));
+  const items = pages.flat();
+  const links = annotations.flat().map((annotation) => annotation.url).filter(Boolean);
+  expect(links).toEqual(expect.arrayContaining([
+    "mailto:casey.example@example.com",
+    "https://linkedin.example/casey-example",
+    "https://example.com/doi",
+    "https://drive.google.com/drive/folders/1st88kUbePzHfxMK-8-Jwzd1fFysvf-IG",
+  ]));
+  const text = items.map((item) => item.str).join(" ");
+  expect(text).toContain("Summary");
+  expect(text).toContain("Early-career operations coordinator");
+  expect(text).toContain("LinkedIn");
+  expect(text).toContain("GitHub");
+  expect(text).toContain("Project Management Foundations");
+  expect(text).not.toContain("https://linkedin.example");
+  expect(text).not.toContain("drive.google.com");
+  expect(text).not.toContain("https://example.com/doi");
+
+  const experienceTitle = items.find((item) => item.str.includes("Operations Assistant"));
+  const experienceDate = items.find((item) => item.str.includes("2024–Present"));
+  const experienceOrganization = items.find((item) => item.str.includes("Cedar Grove Cooperative"));
+  expect(experienceTitle).toBeDefined();
+  expect(experienceDate).toBeDefined();
+  expect(experienceOrganization).toBeDefined();
+  expect(experienceDate!.transform[4]).toBeGreaterThan(experienceTitle!.transform[4]);
+  expect(Math.abs(experienceDate!.transform[5] - experienceTitle!.transform[5])).toBeLessThan(2);
+  expect(experienceOrganization!.transform[5]).toBeLessThan(experienceTitle!.transform[5]);
+});
+
+it("paginates the downloaded sample resume to the same page count as the preview", async () => {
+  const resume = createSampleResume();
+  window.localStorage.setItem(STORAGE_KEY, JSON.stringify(resume));
+  const host = document.createElement("div");
+  const style = document.createElement("style");
+  style.textContent = resumeBuilderCss;
+  document.head.append(style);
+  document.body.append(host);
+  const root = createRoot(host);
+  const previousActEnvironment = globalThis.IS_REACT_ACT_ENVIRONMENT;
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  try {
+    await act(async () => root.render(createElement(ResumeBuilder)));
+    await new Promise((resolve) => window.setTimeout(resolve, 700));
+    const previewPageCount = Number(host.querySelector(".rb-page-count")?.textContent?.match(/\d+/)?.[0]);
+    const secondPageFirstBlock = host.querySelectorAll(".rb-page-wrap")[1]?.querySelector(".rb-page-block");
+    const secondPageFirstSource = secondPageFirstBlock?.getAttribute("data-source-id");
+    if (!secondPageFirstSource) throw new Error("The preview must have a source block at the start of page two.");
+    const pdf = await PDFDocument.load(await createResumePdf(resume, [secondPageFirstSource]));
+    expect(pdf.getPageCount()).toBe(previewPageCount);
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    style.remove();
+    window.localStorage.removeItem(STORAGE_KEY);
+    globalThis.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
   }
 });
 

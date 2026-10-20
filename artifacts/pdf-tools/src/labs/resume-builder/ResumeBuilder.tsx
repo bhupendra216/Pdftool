@@ -291,6 +291,11 @@ function createResumeBlocks(
         sectionBlocks.push(...addDescription(entry.description, groupId));
       }
     }
+    sectionBlocks.push({
+      id: `${section.id}-rule`,
+      height: 0,
+      content: <div className="rb-section-rule" aria-hidden="true" />,
+    });
     blocks.push(...sectionBlocks);
   }
   return blocks;
@@ -647,7 +652,11 @@ export function ResumeBuilder() {
     setIsDownloading(true);
     setDownloadError("");
     try {
-      const bytes = await createResumePdf(resume);
+      const pageBreakBefore = currentPages.slice(1).flatMap((page) => {
+        const firstBlock = page[0] as DocumentBlock | undefined;
+        return firstBlock ? [firstBlock.sourceId ?? firstBlock.id] : [];
+      });
+      const bytes = await createResumePdf(resume, pageBreakBefore);
       const safeName = resume.contact.fullName.trim().replace(/[\\/:*?"<>|]/g, "").slice(0, 80);
       downloadBlob(new Blob([new Uint8Array(bytes)], { type: "application/pdf" }), `${safeName || "Resume"}.pdf`);
       setLiveMessage("Resume PDF downloaded.");
@@ -712,7 +721,7 @@ export function ResumeBuilder() {
         </p>
       )
       : source.content;
-    return <div className="rb-page-block" key={pageBlock.id}>{content}</div>;
+    return <div className="rb-page-block" data-source-id={sourceId} key={pageBlock.id}>{content}</div>;
   };
 
   useEffect(() => {
