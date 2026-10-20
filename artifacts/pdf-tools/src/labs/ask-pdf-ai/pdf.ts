@@ -25,17 +25,6 @@ type TextItem = {
   hasEOL?: boolean;
 };
 
-function isTextItem(item: unknown): item is TextItem {
-  return (
-    typeof item === "object" &&
-    item !== null &&
-    "str" in item &&
-    typeof item.str === "string" &&
-    "transform" in item &&
-    Array.isArray(item.transform)
-  );
-}
-
 function structurePageText(items: TextItem[]): string {
   let result = "";
   let previousY: number | undefined;
@@ -93,7 +82,7 @@ export async function extractLabPdf(
         const content = await page.getTextContent();
         pages.push({
           pageNumber,
-          text: structurePageText(content.items.filter(isTextItem)),
+          text: structurePageText(content.items.filter((item) => "str" in item)),
         });
       } finally {
         page.cleanup();

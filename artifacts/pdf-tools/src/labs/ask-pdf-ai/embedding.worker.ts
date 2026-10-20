@@ -34,7 +34,9 @@ async function loadEmbedder() {
   if (embedder) return embedder;
   const transformers = await import("@huggingface/transformers");
   transformers.env.cacheKey = "ask-pdf-ai-transformers-cache";
-  transformers.env.backends.onnx.wasm.numThreads = 1;
+  if (transformers.env.backends.onnx.wasm) {
+    transformers.env.backends.onnx.wasm.numThreads = 1;
+  }
   embedder = await transformers.pipeline("feature-extraction", EMBEDDING_MODEL.id, {
     device: "wasm",
     dtype: "q4f16",

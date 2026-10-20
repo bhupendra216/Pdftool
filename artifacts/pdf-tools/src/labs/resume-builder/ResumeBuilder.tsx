@@ -649,7 +649,7 @@ export function ResumeBuilder() {
     try {
       const bytes = await createResumePdf(resume);
       const safeName = resume.contact.fullName.trim().replace(/[\\/:*?"<>|]/g, "").slice(0, 80);
-      downloadBlob(new Blob([bytes], { type: "application/pdf" }), `${safeName || "Resume"}.pdf`);
+      downloadBlob(new Blob([new Uint8Array(bytes)], { type: "application/pdf" }), `${safeName || "Resume"}.pdf`);
       setLiveMessage("Resume PDF downloaded.");
     } catch (error) {
       setDownloadError(error instanceof Error ? error.message : "Could not create the resume PDF.");

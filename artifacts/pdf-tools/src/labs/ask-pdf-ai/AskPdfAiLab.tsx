@@ -61,7 +61,11 @@ export function AskPdfAiLab() {
   const [noRelevantPassage, setNoRelevantPassage] = useState(false);
   const [searching, setSearching] = useState(false);
   const [embeddingState, setEmbeddingState] = useState<"idle" | "loading" | "indexing" | "ready">("idle");
-  const [embeddingProgress, setEmbeddingProgress] = useState({ progress: 0, loaded: 0, total: EMBEDDING_MODEL.sizeBytes });
+  const [embeddingProgress, setEmbeddingProgress] = useState<{ progress: number; loaded: number; total: number }>({
+    progress: 0,
+    loaded: 0,
+    total: EMBEDDING_MODEL.sizeBytes,
+  });
   const [indexProgress, setIndexProgress] = useState({ completed: 0, total: 0 });
   const [embeddingError, setEmbeddingError] = useState("");
   const [generationModelId, setGenerationModelId] = useState<string>(GENERATION_MODELS[0].id);
