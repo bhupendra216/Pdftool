@@ -69,6 +69,7 @@
     },
     { "source": "/labs/resume-builder.html", "destination": "/tools/resume-builder", "permanent": true },
     { "source": "/labs/resume-builder", "destination": "/tools/resume-builder", "permanent": true },
+    { "source": "/resume-builder", "destination": "/tools/resume-builder", "permanent": true },
     { "source": "/tools/dirty-pdf", "destination": "/tools/transform-pdf", "permanent": true },
     { "source": "/merge-pdf", "destination": "/tools/merge-pdf", "permanent": true },
     { "source": "/merge", "destination": "/tools/merge-pdf", "permanent": true },
