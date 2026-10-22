@@ -6,14 +6,20 @@ import {
   PAGE_MARGIN_MM,
   PAGE_PAGINATION_HEIGHT_MM,
   PAGE_WIDTH_MM,
+  LANGUAGE_LEVEL_FIELDS,
+  RESUME_TEXT_STYLES,
+  TYPOGRAPHY_FONTS,
   parseDescription,
   normalizePublicationLink,
   normalizeResumeItemLink,
   publicationGroups,
   publicationAuthorIndices,
+  buildResumeContactLines,
+  equalLanguageLevel,
   validateResumeLink,
   type ResumeDocument,
   type ResumeEntry,
+  type ResumeLanguage,
   type ResumePublication,
 } from "./model";
 import { paginateBlocks, type PaginationBlock } from "./pagination";
@@ -27,28 +33,19 @@ type PdfLine = PaginationBlock & {
   align?: "center";
   rightRuns?: TextRun[];
   rightSize?: number;
-  kind?: "space" | "rule";
+  kind?: "space" | "rule" | "table";
   ruleAfter?: boolean;
   indent?: number;
   bullet?: boolean;
   sourceId?: string;
+  tableRows?: Array<{ cells: TextRun[][][]; header: boolean; height: number }>;
+  columnWidths?: number[];
 };
 
 const MM_TO_PT = 72 / 25.4;
 
 function fontAssetPrefix(font: ResumeDocument["typography"]["font"]): string {
-  switch (font) {
-    case "times-new-roman":
-    case "cambria":
-      return "caladea";
-    case "arial":
-      return "liberation-sans";
-    case "calibri":
-      return "carlito";
-    case "default":
-    case "georgia":
-      return "gelasio";
-  }
+  return TYPOGRAPHY_FONTS.find((option) => option.id === font)?.pdfPrefix ?? TYPOGRAPHY_FONTS[0].pdfPrefix;
 }
 
 async function loadFonts(document: PDFDocument, font: ResumeDocument["typography"]["font"]) {
@@ -64,6 +61,18 @@ async function loadFonts(document: PDFDocument, font: ResumeDocument["typography
   return Object.fromEntries(fontEntries) as Record<FontStyle, PDFFont>;
 }
 
+const fontCharacterSets = new WeakMap<PDFFont, Set<number>>();
+
+function assertFontSupportsText(font: PDFFont, text: string) {
+  let characterSet = fontCharacterSets.get(font);
+  if (!characterSet) {
+    characterSet = new Set(font.getCharacterSet());
+    fontCharacterSets.set(font, characterSet);
+  }
+  const missing = [...new Set([...text].filter((character) => !characterSet.has(character.codePointAt(0)!)))];
+  if (missing.length) throw new Error(`The selected PDF font does not support: ${missing.join(" ")}. Choose another font or replace its bundled font files.`);
+}
+
 function wrapRuns(
   runs: TextRun[],
   fonts: Record<FontStyle, PDFFont>,
@@ -73,6 +82,7 @@ function wrapRuns(
   const lines: TextRun[][] = [[]];
   let width = 0;
   for (const run of runs) {
+    assertFontSupportsText(fonts[run.style], run.text);
     const words = run.text.match(/\S+\s*|\s+/g) ?? [];
     for (const word of words) {
       const wordWidth = fonts[run.style].widthOfTextAtSize(word, size);
@@ -222,7 +232,7 @@ function addParagraph(
     sourceId?: string;
   },
 ) {
-  const style = options.style ?? "regular";
+  const style = options.style ?? RESUME_TEXT_STYLES.body.pdfFace;
   const indent = options.bullet ? 15 : 0;
   const lineHeight = options.size * (options.bullet ? 1.35 : 1.42);
   const wrapped = wrapRuns(
@@ -265,14 +275,16 @@ function publicationRuns(
     if (index > 0) runs.push({ text: ", ", style: "regular" });
     runs.push({
       text: publication.authors[authorIndex],
-      style: authorIndex === publication.selectedAuthorIndex ? "bold" : "regular",
+      style: authorIndex === publication.selectedAuthorIndex
+        ? RESUME_TEXT_STYLES.publicationAuthor.pdfFace
+        : RESUME_TEXT_STYLES.body.pdfFace,
     });
   });
   if (shortened) {
     runs.push({ text: ", …", style: "regular" });
     if (publication.selectedAuthorIndex !== null && publication.selectedAuthorIndex > 2) {
       runs.push({ text: ", ", style: "regular" });
-      runs.push({ text: publication.authors[publication.selectedAuthorIndex], style: "bold" });
+      runs.push({ text: publication.authors[publication.selectedAuthorIndex], style: RESUME_TEXT_STYLES.publicationAuthor.pdfFace });
     }
     runs.push({ text: ", et al. ", style: "regular" });
   } else if (publication.authors.length) {
@@ -335,6 +347,46 @@ function addPublication(
   addSpace(blocks, compact ? 5.25 : 9, false, sourceId);
 }
 
+function addLanguageTable(
+  blocks: PdfLine[],
+  languages: ResumeLanguage[],
+  fonts: Record<FontStyle, PDFFont>,
+  size: number,
+  sourceId: string,
+) {
+  const headings = ["Language", "Listening", "Reading", "Spoken interaction", "Spoken production", "Writing"];
+  const widths = [0.23, 0.13, 0.13, 0.18, 0.18, 0.15].map((fraction) => PAGE_CONTENT_WIDTH_MM * MM_TO_PT * fraction);
+  const lineHeight = size * 1.2;
+  const rows = [
+    { cells: headings.map((heading, index) => wrapRuns([{ text: heading, style: RESUME_TEXT_STYLES.tableHeader.pdfFace }], fonts, size * 0.78, widths[index] - 6)), header: true },
+    ...languages.map((language) => ({
+      cells: [
+        `${language.name}${language.certificate.trim() ? ` (${language.certificate.trim()})` : ""}`,
+        ...LANGUAGE_LEVEL_FIELDS.map((field) => language[field]),
+      ].map((text, index) => wrapRuns([{
+        text,
+        style: index === 0 ? RESUME_TEXT_STYLES.tableRowHeader.pdfFace : RESUME_TEXT_STYLES.body.pdfFace,
+      }], fonts, size * 0.78, widths[index] - 6)),
+      header: false,
+    })),
+  ].map((row) => ({
+    ...row,
+    height: Math.max(1, ...row.cells.map((cellLines) => cellLines.length)) * lineHeight + 6,
+  }));
+  const height = rows.reduce((total, row) => total + row.height, 0) + rows.length + 1;
+  blocks.push({
+    id: `pdf-language-table-${blocks.length}`,
+    height,
+    lineHeight: height,
+    size,
+    runs: [],
+    kind: "table",
+    tableRows: rows,
+    columnWidths: widths,
+    sourceId,
+  });
+}
+
 function addEntry(
   blocks: PdfLine[],
   entry: ResumeEntry,
@@ -344,12 +396,12 @@ function addEntry(
   options: { compact: boolean; underlineLinks: boolean },
 ) {
   const groupId = `entry-${entry.id}`;
-  if (sectionType === "skills") {
+  if (sectionType === "skills" || sectionType === "digitalSkills") {
     addSpace(blocks, options.compact ? 1 : 1.5, false, `${groupId}-skills`);
     const label = `${entry.title || "Skills"}: `;
     const runs: TextRun[] = [
-      { text: label, style: "bold" },
-      { text: entry.description, style: "regular" },
+      { text: label, style: RESUME_TEXT_STYLES.label.pdfFace },
+      { text: entry.description, style: RESUME_TEXT_STYLES.body.pdfFace },
     ];
     const wrapped = wrapRuns(runs, fonts, sizes.body, PAGE_CONTENT_WIDTH_MM * MM_TO_PT);
     wrapped.forEach((lineRuns) => blocks.push({
@@ -364,12 +416,12 @@ function addEntry(
     addSpace(blocks, options.compact ? 1 : 1.5, true, `${groupId}-skills`);
     return;
   }
-  const linkedTitle = ["awards", "certifications"].includes(sectionType) &&
+  const linkedTitle = ["awards", "certifications", "conferences"].includes(sectionType) &&
     Boolean(normalizeResumeItemLink(entry.link));
   const titleRuns = entryHeading(entry)
     ? [{
       text: entryHeading(entry),
-      style: "bold" as const,
+      style: RESUME_TEXT_STYLES.entryTitle.pdfFace,
       underline: linkedTitle && options.underlineLinks,
       href: normalizeResumeItemLink(entry.link) || undefined,
     }]
@@ -388,7 +440,7 @@ function addEntry(
     lineHeight: sizes.subheading * 1.2,
     size: sizes.subheading,
     runs,
-    rightRuns: index === 0 && entry.dates ? [{ text: entry.dates, style: "italic" }] : undefined,
+    rightRuns: index === 0 && entry.dates ? [{ text: entry.dates, style: RESUME_TEXT_STYLES.date.pdfFace }] : undefined,
     rightSize: sizes.subheading * 0.8631578947368421,
     groupId,
     sourceId: `${groupId}-title`,
@@ -398,10 +450,10 @@ function addEntry(
     addSplitLine(
       blocks,
       entry.organization,
-      "regular",
+      RESUME_TEXT_STYLES.entrySubtitle.pdfFace,
       sizes.subheading * 0.9052631578947368,
       entry.location,
-      "regular",
+      RESUME_TEXT_STYLES.entrySubtitle.pdfFace,
       sizes.subheading * 0.9052631578947368,
       fonts,
       { groupId, keepWithNext: Boolean(entry.description.trim()), sourceId: `${groupId}-organization` },
@@ -431,52 +483,91 @@ export async function createResumePdf(resume: ResumeDocument, pageBreakBefore: s
   const blocks: PdfLine[] = [];
   const compact = resume.compactSpacing;
   if (resume.contact.fullName.trim()) {
-    addText(blocks, resume.contact.fullName, "bold", sizes.name, fonts, {
+    addText(blocks, resume.contact.fullName, RESUME_TEXT_STYLES.name.pdfFace, sizes.name, fonts, {
       keepWithNext: true,
       align: "center",
       lineHeight: sizes.name * 1.2 + 3.75,
     });
   }
-  const contactItems: Array<{ text: string; href?: string; underline: boolean }> = [
-    ...(resume.contact.email.trim() ? [{
-      text: resume.contact.email,
-      href: `mailto:${resume.contact.email}`,
-      underline: true,
-    }] : []),
-    ...(resume.contact.phone.trim() ? [{ text: resume.contact.phone, underline: false }] : []),
-    ...resume.contact.links
-      .filter((link) => link.label || link.url)
-      .map((link) => ({
-        text: validateResumeLink(link.url) ? link.label || link.url : link.label || (link.url ? `${link.label}: ${link.url}` : ""),
-        href: validateResumeLink(link.url) ? link.url : undefined,
-        underline: validateResumeLink(link.url),
-      })),
-    ...(resume.contact.location.trim() ? [{ text: resume.contact.location, underline: false }] : []),
-  ];
-  const contactRuns = contactItems.flatMap((item, index) => [
-    ...(index > 0 ? [{ text: "  •  ", style: "regular" as const }] : []),
-    {
-      text: item.text,
-      style: "regular" as const,
-      underline: item.underline && resume.typography.underlineLinks,
-      href: item.href,
-    },
-  ]);
-  if (contactRuns.length) {
+  const contactLines = buildResumeContactLines(resume);
+  for (const contactLine of contactLines) {
+    const contactRuns = contactLine.flatMap((item, index) => [
+      ...(index > 0 ? [{ text: " • ", style: "regular" as const }] : []),
+      {
+        text: item.text,
+        style: "regular" as const,
+        underline: Boolean(item.underline) && resume.typography.underlineLinks,
+        href: item.href,
+      },
+    ]);
     addRuns(blocks, contactRuns, sizes.body * 0.82, fonts, {
       align: "center",
       lineHeight: sizes.body * 0.82 * 1.2 + 5,
     });
+  }
+  if (contactLines.length) {
     addSpace(blocks, 4.5);
   }
 
   for (const section of resume.sections.filter((item) => item.visible && item.title.trim())) {
     const sectionBlocks: PdfLine[] = [];
-    if (section.type === "summary") {
+    if (section.type === "languages") {
+      const motherTongues = (section.motherTongues ?? []).map((name) => name.trim()).filter(Boolean);
+      const languages = (section.others ?? []).filter((language) =>
+        language.name.trim() || language.certificate.trim() || LANGUAGE_LEVEL_FIELDS.some((field) => language[field]),
+      );
+      if (!motherTongues.length && !languages.length) continue;
+      addSpace(sectionBlocks, compact ? 10.5 : 11.25, true, `${section.id}-heading`);
+      addText(sectionBlocks, section.title, RESUME_TEXT_STYLES.heading.pdfFace, sizes.section, fonts, {
+        keepWithNext: true,
+        lineHeight: sizes.section * 1.2 + 2.25,
+        sourceId: `${section.id}-heading`,
+      });
+      addSpace(sectionBlocks, compact ? 3.75 : 4.5);
+      if (motherTongues.length) {
+        addParagraph(sectionBlocks, `${motherTongues.length === 1 ? "Mother tongue" : "Mother tongues"}: ${motherTongues.join(", ")}`, fonts, {
+          size: sizes.body,
+          compact,
+          sourceId: `${section.id}-mother-tongues`,
+        });
+      }
+      const tableLanguages: ResumeLanguage[] = [];
+      for (const language of languages) {
+        const level = equalLanguageLevel(language);
+        if (level) {
+          addParagraph(sectionBlocks, `${language.name}: ${level}${language.certificate.trim() ? ` (${language.certificate.trim()})` : ""}`, fonts, {
+            size: sizes.body,
+            compact,
+            sourceId: `${section.id}-language-${language.id}`,
+          });
+        } else {
+          tableLanguages.push(language);
+        }
+      }
+      if (tableLanguages.length) addLanguageTable(sectionBlocks, tableLanguages, fonts, sizes.body, `${section.id}-language-table`);
+      addParagraph(sectionBlocks, "Levels: A1/A2 basic user, B1/B2 independent user, C1/C2 proficient user (CEFR).", fonts, {
+        size: sizes.body * 0.85,
+        compact,
+        sourceId: `${section.id}-language-legend`,
+      });
+    } else if (section.type === "drivingLicence") {
+      if (!section.drivingLicence?.trim()) continue;
+      addSpace(sectionBlocks, compact ? 10.5 : 11.25, true, `${section.id}-heading`);
+      addText(sectionBlocks, section.title, RESUME_TEXT_STYLES.heading.pdfFace, sizes.section, fonts, {
+        keepWithNext: true,
+        lineHeight: sizes.section * 1.2 + 2.25,
+        sourceId: `${section.id}-heading`,
+      });
+      addParagraph(sectionBlocks, section.drivingLicence, fonts, {
+        size: sizes.body,
+        compact,
+        sourceId: `${section.id}-driving-licence`,
+      });
+    } else if (section.type === "summary") {
       const paragraphs = parseDescription(section.summary);
       if (!paragraphs.length) continue;
       addSpace(sectionBlocks, compact ? 10.5 : 11.25, true, `${section.id}-heading`);
-      addText(sectionBlocks, section.title, "bold", sizes.section, fonts, {
+      addText(sectionBlocks, section.title, RESUME_TEXT_STYLES.heading.pdfFace, sizes.section, fonts, {
         keepWithNext: true,
         lineHeight: sizes.section * 1.2 + 2.25,
         sourceId: `${section.id}-heading`,
@@ -492,7 +583,7 @@ export async function createResumePdf(resume: ResumeDocument, pageBreakBefore: s
       const publications = section.publications.filter((item) => item.title.trim() || item.authors.some((author) => author.trim()));
       if (!publications.length) continue;
       addSpace(sectionBlocks, compact ? 10.5 : 11.25, true, `${section.id}-heading`);
-      addText(sectionBlocks, section.title, "bold", sizes.section, fonts, {
+      addText(sectionBlocks, section.title, RESUME_TEXT_STYLES.heading.pdfFace, sizes.section, fonts, {
         keepWithNext: true,
         lineHeight: sizes.section * 1.2 + 2.25,
         sourceId: `${section.id}-heading`,
@@ -505,7 +596,7 @@ export async function createResumePdf(resume: ResumeDocument, pageBreakBefore: s
       for (const group of groups) {
         if (group.label) {
           addSpace(sectionBlocks, 7.5);
-          addText(sectionBlocks, group.label, "italic", sizes.subheading * 0.92, fonts, { keepWithNext: true });
+          addText(sectionBlocks, group.label, RESUME_TEXT_STYLES.publicationGroup.pdfFace, sizes.subheading * 0.92, fonts, { keepWithNext: true });
         }
         for (const publication of group.entries) {
           index += 1;
@@ -530,7 +621,7 @@ export async function createResumePdf(resume: ResumeDocument, pageBreakBefore: s
       );
       if (!entries.length) continue;
       addSpace(sectionBlocks, compact ? 10.5 : 11.25, true, `${section.id}-heading`);
-      addText(sectionBlocks, section.title, "bold", sizes.section, fonts, {
+      addText(sectionBlocks, section.title, RESUME_TEXT_STYLES.heading.pdfFace, sizes.section, fonts, {
         keepWithNext: true,
         lineHeight: sizes.section * 1.2 + 2.25,
         sourceId: `${section.id}-heading`,
@@ -581,6 +672,50 @@ export async function createResumePdf(resume: ResumeDocument, pageBreakBefore: s
         top -= block.lineHeight;
         continue;
       }
+      if (block.kind === "table" && block.tableRows && block.columnWidths) {
+        let rowTop = top;
+        page.drawLine({
+          start: { x: margin, y: rowTop },
+          end: { x: pageWidth - margin, y: rowTop },
+          thickness: 0.45,
+          color: rgb(0.25, 0.25, 0.25),
+        });
+        for (const row of block.tableRows) {
+          let cellX = margin;
+          row.cells.forEach((cellLines, cellIndex) => {
+            const size = block.size * 0.78;
+            cellLines.forEach((runs, lineIndex) => {
+              let textX = cellX + 3;
+              for (const run of runs) {
+                page.drawText(run.text, {
+                  x: textX,
+                  y: rowTop - 3 - size - lineIndex * size * 1.2,
+                  size,
+                  font: fonts[row.header ? RESUME_TEXT_STYLES.tableHeader.pdfFace : run.style],
+                  color: rgb(0.05, 0.05, 0.05),
+                });
+                textX += fonts[row.header ? RESUME_TEXT_STYLES.tableHeader.pdfFace : run.style].widthOfTextAtSize(run.text, size);
+              }
+            });
+            cellX += block.columnWidths![cellIndex];
+          });
+          rowTop -= row.height;
+          page.drawLine({
+            start: { x: margin, y: rowTop },
+            end: { x: pageWidth - margin, y: rowTop },
+            thickness: 0.35,
+            color: rgb(0.45, 0.45, 0.45),
+          });
+        }
+        let columnX = margin;
+        page.drawLine({ start: { x: columnX, y: top }, end: { x: columnX, y: rowTop }, thickness: 0.35, color: rgb(0.45, 0.45, 0.45) });
+        for (const width of block.columnWidths) {
+          columnX += width;
+          page.drawLine({ start: { x: columnX, y: top }, end: { x: columnX, y: rowTop }, thickness: 0.35, color: rgb(0.45, 0.45, 0.45) });
+        }
+        top = rowTop - 4;
+        continue;
+      }
       const lineWidth = block.runs.reduce(
         (sum, run) => sum + fonts[run.style].widthOfTextAtSize(run.text, block.size),
         0,
@@ -593,6 +728,7 @@ export async function createResumePdf(resume: ResumeDocument, pageBreakBefore: s
       if (block.align === "center") x = (pageWidth - lineWidth) / 2;
       for (const run of block.runs) {
         const baseline = top - block.size;
+        assertFontSupportsText(fonts[run.style], run.text);
         page.drawText(run.text, {
           x,
           y: baseline,
@@ -625,6 +761,7 @@ export async function createResumePdf(resume: ResumeDocument, pageBreakBefore: s
         const rightSize = block.rightSize ?? block.size;
         let rightX = pageWidth - margin - rightWidth;
         for (const run of block.rightRuns) {
+          assertFontSupportsText(fonts[run.style], run.text);
           page.drawText(run.text, {
             x: rightX,
             y: top - rightSize,
@@ -645,6 +782,7 @@ export async function createResumePdf(resume: ResumeDocument, pageBreakBefore: s
         });
       }
       if (block.bullet) {
+        assertFontSupportsText(fonts.regular, "•");
         page.drawText("•", {
           x: margin,
           y: top - block.size,

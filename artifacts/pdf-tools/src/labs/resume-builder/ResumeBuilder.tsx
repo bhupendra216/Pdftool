@@ -1,13 +1,19 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import {
+  applyModeDefaults,
   applyModeOrder,
+  buildResumeContactLines,
   clearSampleData as clearResumeSampleData,
+  createBlankLanguage,
   createBlankPublication,
   createBlankResume,
   createSampleResume,
   DEFAULT_TYPOGRAPHY,
+  equalLanguageLevel,
   findMatchingAuthor,
+  LANGUAGE_LEVEL_FIELDS,
+  LANGUAGE_LEVELS,
   isShareableDriveLink,
   normalizePublicationLink,
   normalizeResumeItemLink,
@@ -18,9 +24,11 @@ import {
   publicationGroups,
   PUBLICATION_STATUSES,
   PUBLICATION_TYPES,
+  RESUME_TEXT_STYLES,
   TYPOGRAPHY_FONTS,
   TYPOGRAPHY_RANGES,
   sampleItemCount,
+  setEuropeanStandard,
   STORAGE_KEY,
   validateResumeImport,
   validateResumeLink,
@@ -34,6 +42,8 @@ import {
   type PublicationType,
   type ResumeDocument,
   type ResumeEntry,
+  type ResumeLanguage,
+  type ResumeMode,
   type ResumePublication,
   type ResumeSection,
   type SectionType,
@@ -59,12 +69,18 @@ const LABELS: Record<SectionType, string> = {
   summary: "Summary",
   education: "Education",
   experience: "Experience",
+  languages: "Languages",
+  digitalSkills: "Digital skills",
   projects: "Projects",
   publications: "Publications",
   skills: "Skills",
   certifications: "Certifications",
   awards: "Awards",
+  conferences: "Conferences",
+  grants: "Grants",
+  memberships: "Memberships",
   community: "Community involvement",
+  drivingLicence: "Driving licence",
   custom: "Custom section",
 };
 const JOB_GUIDANCE = "Lead with relevant experience and measurable outcomes. Keep the most relevant details easy to scan.";
@@ -103,6 +119,18 @@ type PaperStyle = CSSProperties & {
   "--rb-location-size": string;
   "--rb-date-size": string;
   "--rb-link-decoration": string;
+  "--rb-weight-name": string;
+  "--rb-weight-heading": string;
+  "--rb-weight-entry-title": string;
+  "--rb-weight-entry-subtitle": string;
+  "--rb-weight-date": string;
+  "--rb-weight-body": string;
+  "--rb-weight-label": string;
+  "--rb-weight-publication-author": string;
+  "--rb-weight-table-header": string;
+  "--rb-weight-table-row-header": string;
+  "--rb-style-date": string;
+  "--rb-style-publication-group": string;
 };
 
 export function getPaperStyle(settings: TypographySettings): PaperStyle {
@@ -119,6 +147,18 @@ export function getPaperStyle(settings: TypographySettings): PaperStyle {
     "--rb-location-size": "calc(var(--rb-subheading-size) * 0.9052631578947368)",
     "--rb-date-size": "calc(var(--rb-subheading-size) * 0.8631578947368421)",
     "--rb-link-decoration": settings.underlineLinks ? "underline" : "none",
+    "--rb-weight-name": String(RESUME_TEXT_STYLES.name.weight),
+    "--rb-weight-heading": String(RESUME_TEXT_STYLES.heading.weight),
+    "--rb-weight-entry-title": String(RESUME_TEXT_STYLES.entryTitle.weight),
+    "--rb-weight-entry-subtitle": String(RESUME_TEXT_STYLES.entrySubtitle.weight),
+    "--rb-weight-date": String(RESUME_TEXT_STYLES.date.weight),
+    "--rb-weight-body": String(RESUME_TEXT_STYLES.body.weight),
+    "--rb-weight-label": String(RESUME_TEXT_STYLES.label.weight),
+    "--rb-weight-publication-author": String(RESUME_TEXT_STYLES.publicationAuthor.weight),
+    "--rb-weight-table-header": String(RESUME_TEXT_STYLES.tableHeader.weight),
+    "--rb-weight-table-row-header": String(RESUME_TEXT_STYLES.tableRowHeader.weight),
+    "--rb-style-date": RESUME_TEXT_STYLES.date.fontStyle,
+    "--rb-style-publication-group": RESUME_TEXT_STYLES.publicationGroup.fontStyle,
   };
 }
 
@@ -127,7 +167,7 @@ function displayPoints(value: number): number {
 }
 
 type MobileView = "edit" | "preview";
-type DocumentBlock = PaginationBlock & {
+export type DocumentBlock = PaginationBlock & {
   content: ReactNode;
   text?: string;
   sourceId?: string;
@@ -135,9 +175,136 @@ type DocumentBlock = PaginationBlock & {
   paragraphMargins?: [number, number];
 };
 
-function createResumeBlocks(
+export function createResumeContactItems(resume: ResumeDocument): Array<Array<{ key: string; content: ReactNode }>> {
+  return buildResumeContactLines(resume).map((line) => line.map((item) => ({
+    key: item.key,
+    content: item.href
+      ? <a href={item.href} target="_blank" rel="noopener noreferrer">{item.text}</a>
+      : <span>{item.text}</span>,
+  })));
+}
+
+export function escapeLatex(value: string): string {
+  return value
+    .replace(/\\/g, "\\textbackslash{}")
+    .replace(/&/g, "\\&")
+    .replace(/%/g, "\\%")
+    .replace(/\$/g, "\\$")
+    .replace(/#/g, "\\#")
+    .replace(/_/g, "\\_")
+    .replace(/\{/g, "\\{")
+    .replace(/\}/g, "\\}")
+    .replace(/~/g, "\\textasciitilde ")
+    .replace(/\^/g, "\\textasciicircum ");
+}
+
+export function buildLatexResume(resume: ResumeDocument): string {
+  const visibleSections = resume.sections.filter((section) => section.visible);
+  const maybeLines = (lines: string[]) => lines.filter((line) => line.trim().length > 0);
+  const sectionHeader = (title: string) => `\\section*{${escapeLatex(title)}}`;
+  const paragraphBlocks = (text: string) => {
+    const textLines = text.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
+    const output: string[] = [];
+    for (const line of textLines) {
+      if (/^(?:-|•)\s*/.test(line)) output.push(`\\item ${escapeLatex(line.replace(/^(?:-|•)\s*/, ""))}`);
+      else output.push(escapeLatex(line));
+    }
+    return output;
+  };
+
+  const lines: string[] = [
+    "% compile with xelatex",
+    "\\documentclass[11pt]{article}",
+    "\\usepackage[a4paper,margin=20mm]{geometry}",
+    "\\usepackage{fontspec}",
+    "\\setmainfont{Georgia}",
+    "\\begin{document}",
+  ];
+
+  const contactLines = buildResumeContactLines(resume);
+  const hasHeader = Boolean(resume.contact.fullName.trim()) || contactLines.length > 0;
+  if (hasHeader) lines.push("\\begin{center}");
+  if (resume.contact.fullName.trim()) {
+    lines.push(`\\textbf{\\Large ${escapeLatex(resume.contact.fullName)}}`);
+  }
+  for (const contactLine of contactLines) {
+    const items = contactLine.map((item) => item.key === "email"
+      ? `\\texttt{${escapeLatex(item.text)}}`
+      : escapeLatex(item.text));
+    lines.push(`\\noindent ${items.join(" \\textbullet ")}\\par`);
+  }
+  if (hasHeader) lines.push("\\end{center}");
+
+  for (const section of visibleSections) {
+    if (!section.title.trim()) continue;
+    if (section.type === "languages") {
+      const motherTongues = (section.motherTongues ?? []).map((name) => name.trim()).filter(Boolean);
+      const languages = (section.others ?? []).filter((language) =>
+        language.name.trim() || language.certificate.trim() || LANGUAGE_LEVEL_FIELDS.some((field) => language[field]),
+      );
+      if (!motherTongues.length && !languages.length) continue;
+      lines.push(sectionHeader(section.title));
+      if (motherTongues.length) {
+        lines.push(`\\textbf{Mother tongues:} ${escapeLatex(motherTongues.join(", "))}`);
+      }
+      for (const language of languages) {
+        const level = equalLanguageLevel(language);
+        const suffix = language.certificate.trim() ? ` (${escapeLatex(language.certificate.trim())})` : "";
+        const line = `${escapeLatex(language.name.trim() || "Language")}: ${level ? escapeLatex(level) : ""}${suffix}`;
+        lines.push(line);
+      }
+      continue;
+    }
+    if (section.type === "summary") {
+      const summaryLines = parseDescription(section.summary);
+      if (!summaryLines.length) continue;
+      lines.push(sectionHeader(section.title));
+      for (const line of summaryLines) {
+        if (line.kind === "bullet") lines.push(`\\begin{itemize}\\item ${escapeLatex(line.text)}\\end{itemize}`);
+        else lines.push(escapeLatex(line.text));
+      }
+      continue;
+    }
+    if (section.type === "publications") {
+      const publications = section.publications.filter((publication) =>
+        publication.title.trim().length > 0 || publication.authors.some((author) => author.trim().length > 0),
+      );
+      if (!publications.length) continue;
+      lines.push(sectionHeader(section.title));
+      for (const publication of publications) {
+        const authors = publication.authors.map((author) => escapeLatex(author)).join(", ");
+        const venue = publication.venue.trim() ? `\\emph{${escapeLatex(publication.venue)}}` : "";
+        const year = publication.year.trim() ? escapeLatex(publication.year) : "";
+        const title = publication.title.trim() ? `${escapeLatex(publication.title.trim())}. ` : "";
+        lines.push(`\\textbf{${authors}}. ${title}${venue}${year ? `, ${year}` : ""}`);
+      }
+      continue;
+    }
+    const entries = section.entries.filter(isNonEmptyEntry);
+    if (!entries.length) continue;
+    lines.push(sectionHeader(section.title));
+    for (const entry of entries) {
+      const title = entry.title.trim() ? escapeLatex(entry.title.trim()) : "";
+      const organization = entry.organization.trim() ? escapeLatex(entry.organization.trim()) : "";
+      const details = [organization, entry.location.trim() ? escapeLatex(entry.location.trim()) : "", entry.dates.trim() ? escapeLatex(entry.dates.trim()) : ""].filter(Boolean).join(" -- ");
+      if (title) lines.push(`\\textbf{${title}}${details ? ` -- ${details}` : ""}`);
+      else if (details) lines.push(details);
+      if (entry.description.trim()) {
+        for (const line of paragraphBlocks(entry.description)) {
+          if (/^\\item/.test(line)) lines.push(`\\begin{itemize}${line}\\end{itemize}`);
+          else lines.push(line);
+        }
+      }
+    }
+  }
+
+  lines.push("\\end{document}");
+  return lines.join("\n");
+}
+
+export function createResumeBlocks(
   resume: ResumeDocument,
-  contactItems: Array<{ key: string; content: ReactNode }>,
+  contactItems: Array<Array<{ key: string; content: ReactNode }>>,
 ): DocumentBlock[] {
   const blocks: DocumentBlock[] = [{
     id: "resume-header",
@@ -145,14 +312,16 @@ function createResumeBlocks(
     content: (
       <header className="rb-document-header">
         {resume.contact.fullName.trim() && <h1 className="rb-name">{resume.contact.fullName}</h1>}
-        <div className="rb-contact-line">
-          {contactItems.map((item, index) => (
-            <span className="rb-contact-item" key={item.key}>
-              {index > 0 && <span className="rb-contact-separator" aria-hidden="true">•</span>}
-              {item.content}
-            </span>
-          ))}
-        </div>
+        {contactItems.map((line, lineIndex) => (
+          <div className="rb-contact-line" key={`contact-line-${lineIndex}`}>
+            {line.map((item, index) => (
+              <span className="rb-contact-item" key={item.key}>
+                {index > 0 && <span className="rb-contact-separator" aria-hidden="true"> • </span>}
+                {item.content}
+              </span>
+            ))}
+          </div>
+        ))}
       </header>
     ),
   }];
@@ -178,7 +347,74 @@ function createResumeBlocks(
   for (const section of resume.sections.filter((item) => item.visible)) {
     if (!section.title.trim()) continue;
     const sectionBlocks: DocumentBlock[] = [];
-    if (section.type === "summary") {
+    if (section.type === "languages") {
+      const motherTongues = (section.motherTongues ?? []).map((name) => name.trim()).filter(Boolean);
+      const languages = (section.others ?? []).filter((language) =>
+        language.name.trim() || language.certificate.trim() || LANGUAGE_LEVEL_FIELDS.some((field) => language[field]),
+      );
+      if (!motherTongues.length && !languages.length) continue;
+      sectionBlocks.push({
+        id: `${section.id}-heading`,
+        height: 0,
+        keepWithNext: true,
+        content: <h2>{section.title}</h2>,
+      });
+      if (motherTongues.length) {
+        sectionBlocks.push({
+          id: `${section.id}-mother-tongues`,
+          height: 0,
+          content: <p className="rb-language-mother-tongues">{motherTongues.length === 1 ? "Mother tongue" : "Mother tongues"}: {motherTongues.join(", ")}</p>,
+        });
+      }
+      const tableLanguages: ResumeLanguage[] = [];
+      for (const language of languages) {
+        const level = equalLanguageLevel(language);
+        if (level) {
+          sectionBlocks.push({
+            id: `${section.id}-language-${language.id}`,
+            height: 0,
+            content: <p>{language.name}: {level}{language.certificate.trim() ? ` (${language.certificate.trim()})` : ""}</p>,
+          });
+        } else {
+          tableLanguages.push(language);
+        }
+      }
+      if (tableLanguages.length) {
+        sectionBlocks.push({
+          id: `${section.id}-language-table`,
+          height: 0,
+          keepWithNext: true,
+          content: (
+            <table className="rb-language-table">
+              <thead><tr><th>Language</th><th>Listening</th><th>Reading</th><th>Spoken interaction</th><th>Spoken production</th><th>Writing</th></tr></thead>
+              <tbody>{tableLanguages.map((language) => (
+                <tr key={language.id}>
+                  <th scope="row">{language.name}{language.certificate.trim() ? ` (${language.certificate.trim()})` : ""}</th>
+                  {LANGUAGE_LEVEL_FIELDS.map((field) => <td key={field}>{language[field]}</td>)}
+                </tr>
+              ))}</tbody>
+            </table>
+          ),
+        });
+      }
+      sectionBlocks.push({
+        id: `${section.id}-language-legend`,
+        height: 0,
+        content: <p className="rb-language-legend">Levels: A1/A2 basic user, B1/B2 independent user, C1/C2 proficient user (CEFR).</p>,
+      });
+    } else if (section.type === "drivingLicence") {
+      if (!section.drivingLicence?.trim()) continue;
+      sectionBlocks.push({
+        id: `${section.id}-heading`,
+        height: 0,
+        keepWithNext: true,
+        content: <h2>{section.title}</h2>,
+      }, {
+        id: `${section.id}-driving-licence`,
+        height: 0,
+        content: <p>{section.drivingLicence}</p>,
+      });
+    } else if (section.type === "summary") {
       const lines = parseDescription(section.summary);
       if (lines.length === 0) continue;
       sectionBlocks.push({
@@ -250,16 +486,16 @@ function createResumeBlocks(
       });
       for (const entry of entries) {
         const groupId = `entry-${entry.id}`;
-        if (section.type === "skills") {
+        if (section.type === "skills" || section.type === "digitalSkills") {
           sectionBlocks.push({
             id: `${groupId}-skills`,
             groupId,
             height: 0,
-            content: <p className="rb-skill-subsection"><strong>{entry.title || "Skills"}:</strong> {entry.description}</p>,
+            content: <p className="rb-skill-subsection"><strong className="rb-role-label">{entry.title || "Skills"}:</strong> {entry.description}</p>,
           });
           continue;
         }
-        const title = section.type === "awards" || section.type === "certifications"
+        const title = section.type === "awards" || section.type === "certifications" || section.type === "conferences"
           ? renderLinkedEntryTitle(entry, true)
           : section.type === "education"
             ? renderLinkedEntryTitle(entry, false)
@@ -346,7 +582,7 @@ export function ResumeBuilder() {
     setResume(updater);
   }
 
-  function updateContact(field: "fullName" | "email" | "phone" | "location", value: string) {
+  function updateContact(field: "fullName" | "email" | "phone" | "location" | "nationality" | "dateOfBirth" | "address", value: string) {
     updateResume((current) => ({
       ...current,
       contact: {
@@ -362,6 +598,7 @@ export function ResumeBuilder() {
       ...current,
       sections: current.sections.map((item) => item.id !== sectionId ? item : {
         ...item,
+        europeanSampleSeeded: true,
         entries: item.entries.map((entry) => entry.id !== entryId ? entry : { ...entry, [field]: value, sample: false }),
       }),
     }));
@@ -370,7 +607,12 @@ export function ResumeBuilder() {
   function updateSection(sectionId: string, patch: Partial<Pick<ResumeSection, "title" | "visible" | "publicationOptions">>) {
     updateResume((current) => ({
       ...current,
-      sections: current.sections.map((item) => item.id === sectionId ? { ...item, ...patch } : item),
+      sections: current.sections.map((item) => item.id === sectionId ? {
+        ...item,
+        ...patch,
+        visibilityCustomized: patch.visible === undefined ? item.visibilityCustomized : true,
+        europeanSampleSeeded: true,
+      } : item),
     }));
   }
 
@@ -378,7 +620,7 @@ export function ResumeBuilder() {
     updateResume((current) => ({
       ...current,
       sections: current.sections.map((item) =>
-        item.id === sectionId ? { ...item, summary, summarySample: false } : item,
+        item.id === sectionId ? { ...item, summary, summarySample: false, europeanSampleSeeded: true } : item,
       ),
     }));
   }
@@ -415,10 +657,76 @@ export function ResumeBuilder() {
       ...current,
       sections: current.sections.map((item) => item.id !== sectionId ? item : {
         ...item,
+        europeanSampleSeeded: true,
         publications: item.publications.map((publication) =>
           publication.id === publicationId ? { ...publication, ...patch, sample: false } : publication,
         ),
       }),
+    }));
+  }
+
+  function updateLanguage(sectionId: string, languageId: string, patch: Partial<Omit<ResumeLanguage, "id" | "sample">>) {
+    updateResume((current) => ({
+      ...current,
+      sections: current.sections.map((item) => item.type !== "languages" || item.id !== sectionId ? item : {
+        ...item,
+        europeanSampleSeeded: true,
+        languagesSample: false,
+        others: (item.others ?? []).map((language) => language.id === languageId
+          ? { ...language, ...patch, sample: false }
+          : language),
+      }),
+    }));
+  }
+
+  function addLanguage(sectionId: string) {
+    const language = createBlankLanguage();
+    updateResume((current) => ({
+      ...current,
+      sections: current.sections.map((item) => item.type === "languages" && item.id === sectionId
+        ? { ...item, europeanSampleSeeded: true, others: [...(item.others ?? []), language], languagesSample: false }
+        : item),
+    }));
+    setLiveMessage("Language added.");
+  }
+
+  function removeLanguage(sectionId: string, languageId: string) {
+    updateResume((current) => ({
+      ...current,
+      sections: current.sections.map((item) => item.type === "languages" && item.id === sectionId
+        ? { ...item, europeanSampleSeeded: true, others: (item.others ?? []).filter((language) => language.id !== languageId), languagesSample: false }
+        : item),
+    }));
+    setLiveMessage("Language removed.");
+  }
+
+  function updateMotherTongue(sectionId: string, index: number, value: string) {
+    updateResume((current) => ({
+      ...current,
+      sections: current.sections.map((item) => {
+        if (item.type !== "languages" || item.id !== sectionId) return item;
+        const motherTongues = [...(item.motherTongues ?? [])];
+        motherTongues[index] = value;
+        return { ...item, europeanSampleSeeded: true, motherTongues, languagesSample: false };
+      }),
+    }));
+  }
+
+  function addMotherTongue(sectionId: string) {
+    updateResume((current) => ({
+      ...current,
+      sections: current.sections.map((item) => item.type === "languages" && item.id === sectionId
+        ? { ...item, europeanSampleSeeded: true, motherTongues: [...(item.motherTongues ?? []), ""], languagesSample: false }
+        : item),
+    }));
+  }
+
+  function removeMotherTongue(sectionId: string, index: number) {
+    updateResume((current) => ({
+      ...current,
+      sections: current.sections.map((item) => item.type === "languages" && item.id === sectionId
+        ? { ...item, europeanSampleSeeded: true, motherTongues: (item.motherTongues ?? []).filter((_, tongueIndex) => tongueIndex !== index), languagesSample: false }
+        : item),
     }));
   }
 
@@ -427,7 +735,7 @@ export function ResumeBuilder() {
     updateResume((current) => ({
       ...current,
       sections: current.sections.map((item) =>
-        item.id === sectionId ? { ...item, publications: [...item.publications, publication] } : item,
+        item.id === sectionId ? { ...item, europeanSampleSeeded: true, publications: [...item.publications, publication] } : item,
       ),
     }));
     setLiveMessage("Publication added.");
@@ -438,6 +746,7 @@ export function ResumeBuilder() {
       ...current,
       sections: current.sections.map((item) => item.id !== sectionId ? item : {
         ...item,
+        europeanSampleSeeded: true,
         publications: item.publications.filter((publication) => publication.id !== publicationId),
       }),
     }));
@@ -454,7 +763,7 @@ export function ResumeBuilder() {
         if (index < 0 || target < 0 || target >= item.publications.length) return item;
         const publications = [...item.publications];
         [publications[index], publications[target]] = [publications[target], publications[index]];
-        return { ...item, publications };
+        return { ...item, europeanSampleSeeded: true, publications };
       }),
     }));
   }
@@ -466,10 +775,11 @@ export function ResumeBuilder() {
       const target = index + direction;
       if (index < 0 || target < 0 || target >= visible.length) return current;
       [visible[index], visible[target]] = [visible[target], visible[index]];
+      const reordered = visible.map((item) => ({ ...item, europeanSampleSeeded: true }));
       let visibleIndex = 0;
       const sections = [...current.sections];
       for (let slot = 0; slot < sections.length; slot += 1) {
-        if (sections[slot].visible) sections[slot] = visible[visibleIndex++];
+        if (sections[slot].visible) sections[slot] = reordered[visibleIndex++];
       }
       return { ...current, sections };
     });
@@ -521,7 +831,7 @@ export function ResumeBuilder() {
     updateResume((current) => ({
       ...current,
       sections: current.sections.map((item) =>
-        item.id === sectionId ? { ...item, entries: [...item.entries, nextEntry] } : item,
+        item.id === sectionId ? { ...item, europeanSampleSeeded: true, entries: [...item.entries, nextEntry] } : item,
       ),
     }));
     setLiveMessage("Entry added.");
@@ -532,6 +842,7 @@ export function ResumeBuilder() {
       ...current,
       sections: current.sections.map((item) => item.id !== sectionId ? item : {
         ...item,
+        europeanSampleSeeded: true,
         entries: item.entries.filter((entry) => entry.id !== entryId),
       }),
     }));
@@ -548,7 +859,7 @@ export function ResumeBuilder() {
         if (index < 0 || target < 0 || target >= item.entries.length) return item;
         const entries = [...item.entries];
         [entries[index], entries[target]] = [entries[target], entries[index]];
-        return { ...item, entries };
+        return { ...item, europeanSampleSeeded: true, entries };
       }),
     }));
   }
@@ -583,24 +894,30 @@ export function ResumeBuilder() {
     setLiveMessage("Link removed.");
   }
 
-  function changeMode(mode: ResumeDocument["mode"]) {
+  function changeMode(mode: ResumeMode) {
     updateResume((current) => ({
       ...current,
       mode,
-      sections: applyModeOrder(current.sections.map((item) => item.type !== "summary" ? item : {
-        ...item,
-        title: item.title === (current.mode === "Job" ? "Summary" : "Research interests")
-          ? mode === "Job" ? "Summary" : "Research interests"
-          : item.title,
-      }), mode, current.student),
+      sections: applyModeDefaults(current.sections.map((section) => {
+        return section.type !== "summary" ? section : {
+          ...section,
+          title: section.title === (current.mode === "study" ? "Research interests" : "Summary")
+            ? mode === "study" ? "Research interests" : "Summary"
+            : section.title,
+        };
+      }), mode, current.student, current.europeanStandard),
     }));
+  }
+
+  function changeEuropeanStandard(checked: boolean) {
+    updateResume((current) => setEuropeanStandard(current, checked));
   }
 
   function changeStudent(checked: boolean) {
     updateResume((current) => ({
       ...current,
       student: checked,
-      sections: applyModeOrder(current.sections, current.mode, checked),
+      sections: applyModeOrder(current.sections, current.mode, checked, current.europeanStandard),
     }));
   }
 
@@ -628,6 +945,17 @@ export function ResumeBuilder() {
     const anchor = document.createElement("a");
     anchor.href = url;
     anchor.download = "resume-data.json";
+    anchor.click();
+    window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
+  }
+
+  function exportLatex() {
+    const latex = buildLatexResume(resume);
+    const blob = new Blob([latex], { type: "application/x-tex" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = "resume.tex";
     anchor.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 1_000);
   }
@@ -669,33 +997,14 @@ export function ResumeBuilder() {
   }
 
   const sortedSections = resume.sections;
-  const contactItems: Array<{ key: string; content: ReactNode }> = [
-    ...(resume.contact.email.trim() ? [{
-      key: "email",
-      content: <a href={`mailto:${resume.contact.email}`} target="_blank" rel="noopener noreferrer">{resume.contact.email}</a>,
-    }] : []),
-    ...(resume.contact.phone.trim() ? [{
-      key: "phone",
-      content: <span>{resume.contact.phone}</span>,
-    }] : []),
-    ...resume.contact.links.filter((link) => link.label.trim() || link.url.trim()).map((link) => ({
-      key: link.id,
-      content: validateResumeLink(link.url)
-        ? <a href={link.url} target="_blank" rel="noopener noreferrer">{link.label || link.url}</a>
-        : <span>{link.label}{link.url ? `: ${link.url}` : ""}</span>,
-    })),
-    ...(resume.contact.location.trim() ? [{
-      key: "location",
-      content: <span>{resume.contact.location}</span>,
-    }] : []),
-  ];
+  const contactItems = createResumeContactItems(resume);
   const documentBlocks = createResumeBlocks(resume, contactItems);
   const currentBlockIds = new Set(documentBlocks.map((block) => block.id));
   const currentPages = pages
     .map((page) => page.filter((block) => currentBlockIds.has((block as DocumentBlock).sourceId ?? block.id)))
     .filter((page) => page.length > 0);
   const pageCount = currentPages.length || 1;
-  const pageWarning = resume.mode === "Job" ? pageCount > 1 : pageCount > 2;
+  const pageWarning = resume.mode === "job" ? pageCount > 1 : resume.mode === "study" && pageCount > 2;
   const paperStyle = getPaperStyle(resume.typography);
   const paperDimensions: CSSProperties = {
     width: `${PAGE_WIDTH_MM}mm`,
@@ -828,7 +1137,7 @@ export function ResumeBuilder() {
               {sampleCount > 0 && <span>Sample data: {sampleCount} sample items remain. Replace them with your own details before sharing.</span>}
               {hiddenSections.length > 0 && !addHintDismissed && (
                 <span className="rb-mode-hint">
-                  {resume.mode === "Job" ? "Add a summary or projects section if they strengthen your application." : "Add projects or publications to highlight academic work."}
+                  {resume.mode === "job" ? "Add a summary or projects section if they strengthen your application." : "Add projects or publications to highlight academic work."}
                   <Button variant="outline" size="sm" type="button" onClick={() => setAddHintDismissed(true)}>Dismiss hint</Button>
                 </span>
               )}
@@ -846,14 +1155,15 @@ export function ResumeBuilder() {
             <CardContent className="rb-toolbar-controls">
               <label className="rb-control-label">
                 <span>Format</span>
-                <Select value={resume.mode} onValueChange={(value) => changeMode(value as ResumeDocument["mode"])}>
+                <Select value={resume.mode} onValueChange={(value) => changeMode(value as ResumeMode)}>
                   <SelectTrigger aria-label="Resume format"><SelectValue /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="Job">Job</SelectItem>
-                    <SelectItem value="Higher study">Higher study</SelectItem>
+                    <SelectItem value="job">Job</SelectItem>
+                    <SelectItem value="study">Higher study</SelectItem>
                   </SelectContent>
                 </Select>
               </label>
+              <label className="rb-check-label"><Checkbox checked={resume.europeanStandard} onCheckedChange={(checked) => changeEuropeanStandard(checked === true)} /> European CV</label>
               <label className="rb-check-label"><Checkbox checked={resume.student} onCheckedChange={(checked) => changeStudent(checked === true)} /> Recent graduate or student</label>
               <label className="rb-check-label"><Checkbox checked={resume.compactSpacing} onCheckedChange={(checked) => setResume((current) => ({ ...current, compactSpacing: checked === true }))} /> Compact spacing</label>
             </CardContent>
@@ -865,6 +1175,7 @@ export function ResumeBuilder() {
               <Button type="button" onClick={() => void downloadResume()} disabled={isDownloading}>
                 {isDownloading ? "Preparing PDF…" : "Download file"}
               </Button>
+              <Button hidden variant="outline" type="button" onClick={exportLatex}>Export LaTeX</Button>
               <Button variant="outline" type="button" onClick={exportJson}>Export JSON</Button>
               <Button variant="outline" type="button" onClick={() => importInputRef.current?.click()}>Import JSON</Button>
             </CardContent>
@@ -882,7 +1193,7 @@ export function ResumeBuilder() {
           <input ref={importInputRef} className="rb-hidden-input" type="file" accept="application/json,.json" aria-label="Choose resume JSON file" onChange={(event) => void importJson(event.target.files?.[0])} />
           <p className="rb-estimate" role="status" aria-live="polite" aria-atomic="true">
             {pageCount} {pageCount === 1 ? "page" : "pages"}
-            {pageWarning ? ` — This resume is ${pageCount} pages. ${resume.mode === "Job" ? "Most job applications expect one." : "Most higher study applications expect two."}` : ""}
+            {pageWarning ? ` — This resume is ${pageCount} pages. ${resume.mode === "job" ? "Most job applications expect one." : "Most higher study applications expect two."}` : ""}
           </p>
         </div>
 
@@ -934,7 +1245,9 @@ export function ResumeBuilder() {
           </div>
         </details>
 
-        {resume.mode === "Job" ? <p className="rb-guidance">{JOB_GUIDANCE}</p> : <p className="rb-guidance">{STUDY_GUIDANCE}</p>}
+        {resume.mode === "job"
+          ? <p className="rb-guidance">{JOB_GUIDANCE}</p>
+          : <p className="rb-guidance">{STUDY_GUIDANCE}</p>}
 
         <div className="rb-mobile-toggle" role="group" aria-label="Mobile editor view">
           <Button variant="outline" type="button" aria-pressed={mobileView === "edit"} onClick={() => setMobileView("edit")}>Edit</Button>
@@ -950,7 +1263,14 @@ export function ResumeBuilder() {
                 <label>Full name<Input autoComplete="name" maxLength={200} value={resume.contact.fullName} onChange={(event) => updateContact("fullName", event.target.value)} /></label>
                 <label>Email<Input type="email" autoComplete="email" maxLength={320} value={resume.contact.email} onChange={(event) => updateContact("email", event.target.value)} /></label>
                 <label>Phone<Input type="tel" autoComplete="tel" maxLength={80} value={resume.contact.phone} onChange={(event) => updateContact("phone", event.target.value)} /></label>
-                <label>Location<Input autoComplete="address-level2" maxLength={200} value={resume.contact.location} onChange={(event) => updateContact("location", event.target.value)} /></label>
+                <label>Location<Input autoComplete="address-level2" maxLength={200} value={resume.contact.location} onChange={(event) => updateContact("location", event.target.value)} />
+                  {resume.europeanStandard && resume.contact.address.trim() && <small className="rb-contact-hint">Not shown in the header while Address is set.</small>}
+                </label>
+                {resume.europeanStandard && <>
+                  <label>Nationality<Input maxLength={100} value={resume.contact.nationality} onChange={(event) => updateContact("nationality", event.target.value)} /></label>
+                  <label>Date of birth<Input maxLength={100} placeholder="12 March 1998" value={resume.contact.dateOfBirth} onChange={(event) => updateContact("dateOfBirth", event.target.value)} /></label>
+                  <label>Address<Input maxLength={500} value={resume.contact.address} onChange={(event) => updateContact("address", event.target.value)} /></label>
+                </>}
               </div>
               <div className="rb-links">
                 <strong>Links</strong>
@@ -988,7 +1308,68 @@ export function ResumeBuilder() {
                   <Button variant="outline" size="sm" type="button" aria-label={`Move ${item.title} section down`} disabled={sectionIndex === visibleSections.length - 1} onClick={() => moveSection(item.id, 1)}>Move down</Button>
                   <Button variant="outline" size="sm" type="button" aria-label={`Close ${item.title} section`} onClick={() => toggleSection(item)}>Close</Button>
                 </div>
-                {item.type === "publications" ? (
+                {item.type === "languages" ? (
+                  <div className="rb-language-editor">
+                    <div className="rb-language-mother-editor">
+                      <strong>Mother tongues</strong>
+                      {(item.motherTongues ?? []).map((name, index) => (
+                        <div className="rb-language-mother-item" key={`mother-${index}`}>
+                          <Input aria-label={`Mother tongue ${index + 1}`} maxLength={100} value={name} onChange={(event) => updateMotherTongue(item.id, index, event.target.value)} />
+                          <Button variant="outline" size="sm" type="button" aria-label={`Remove mother tongue ${index + 1}`} onClick={() => removeMotherTongue(item.id, index)}>Remove</Button>
+                        </div>
+                      ))}
+                      {(item.motherTongues ?? []).length < 10 && <Button variant="outline" type="button" onClick={() => addMotherTongue(item.id)}>Add mother tongue</Button>}
+                    </div>
+                    {(item.others ?? []).map((language, languageIndex) => (
+                      <div className="rb-language-form" key={language.id}>
+                        <label>Language<Input maxLength={100} value={language.name} onChange={(event) => updateLanguage(item.id, language.id, { name: event.target.value })} /></label>
+                        <label className="rb-language-same-level">Same level for all five
+                          <Select value={equalLanguageLevel(language) ?? "choose-level"} onValueChange={(value) => {
+                            if (value === "choose-level") return;
+                            const level = value as ResumeLanguage[typeof LANGUAGE_LEVEL_FIELDS[number]];
+                            updateLanguage(item.id, language.id, Object.fromEntries(LANGUAGE_LEVEL_FIELDS.map((field) => [field, level])));
+                          }}>
+                            <SelectTrigger aria-label={`Same level for all five, language ${languageIndex + 1}`}><SelectValue placeholder="Choose level" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="choose-level">Choose level</SelectItem>
+                              {LANGUAGE_LEVELS.filter(Boolean).map((level) => <SelectItem value={level} key={level}>{level}</SelectItem>)}
+                            </SelectContent>
+                          </Select>
+                        </label>
+                        <div className="rb-language-levels">
+                          {LANGUAGE_LEVEL_FIELDS.map((field) => {
+                            const label = field === "interactionSpoken" ? "Spoken interaction"
+                              : field === "productionSpoken" ? "Spoken production"
+                                : field[0].toUpperCase() + field.slice(1);
+                            return <label key={field}>{label}
+                              <Select value={language[field] || "not-set"} onValueChange={(value) => updateLanguage(item.id, language.id, { [field]: value === "not-set" ? "" : value as ResumeLanguage[typeof field] })}>
+                                <SelectTrigger aria-label={`${label}, language ${languageIndex + 1}`}><SelectValue /></SelectTrigger>
+                                <SelectContent>
+                                  <SelectItem value="not-set">Not set</SelectItem>
+                                  {LANGUAGE_LEVELS.filter(Boolean).map((level) => <SelectItem value={level} key={level}>{level}</SelectItem>)}
+                                </SelectContent>
+                              </Select>
+                            </label>;
+                          })}
+                        </div>
+                        <label>Certificate (optional)<Input maxLength={200} value={language.certificate} onChange={(event) => updateLanguage(item.id, language.id, { certificate: event.target.value })} /></label>
+                        <div className="rb-entry-actions">
+                          <Button variant="outline" size="sm" type="button" aria-label={`Remove language ${languageIndex + 1}`} onClick={() => removeLanguage(item.id, language.id)}>Remove language</Button>
+                        </div>
+                      </div>
+                    ))}
+                    {(item.others ?? []).length < 50 && <Button variant="outline" type="button" onClick={() => addLanguage(item.id)}>Add language</Button>}
+                  </div>
+                ) : item.type === "drivingLicence" ? (
+                  <label className="rb-summary-field">Driving licence
+                    <Input maxLength={100} value={item.drivingLicence ?? ""} onChange={(event) => updateResume((current) => ({
+                      ...current,
+                      sections: current.sections.map((section) => section.id === item.id
+                        ? { ...section, europeanSampleSeeded: true, drivingLicence: event.target.value, drivingLicenceSample: false }
+                        : section),
+                    }))} />
+                  </label>
+                ) : item.type === "publications" ? (
                   <>
                     <p className="rb-guidance">{PUBLICATION_GUIDANCE}</p>
                     <details
@@ -1062,10 +1443,10 @@ export function ResumeBuilder() {
                   </>
                 ) : item.type === "summary" ? (
                   <label className="rb-summary-field">
-                    {resume.mode === "Higher study" ? "Research interests" : "Summary"}
+                    {resume.mode === "study" ? "Research interests" : "Summary"}
                     <Textarea
                       maxLength={10_000}
-                      placeholder={resume.mode === "Higher study"
+                      placeholder={resume.mode === "study"
                         ? "The fields you want to research and the background that prepared you."
                         : "Two or three lines: who you are and what you want next."}
                       value={item.summary}
@@ -1074,11 +1455,11 @@ export function ResumeBuilder() {
                   </label>
                 ) : (
                   <>
-                    <p className="rb-guidance">{item.type === "skills" ? "Use the Hard Skills and Soft Skills subsections to group your abilities." : "Add concise details; lines starting with - or • appear as bullets."}</p>
+                    <p className="rb-guidance">{item.type === "skills" || item.type === "digitalSkills" ? "Use subsections to group your abilities." : "Add concise details; lines starting with - or • appear as bullets."}</p>
                     {item.entries.map((entry, entryIndex) => (
                   <div className="rb-entry-form" key={entry.id}>
-                    <label>{item.type === "skills" ? "Skill subsection" : "Title"}<Input maxLength={300} value={entry.title} onChange={(event) => updateEntry(item.id, entry.id, "title", event.target.value)} /></label>
-                    {(item.type === "awards" || item.type === "certifications") && (
+                    <label>{item.type === "skills" || item.type === "digitalSkills" ? "Skill subsection" : "Title"}<Input maxLength={300} value={entry.title} onChange={(event) => updateEntry(item.id, entry.id, "title", event.target.value)} /></label>
+                    {(item.type === "awards" || item.type === "certifications" || item.type === "conferences") && (
                       <>
                         <label>Link (optional)<Input value={entry.link} onChange={(event) => updateEntry(item.id, entry.id, "link", event.target.value)} /></label>
                         <p className="rb-publication-link-help">
@@ -1092,9 +1473,9 @@ export function ResumeBuilder() {
                         )}
                       </>
                     )}
-                    {item.type !== "skills" && <label>Organization<Input maxLength={300} value={entry.organization} onChange={(event) => updateEntry(item.id, entry.id, "organization", event.target.value)} /></label>}
-                    {item.type !== "skills" && <label>Location<Input maxLength={200} value={entry.location} onChange={(event) => updateEntry(item.id, entry.id, "location", event.target.value)} /></label>}
-                    {item.type !== "skills" && <label>Dates<Input maxLength={100} value={entry.dates} onChange={(event) => updateEntry(item.id, entry.id, "dates", event.target.value)} /></label>}
+                    {item.type !== "skills" && item.type !== "digitalSkills" && <label>Organization{item.type === "conferences" ? "/event" : ""}<Input maxLength={300} value={entry.organization} onChange={(event) => updateEntry(item.id, entry.id, "organization", event.target.value)} /></label>}
+                    {item.type !== "skills" && item.type !== "digitalSkills" && item.type !== "grants" && item.type !== "memberships" && <label>Location<Input maxLength={200} value={entry.location} onChange={(event) => updateEntry(item.id, entry.id, "location", event.target.value)} /></label>}
+                    {item.type !== "skills" && item.type !== "digitalSkills" && <label>Dates<Input maxLength={100} value={entry.dates} onChange={(event) => updateEntry(item.id, entry.id, "dates", event.target.value)} /></label>}
                     <label>Description<Textarea maxLength={10_000} value={entry.description} onChange={(event) => updateEntry(item.id, entry.id, "description", event.target.value)} /></label>
                     <div className="rb-entry-actions">
                       <Button variant="outline" size="sm" type="button" aria-label={`Move entry ${entryIndex + 1} up`} disabled={entryIndex === 0} onClick={() => moveEntry(item.id, entry.id, -1)}>Move up</Button>
@@ -1210,7 +1591,7 @@ export function PublicationCitation({
           <span key={authorIndex}>
             {index > 0 && ", "}
             {publication.selectedAuthorIndex === authorIndex
-              ? <strong>{publication.authors[authorIndex]}</strong>
+              ? <strong className="rb-publication-author">{publication.authors[authorIndex]}</strong>
               : publication.authors[authorIndex]}
           </span>
         ))}
@@ -1220,7 +1601,7 @@ export function PublicationCitation({
               <span>…</span>
             {selectedOutsideFirstThree && publication.selectedAuthorIndex !== null && (
               <>
-                , <strong>{publication.authors[publication.selectedAuthorIndex]}</strong>
+                , <strong className="rb-publication-author">{publication.authors[publication.selectedAuthorIndex]}</strong>
               </>
             )}
             , et al.
