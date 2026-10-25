@@ -16,6 +16,7 @@ import {
   DEFAULT_TYPOGRAPHY,
   equalLanguageLevel,
   findMatchingAuthor,
+  isValidProfilePhotoDataUrl,
   isShareableDriveLink,
   HIGHER_STUDY_ORDER,
   INITIAL_VISIBLE_ORDER,
@@ -30,6 +31,7 @@ import {
   PAGE_PAGINATION_HEIGHT_MM,
   PAGE_WIDTH_MM,
   parseDescription,
+  packResumeHeaderLines,
   publicationAuthorIndices,
   publicationGroups,
   preserveTypography,
@@ -41,12 +43,13 @@ import {
   TYPOGRAPHY_RANGES,
   validateResumeImport,
 } from "./model";
-import { buildLatexResume, createResumeBlocks, createResumeContactItems, Description, getPaperStyle, PublicationCitation, ResumeBuilder } from "./ResumeBuilder";
+import { buildLatexResume, createResumeBlocks, createResumeContactItems, Description, getPaperStyle, processProfilePhoto, PublicationCitation, ResumeBuilder } from "./ResumeBuilder";
 import { paginateBlocks } from "./pagination";
 import { createResumePdf, downloadBlob } from "./pdf-export";
 import resumeBuilderCss from "./resume-builder.css?raw";
 import { getToolContentRequirements } from "@/data/toolContentRequirements";
 import { tools } from "../../../../api-server/src/lib/content";
+import demoPhoto from "@/assets/pdfkira-logo.png?inline";
 
 function contrastRatio(background: [number, number, number], foreground: [number, number, number]) {
   const luminance = ([hue, saturation, lightness]: [number, number, number]) => {
@@ -72,7 +75,14 @@ function contrastRatio(background: [number, number, number], foreground: [number
 
 const samplePublication = () => createSampleResume().sections.find((section) => section.type === "publications")!.publications[0];
 
-it("builds European contact lines without empty items or separators", () => {
+async function waitForProfilePhoto(host: HTMLElement) {
+  for (let attempt = 0; attempt < 60; attempt += 1) {
+    if (host.querySelector('.rb-paper img[alt="Profile photo"]')) return;
+    await new Promise((resolve) => window.setTimeout(resolve, 100));
+  }
+}
+
+it("builds Europass contact lines without empty items or separators", () => {
   const resume = createSampleResume();
   resume.europeanStandard = true;
   expect(buildResumeContactLines(resume).map((line) => line.map((item) => item.text))).toEqual([
@@ -118,6 +128,34 @@ it("builds European contact lines without empty items or separators", () => {
   }
 });
 
+it("packs whole header items without dangling separators and normalizes photo positions", () => {
+  const items = [
+    { key: "email", text: "email@example.com" },
+    { key: "phone", text: "+1 555 0100" },
+    { key: "address", text: "Address: A very long address", breakBefore: true },
+  ];
+  for (const width of [1, 12, 30, 80]) {
+    const packed = packResumeHeaderLines(items, width, (text) => text.length);
+    expect(packed.flatMap((line) => line.items.map((item) => item.text))).toEqual(items.map((item) => item.text));
+    expect(packed.every((line) => line.items.length > 0)).toBe(true);
+    const rendered = packed.map((line) => line.items.map((item) => item.text).join(" • ")).join("\n");
+    expect(rendered).not.toMatch(/(^|\n)\s*•|•\s*(\n|$)/);
+    expect(packed.find((line) => line.items.some((item) => item.key === "address"))?.items).toHaveLength(1);
+  }
+
+  const source = createSampleResume();
+  const base = JSON.parse(JSON.stringify(source)) as Record<string, unknown>;
+  expect(source.photoPosition).toBe("right");
+  for (const position of ["right", "center", "left"] as const) {
+    const imported = validateResumeImport({ ...base, photoPosition: position, profilePhotoDataUrl: demoPhoto });
+    expect(imported.photoPosition).toBe(position);
+    expect(validateResumeImport(JSON.parse(JSON.stringify(imported))).photoPosition).toBe(position);
+  }
+  expect(validateResumeImport({ ...base, photoPosition: "unknown" }).photoPosition).toBe("right");
+  expect(validateResumeImport(base).photoPosition).toBe("right");
+  expect(validateResumeImport({ ...base, recentGraduateOrStudent: true })).not.toHaveProperty("recentGraduateOrStudent");
+});
+
 function emptyEuropeanResume() {
   const resume = createBlankResume();
   return {
@@ -137,13 +175,13 @@ function emptyEuropeanResume() {
   };
 }
 
-it("keeps Job/Study format separate from the European CV checkbox and migrates legacy European mode", () => {
+it("keeps Job/Study format separate from the Europass CV checkbox and migrates legacy European mode", () => {
   const resume = createSampleResume();
   expect(resume.mode).toBe("job");
   expect(resume.europeanStandard).toBe(false);
-  expect(applyModeOrder(resume.sections, "study", false, false).map((section) => section.type)).toEqual(HIGHER_STUDY_ORDER);
-  expect(applyModeOrder(resume.sections, "job", false, false).map((section) => section.type)).toEqual(JOB_ORDER);
-  expect(applyModeOrder(resume.sections, "job", false, true).map((section) => section.type)).toEqual([
+  expect(applyModeOrder(resume.sections, "study", false).map((section) => section.type)).toEqual(HIGHER_STUDY_ORDER);
+  expect(applyModeOrder(resume.sections, "job", false).map((section) => section.type)).toEqual(JOB_ORDER);
+  expect(applyModeOrder(resume.sections, "job", true).map((section) => section.type)).toEqual([
     "summary",
     "experience",
     "education",
@@ -161,12 +199,12 @@ it("keeps Job/Study format separate from the European CV checkbox and migrates l
     "drivingLicence",
     "custom",
   ]);
-  const europeanDefaults = applyModeDefaults(resume.sections, "job", false, true);
+  const europeanDefaults = applyModeDefaults(resume.sections, "job", true);
   expect(europeanDefaults.find((section) => section.type === "drivingLicence")?.visible).toBe(true);
   const explicitlyHidden = resume.sections.map((section) => section.type === "drivingLicence"
     ? { ...section, visible: false, visibilityCustomized: true }
     : section);
-  expect(applyModeDefaults(explicitlyHidden, "job", false, true).find((section) => section.type === "drivingLicence")?.visible).toBe(false);
+  expect(applyModeDefaults(explicitlyHidden, "job", true).find((section) => section.type === "drivingLicence")?.visible).toBe(false);
 
   const legacy = JSON.parse(JSON.stringify(createSampleResume())) as ReturnType<typeof createSampleResume>;
   legacy.version = 1;
@@ -176,6 +214,12 @@ it("keeps Job/Study format separate from the European CV checkbox and migrates l
   expect(migrated.europeanStandard).toBe(true);
   expect(migrated.contact.nationality).toBe(legacy.contact.nationality ?? "");
   expect(migrated.sections.find((section) => section.type === "languages")?.visible).toBe(true);
+
+  const oldStudentJson = JSON.parse(JSON.stringify(createSampleResume()));
+  oldStudentJson.student = true;
+  const importedOldStudent = validateResumeImport(oldStudentJson);
+  expect("student" in importedOldStudent).toBe(false);
+  expect(applyModeOrder(importedOldStudent.sections, importedOldStudent.mode).map((section) => section.type)).toEqual(JOB_ORDER);
 });
 
 it("starts with visible sections in Job order and a single sample publication", () => {
@@ -209,7 +253,7 @@ it("starts with visible sections in Job order and a single sample publication", 
   expect(sampleItemCount(resume)).toBe(30);
 });
 
-it("includes editable European CV sample data and seeds only untouched empty sections", () => {
+it("includes editable Europass CV sample data and seeds only untouched empty sections", () => {
   const sample = createSampleResume();
   expect(sample.contact).toMatchObject({
     nationality: "Example nationality",
@@ -278,7 +322,7 @@ it("includes editable European CV sample data and seeds only untouched empty sec
   expect(blankEnabled.sections.find((item) => item.type === "drivingLicence")?.drivingLicence).toBe("");
 });
 
-it("clears the new European sample data and does not reseed it", () => {
+it("clears the new Europass sample data and does not reseed it", () => {
   const cleared = clearSampleData(createSampleResume());
   expect(sampleItemCount(cleared)).toBe(0);
   expect(cleared.contact).toMatchObject({ nationality: "", dateOfBirth: "", address: "" });
@@ -290,6 +334,74 @@ it("clears the new European sample data and does not reseed it", () => {
     .toMatchObject({ drivingLicence: "", drivingLicenceSample: false });
   const toggled = setEuropeanStandard(setEuropeanStandard(cleared, false), true);
   expect(sampleItemCount(toggled)).toBe(0);
+});
+
+it("seeds, counts, preserves, and clears the demo photo without reseeding removed photos", () => {
+  const sample = createSampleResume();
+  const enabled = setEuropeanStandard(sample, true, demoPhoto);
+  expect(enabled.profilePhotoDataUrl).toBe(demoPhoto);
+  expect(enabled.profilePhotoSample).toBe(true);
+  expect(sampleItemCount(enabled)).toBe(31);
+  const hidden = setEuropeanStandard(enabled, false, demoPhoto);
+  expect(hidden.profilePhotoDataUrl).toBe(demoPhoto);
+  expect(setEuropeanStandard(hidden, true, demoPhoto).profilePhotoDataUrl).toBe(demoPhoto);
+  expect(JSON.stringify(hidden)).toContain(demoPhoto);
+  const hiddenPreview = renderToStaticMarkup(createElement("div", null,
+    ...createResumeBlocks(hidden, createResumeContactItems(hidden)).map((block) => block.content),
+  ));
+  expect(hiddenPreview).not.toContain('alt="Profile photo"');
+  expect(buildLatexResume(hidden)).not.toContain("% photo not included");
+  expect(buildLatexResume(enabled)).toContain("% photo not included");
+
+  const { profilePhotoDataUrl: _removedPhoto, ...removed } = enabled;
+  const removedPhoto = { ...removed, profilePhotoSample: false, profilePhotoSeedAllowed: false };
+  expect(setEuropeanStandard(setEuropeanStandard(removedPhoto, false, demoPhoto), true, demoPhoto).profilePhotoDataUrl).toBeUndefined();
+  expect(sampleItemCount(removedPhoto)).toBe(30);
+
+  const cleared = clearSampleData(enabled);
+  expect(cleared.profilePhotoDataUrl).toBeUndefined();
+  expect(cleared.profilePhotoSeedAllowed).toBe(false);
+  expect(sampleItemCount(cleared)).toBe(0);
+  expect(setEuropeanStandard(cleared, true, demoPhoto).profilePhotoDataUrl).toBeUndefined();
+  expect(createBlankResume().profilePhotoDataUrl).toBeUndefined();
+
+  const userPhoto = { ...enabled, profilePhotoDataUrl: demoPhoto, profilePhotoSample: false, profilePhotoSeedAllowed: false };
+  expect(setEuropeanStandard(userPhoto, false, demoPhoto).profilePhotoDataUrl).toBe(demoPhoto);
+  expect(clearSampleData(userPhoto).profilePhotoDataUrl).toBe(demoPhoto);
+  expect(sampleItemCount(userPhoto)).toBe(30);
+});
+
+it("validates photo data URLs safely and downsizes accepted uploads", async () => {
+  expect(isValidProfilePhotoDataUrl(demoPhoto)).toBe(true);
+  for (const invalid of [
+    "data:image/gif;base64,R0lGODlhAQABAIAAAAUEBA==",
+    "data:image/png;base64,aGVsbG8=",
+    "data:image/png;base64,iVBORw0KGgo=",
+    "data:image/png;base64,!",
+  ]) {
+    const imported = validateResumeImport({ ...createSampleResume(), profilePhotoDataUrl: invalid });
+    expect(imported.profilePhotoDataUrl).toBeUndefined();
+  }
+
+  const invalidType = new File(["not an image"], "photo.gif", { type: "image/gif" });
+  await expect(processProfilePhoto(invalidType)).rejects.toThrow("Choose a PNG, JPEG, or WebP image.");
+  const oversized = new File(["x".repeat(5 * 1024 * 1024 + 1)], "large.png", { type: "image/png" });
+  await expect(processProfilePhoto(oversized)).rejects.toThrow("5 MB or smaller");
+
+  const canvas = document.createElement("canvas");
+  canvas.width = 1200;
+  canvas.height = 300;
+  const context = canvas.getContext("2d")!;
+  context.fillStyle = "#357";
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  const source = await new Promise<Blob>((resolve, reject) =>
+    canvas.toBlob((blob) => blob ? resolve(blob) : reject(new Error("Could not create test image.")), "image/png"),
+  );
+  const processed = await processProfilePhoto(new File([source], "photo.png", { type: "image/png" }));
+  expect(isValidProfilePhotoDataUrl(processed)).toBe(true);
+  const bitmap = await createImageBitmap(await (await fetch(processed)).blob());
+  expect(Math.max(bitmap.width, bitmap.height)).toBeLessThanOrEqual(600);
+  bitmap.close();
 });
 
 it("derives uniform language levels and renders uniform and mixed CEFR levels in preview and PDF", async () => {
@@ -332,36 +444,43 @@ it("derives uniform language levels and renders uniform and mixed CEFR levels in
 
 it("keeps preview and PDF contact header lines identical", async () => {
   const resume = setEuropeanStandard(createSampleResume(), true);
-  const expectedLines = buildResumeContactLines(resume).map((line) => line.map((item) => item.text).join(" • "));
+  const expectedLines = createResumeContactItems(resume).map((line) =>
+    line.items.map((item) => item.text).join(" • "),
+  );
   const markup = renderToStaticMarkup(createElement("div", null,
     ...createResumeBlocks(resume, createResumeContactItems(resume)).map((block) => block.content),
   ));
   const document = new DOMParser().parseFromString(markup, "text/html");
   const previewLines = Array.from(document.querySelectorAll(".rb-contact-line"))
-    .map((line) => line.textContent?.replace(/\s+/g, " ").trim() ?? "");
+    .map((line) => line.textContent ?? "");
   expect(previewLines).toEqual(expectedLines);
+  expect(previewLines.join("\n")).toContain("casey.example@example.com • +1 555-010-2040");
+  expect(previewLines.join("\n")).toContain("LinkedIn • GitHub");
   const previewHeadings = Array.from(document.querySelectorAll("h2")).map((heading) => heading.textContent);
   expect(previewHeadings.indexOf("Summary")).toBeLessThan(previewHeadings.indexOf("Experience"));
 
   pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
   const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await createResumePdf(resume)) }).promise;
-  const text = (await Promise.all(Array.from({ length: pdf.numPages }, async (_, index) =>
+  const extractedItems = (await Promise.all(Array.from({ length: pdf.numPages }, async (_, index) =>
     (await (await pdf.getPage(index + 1)).getTextContent()).items.flatMap((item) => "str" in item ? [item.str] : []),
-  ))).flat().join(" ").replace(/\s+/g, " ");
-  for (const line of expectedLines) expect(text).toContain(line);
+  ))).flat();
+  const text = extractedItems.join(" ").replace(/\s+/g, " ");
+  expect(text).toContain("casey.example@example.com • +1 555-010-2040");
+  expect(text).toContain("LinkedIn • GitHub");
   expect(text.indexOf("Summary")).toBeLessThan(text.indexOf("Experience"));
   const latex = buildLatexResume(resume);
   expect(latex.indexOf("\\section*{Summary}")).toBeLessThan(latex.indexOf("\\section*{Experience}"));
   expect(latex).toContain("\\noindent Address: 123 Example Street, Portland, OR 97201\\par");
   expect(latex).toContain("\\noindent Nationality: Example nationality \\textbullet Date of birth: 2000-01-15\\par");
   expect(latex).not.toContain("\\textbullet Portland, OR");
-});
+}, 30_000);
 
-it("renders European samples as selectable preview, PDF, and JSON text", async () => {
-  const resume = setEuropeanStandard(emptyEuropeanResume(), true);
+it("renders Europass samples as selectable preview, PDF, and JSON text", async () => {
+  const resume = setEuropeanStandard({ ...emptyEuropeanResume(), profilePhotoSeedAllowed: true }, true, demoPhoto);
   const blocks = createResumeBlocks(resume, createResumeContactItems(resume));
   const preview = renderToStaticMarkup(createElement("div", null, ...blocks.map((block) => block.content)));
   expect(preview).toContain("Example nationality");
+  expect(preview).toContain('alt="Profile photo"');
   expect(preview).toContain("English");
   expect(preview).toContain("Regional Operations Summit");
   expect(preview).toContain("Example Community Scholarship");
@@ -369,15 +488,199 @@ it("renders European samples as selectable preview, PDF, and JSON text", async (
 
   pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
   const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(await createResumePdf(resume)) }).promise;
+  expect(pdf.numPages).toBeGreaterThan(0);
   const text = (await Promise.all(Array.from({ length: pdf.numPages }, async (_, index) =>
     (await (await pdf.getPage(index + 1)).getTextContent()).items.flatMap((item) => "str" in item ? [item.str] : []),
   ))).flat().join(" ");
   expect(text).toContain("Example nationality");
   expect(text).toContain("Regional Operations Summit");
   expect(text).toContain("Basic scripting and automation");
-});
+  const hiddenPdfBytes = await createResumePdf({ ...resume, europeanStandard: false });
+  expect(new TextDecoder("latin1").decode(hiddenPdfBytes)).not.toContain("/Subtype /Image");
+}, 30_000);
 
-it("shows European sample entries when the checkbox is turned on", async () => {
+it("keeps the Europass header centered on full content width and aligns the framed photo", async () => {
+  const resume = setEuropeanStandard(createSampleResume(), true, demoPhoto);
+  resume.contact.address = "Long address line ".repeat(60);
+  resume.contact.nationality = "W ".repeat(35);
+  resume.contact.phone = "";
+  resume.contact.links = [];
+  const blocks = createResumeBlocks(resume, createResumeContactItems(resume));
+  const style = document.createElement("style");
+  style.textContent = resumeBuilderCss;
+  document.head.append(style);
+  const host = document.createElement("div");
+  host.innerHTML = renderToStaticMarkup(createElement("div", {
+    className: "rb-paper",
+    style: {
+      width: "210mm",
+      padding: "20mm",
+      "--rb-content-width": "170mm",
+      "--rb-name-size": "24px",
+      "--rb-contact-size": "8px",
+      "--rb-weight-name": "700",
+      "--rb-weight-body": "400",
+      "--rb-style-date": "italic",
+    },
+  }, createElement("div", { className: "rb-page-content" }, ...blocks.map((block) => block.content))));
+  document.body.append(host);
+  try {
+    const paper = host.querySelector<HTMLElement>(".rb-paper")!;
+    const content = host.querySelector<HTMLElement>(".rb-page-content")!;
+    const header = host.querySelector<HTMLElement>(".rb-document-header")!;
+    const name = host.querySelector<HTMLElement>(".rb-name")!;
+    const image = host.querySelector<HTMLImageElement>(".rb-profile-photo")!;
+    const longContact = Array.from(host.querySelectorAll<HTMLElement>(".rb-contact-line"))
+      .find((line) => line.textContent?.includes("Address:"))!;
+    const longContactContent = longContact.querySelector<HTMLElement>(".rb-header-line-content")!;
+    await image.decode();
+    const centerX = (element: HTMLElement) => {
+      const rect = element.getBoundingClientRect();
+      return rect.left + rect.width / 2;
+    };
+    const contentRect = content.getBoundingClientRect();
+    const imageRect = image.getBoundingClientRect();
+    expect(imageRect.width).toBeCloseTo(30 * 96 / 25.4, 0);
+    expect(imageRect.height).toBeCloseTo(38 * 96 / 25.4, 0);
+    expect(centerX(name)).toBeCloseTo(contentRect.left + contentRect.width / 2, 0);
+    for (const line of host.querySelectorAll<HTMLElement>(".rb-contact-line")) {
+      expect(centerX(line)).toBeCloseTo(contentRect.left + contentRect.width / 2, 0);
+    }
+    expect(imageRect.right).toBeCloseTo(contentRect.right, 0);
+    expect(imageRect.top).toBeCloseTo(name.getBoundingClientRect().top, 0);
+    expect(imageRect.top).toBeCloseTo(header.getBoundingClientRect().top, 0);
+    expect(imageRect.left - longContactContent.getBoundingClientRect().right).toBeGreaterThan(0);
+    expect(getComputedStyle(image).objectFit).toBe("cover");
+    expect(getComputedStyle(image).backgroundColor).toBe("rgb(255, 255, 255)");
+    expect(Number.parseFloat(getComputedStyle(image).borderTopWidth)).toBeGreaterThan(0.5);
+    expect(getComputedStyle(host.querySelector(".rb-entry-dates")!).fontStyle).toBe("normal");
+
+    const noPhoto = { ...resume, profilePhotoDataUrl: undefined };
+    const noPhotoHeader = renderToStaticMarkup(createResumeBlocks(noPhoto, createResumeContactItems(noPhoto))[0].content);
+    const noPhotoHost = document.createElement("div");
+    noPhotoHost.innerHTML = noPhotoHeader;
+    content.append(noPhotoHost);
+    expect(noPhotoHost.querySelector(".rb-profile-photo")).toBeNull();
+    expect(noPhotoHost.querySelector(".rb-document-header")?.classList.contains("has-photo")).toBe(false);
+    const noPhotoName = noPhotoHost.querySelector<HTMLElement>(".rb-name")!;
+    const noPhotoNameRect = noPhotoName.getBoundingClientRect();
+    expect(noPhotoNameRect.width).toBeCloseTo(contentRect.width, 0);
+    for (const line of noPhotoHost.querySelectorAll<HTMLElement>(".rb-contact-line")) {
+      expect(centerX(line)).toBeCloseTo(contentRect.left + contentRect.width / 2, 0);
+    }
+
+    for (const photoPosition of ["left", "center"] as const) {
+      const positioned = { ...resume, photoPosition };
+      const positionedHost = document.createElement("div");
+      positionedHost.innerHTML = renderToStaticMarkup(createResumeBlocks(
+        positioned,
+        createResumeContactItems(positioned),
+      )[0].content);
+      content.append(positionedHost);
+      const positionedHeader = positionedHost.querySelector<HTMLElement>(".rb-document-header")!;
+      const positionedPhoto = positionedHost.querySelector<HTMLImageElement>(".rb-profile-photo")!;
+      const positionedName = positionedHost.querySelector<HTMLElement>(".rb-name")!;
+      await positionedPhoto.decode();
+      const positionedPhotoRect = positionedPhoto.getBoundingClientRect();
+      expect(positionedHeader.dataset.photoPosition).toBe(photoPosition);
+      expect(centerX(positionedName)).toBeCloseTo(contentRect.left + contentRect.width / 2, 0);
+      for (const line of positionedHost.querySelectorAll<HTMLElement>(".rb-contact-line")) {
+        expect(centerX(line)).toBeCloseTo(contentRect.left + contentRect.width / 2, 0);
+      }
+      if (photoPosition === "left") {
+        expect(positionedPhotoRect.left).toBeCloseTo(contentRect.left, 0);
+        expect(positionedPhotoRect.top).toBeCloseTo(positionedName.getBoundingClientRect().top, 0);
+      } else {
+        expect(positionedPhotoRect.left + positionedPhotoRect.width / 2).toBeCloseTo(contentRect.left + contentRect.width / 2, 0);
+        expect(positionedPhotoRect.bottom).toBeLessThanOrEqual(positionedName.getBoundingClientRect().top);
+      }
+      positionedHost.remove();
+    }
+
+    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
+    const bytes = await createResumePdf(resume);
+    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(bytes) }).promise;
+    const firstPage = await pdf.getPage(1);
+    const operatorList = await firstPage.getOperatorList();
+    const imageIndex = operatorList.fnArray.findIndex((operation) => operation === pdfjsLib.OPS.paintImageXObject);
+    expect(imageIndex).toBeGreaterThan(0);
+    const imageTransforms = operatorList.fnArray.slice(0, imageIndex).flatMap((operation, index) =>
+      operation === pdfjsLib.OPS.transform ? [operatorList.argsArray[index] as number[]] : [],
+    );
+    const imageScale = imageTransforms.find(([a, , , d]) => a > 1 && d > 1)!;
+    const imagePosition = imageTransforms.findLast(([, , , , x, y]) => x > 0 && y > 0)!;
+    const pdfPageWidth = PAGE_WIDTH_MM * 72 / 25.4;
+    const pdfPageHeight = PAGE_HEIGHT_MM * 72 / 25.4;
+    const margin = PAGE_MARGIN_MM * 72 / 25.4;
+    expect(imageScale[0]).toBeCloseTo(30 * 72 / 25.4 - 1, 5);
+    expect(imageScale[3]).toBeCloseTo(38 * 72 / 25.4 - 1, 5);
+    expect(imagePosition[4] + imageScale[0]).toBeCloseTo(pdfPageWidth - margin - 0.5, 1);
+    expect(imagePosition[5] + imageScale[3]).toBeCloseTo(pdfPageHeight - margin - 0.5, 1);
+    const pdfText = (await firstPage.getTextContent()).items.flatMap((item) => "str" in item ? [item] : []);
+    const pdfName = pdfText.find((item) => item.str === resume.contact.fullName)!;
+    expect(pdfName.transform[4] + pdfName.width / 2).toBeCloseTo(pdfPageWidth / 2, 2);
+    const pdfEmailLine = pdfText.find((item) => item.str.includes(resume.contact.email))!;
+    expect(pdfEmailLine.transform[4] + pdfEmailLine.width / 2).toBeCloseTo(pdfPageWidth / 2, 2);
+    const pdfWrappedAddress = pdfText.filter((item) => item.str.includes("Long address line"));
+    expect(pdfWrappedAddress.length).toBeGreaterThan(1);
+    for (const line of pdfWrappedAddress) {
+      expect(Math.abs(line.transform[4] + line.width / 2 - pdfPageWidth / 2)).toBeLessThan(2);
+    }
+    const nationalityItem = pdfText.find((item) => item.str.includes("Nationality:"))!;
+    const pdfNationalityRow = pdfText.filter((item) =>
+      Math.abs(item.transform[5] - nationalityItem.transform[5]) < 0.5,
+    );
+    const nationalityLeft = Math.min(...pdfNationalityRow.map((item) => item.transform[4]));
+    const nationalityRight = Math.max(...pdfNationalityRow.map((item) => item.transform[4] + item.width));
+    expect(nationalityRight - nationalityLeft).toBeGreaterThan(100 * 72 / 25.4);
+    const photoLeft = pdfPageWidth - margin - 30 * 72 / 25.4;
+    for (const item of pdfText.filter((textItem) =>
+      textItem.transform[5] > imagePosition[5] &&
+      textItem.transform[5] < imagePosition[5] + imageScale[3],
+    )) {
+      expect(item.transform[4] + item.width).toBeLessThanOrEqual(photoLeft + 1);
+    }
+    const previewRows = createResumeContactItems(resume);
+    expect(previewRows.some((line) => line.fullWidth && line.items.some((item) => item.key === "dateOfBirth"))).toBe(true);
+    const visibleHeader = Array.from(host.querySelectorAll<HTMLElement>(".rb-contact-line"));
+    const photoBottom = image.getBoundingClientRect().bottom;
+    expect(visibleHeader.some((line) =>
+      (line.querySelector(".rb-header-line-content") as HTMLElement).getBoundingClientRect().top >= photoBottom &&
+      line.classList.contains("full-width"),
+    )).toBe(true);
+    const previewNationalityRow = visibleHeader.find((line) => line.textContent?.includes("Nationality:"))!;
+    expect(previewNationalityRow.classList.contains("full-width")).toBe(true);
+    expect(previewNationalityRow.querySelector(".rb-header-line-content")?.getBoundingClientRect().width)
+      .toBeCloseTo(contentRect.width, 0);
+    const noPhotoPdfBytes = await createResumePdf({ ...resume, profilePhotoDataUrl: undefined });
+    const noPhotoPdf = await pdfjsLib.getDocument({ data: new Uint8Array(noPhotoPdfBytes) }).promise;
+    const noPhotoText = (await (await noPhotoPdf.getPage(1)).getTextContent()).items
+      .flatMap((item) => "str" in item ? [item] : []);
+    const noPhotoPdfName = noPhotoText.find((item) => item.str === resume.contact.fullName)!;
+    expect(noPhotoPdfName.transform[4] + noPhotoPdfName.width / 2).toBeCloseTo(pdfPageWidth / 2, 2);
+    for (const photoPosition of ["left", "center"] as const) {
+      const positionedBytes = await createResumePdf({ ...resume, photoPosition });
+      const positionedPdf = await pdfjsLib.getDocument({ data: new Uint8Array(positionedBytes) }).promise;
+      const operators = await (await positionedPdf.getPage(1)).getOperatorList();
+      const photoOperatorIndex = operators.fnArray.findIndex((operation) => operation === pdfjsLib.OPS.paintImageXObject);
+      const transforms = operators.fnArray.slice(0, photoOperatorIndex).flatMap((operation, index) =>
+        operation === pdfjsLib.OPS.transform ? [operators.argsArray[index] as number[]] : [],
+      );
+      const position = transforms.findLast(([, , , , x, y]) => x > 0 && y > 0)!;
+      const scale = transforms.find(([a, , , d]) => a > 1 && d > 1)!;
+      const expectedX = photoPosition === "left"
+        ? margin + 0.5
+        : (pdfPageWidth - 30 * 72 / 25.4) / 2 + 0.5;
+      expect(position[4]).toBeCloseTo(expectedX, 1);
+      expect(position[5] + scale[3]).toBeCloseTo(pdfPageHeight - margin - 0.5, 1);
+    }
+  } finally {
+    host.remove();
+    style.remove();
+  }
+}, 30_000);
+
+it("shows Europass sample entries and the demo photo when the checkbox is turned on", async () => {
   window.localStorage.removeItem(STORAGE_KEY);
   const host = document.createElement("div");
   const style = document.createElement("style");
@@ -386,17 +689,38 @@ it("shows European sample entries when the checkbox is turned on", async () => {
   document.body.append(host);
   const root = createRoot(host);
   const previousActEnvironment = globalThis.IS_REACT_ACT_ENVIRONMENT;
+  const wasDarkMode = document.documentElement.classList.contains("dark");
+  const previousPopover = document.documentElement.style.getPropertyValue("--popover");
+  const previousPopoverForeground = document.documentElement.style.getPropertyValue("--popover-foreground");
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  document.documentElement.classList.add("dark");
+  document.documentElement.style.setProperty("--popover", "220 40% 6%");
+  document.documentElement.style.setProperty("--popover-foreground", "40 20% 98%");
   try {
+    const currentLogo = new Image();
+    currentLogo.src = demoPhoto;
+    await currentLogo.decode();
+    expect(currentLogo.naturalWidth).toBe(1077);
+    expect(currentLogo.naturalHeight).toBe(860);
     await act(async () => root.render(createElement(ResumeBuilder)));
+    expect(host.textContent).toContain("Most job applications expect one.");
     const checkbox = Array.from(host.querySelectorAll<HTMLButtonElement>('[role="checkbox"]'))
-      .find((item) => item.parentElement?.textContent?.includes("European CV"));
+      .find((item) => item.parentElement?.textContent?.includes("Europass CV"));
     expect(checkbox).not.toBeNull();
-    await act(async () => checkbox?.click());
+    expect(host.textContent).not.toContain("Recent graduate or student");
+    expect(host.querySelector(".rb-photo-control")).toBeNull();
+    await act(async () => {
+      checkbox?.click();
+      await waitForProfilePhoto(host);
+    });
     expect(checkbox?.getAttribute("aria-checked")).toBe("true");
+    expect(host.textContent).toContain("Europass-style CVs usually run 2 pages.");
+    expect(host.textContent).not.toContain("Most job applications expect one.");
     expect(host.querySelector('[aria-label="Languages section"]')).not.toBeNull();
     expect(host.querySelector('[aria-label="Digital skills section"]')).not.toBeNull();
     expect(host.querySelector('[aria-label="Driving licence section"]')).not.toBeNull();
+    expect(host.querySelector(".rb-contact .rb-photo-control")).not.toBeNull();
+    expect(host.textContent).toContain("Stays in your browser. Many employers outside Europe prefer no photo.");
     expect(host.querySelector<HTMLInputElement>('[aria-label="Driving licence section"] .rb-summary-field input')?.value).toBe("B");
     const previewHeadings = Array.from(host.querySelectorAll(".rb-paper h2")).map((heading) => heading.textContent);
     expect(previewHeadings.indexOf("Summary")).toBeLessThan(previewHeadings.indexOf("Experience"));
@@ -411,10 +735,51 @@ it("shows European sample entries when the checkbox is turned on", async () => {
     expect(host.textContent).toContain("Not shown in the header while Address is set.");
     const headerLines = Array.from(host.querySelectorAll(".rb-contact-line"))
       .map((line) => line.textContent?.replace(/\s+/g, " ").trim() ?? "");
-    expect(headerLines[0]).not.toContain("Portland, OR");
-    expect(headerLines[1]).toContain("Address: 123 Example Street, Portland, OR 97201");
+    expect(headerLines).toContain("Address: 123 Example Street, Portland, OR 97201");
+    expect(headerLines).not.toContain("Portland, OR");
     expect(headerLines.every((line) => !/^•|•$|•\s*•/.test(line))).toBe(true);
-    expect(host.textContent).toContain("Sample data: 30 sample items remain.");
+    expect(host.querySelector('.rb-paper img[alt="Profile photo"]')).not.toBeNull();
+    expect(host.querySelector<HTMLElement>('[aria-label="Photo position"]')?.textContent).toContain("Right");
+    expect(host.querySelector(".rb-photo-thumbnail")).not.toBeNull();
+    const formatSelect = host.querySelector<HTMLElement>('[aria-label="Resume format"]')!;
+    const photoPositionSelect = host.querySelector<HTMLElement>('[aria-label="Photo position"]')!;
+    const formatStyle = getComputedStyle(formatSelect);
+    const photoStyle = getComputedStyle(photoPositionSelect);
+    for (const property of ["backgroundColor", "borderTopColor", "borderTopStyle", "borderTopWidth", "borderRadius", "paddingTop", "paddingRight", "paddingBottom", "paddingLeft", "fontFamily", "fontSize", "fontWeight", "boxShadow", "height"]) {
+      expect(photoStyle[property as keyof CSSStyleDeclaration]).toBe(formatStyle[property as keyof CSSStyleDeclaration]);
+    }
+    expect(photoStyle.appearance).toBe("none");
+    await act(async () => photoPositionSelect.click());
+    const photoMenu = document.body.querySelector<HTMLElement>(".rb-photo-position-menu");
+    expect(photoMenu).not.toBeNull();
+    expect(getComputedStyle(photoMenu!).backgroundColor).toBe("rgb(9, 13, 21)");
+    expect(getComputedStyle(photoMenu!).color).toBe("rgb(251, 250, 249)");
+    await act(async () => Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]'))
+      .find((option) => option.textContent?.trim() === "Right")?.click());
+    const separator = host.querySelector<HTMLElement>(".rb-contact-separator");
+    expect(separator?.textContent).toBe(" • ");
+    const separatorFontSize = Number.parseFloat(getComputedStyle(separator!).fontSize);
+    expect(Number.parseFloat(getComputedStyle(separator!).marginLeft)).toBeCloseTo(separatorFontSize * 0.4, 2);
+    expect(Number.parseFloat(getComputedStyle(separator!).marginRight)).toBeCloseTo(separatorFontSize * 0.4, 2);
+    expect(host.querySelectorAll(".rb-preview-pane .rb-paper img")).toHaveLength(1);
+    expect(Array.from(host.querySelectorAll(".rb-photo-control button"))
+      .some((button) => button.textContent?.includes("Upload photo"))).toBe(false);
+    expect(Array.from(host.querySelectorAll(".rb-photo-control button"))
+      .some((button) => button.textContent?.includes("Replace photo"))).toBe(true);
+    expect(host.textContent).toContain("Sample data: 31 sample items remain.");
+    const renderedPages = host.querySelectorAll<HTMLElement>(".rb-page-wrap");
+    const pageBreakBefore = Array.from(renderedPages).slice(1).flatMap((sheet) => {
+      const sourceId = sheet.querySelector<HTMLElement>(".rb-page-block")?.dataset.sourceId;
+      return sourceId ? [sourceId] : [];
+    });
+    const samplePdfBytes = await createResumePdf(
+      validateResumeImport(JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null")),
+      pageBreakBefore,
+    );
+    expect(new TextDecoder("latin1").decode(samplePdfBytes)).toContain("/Subtype /Image");
+    const samplePdf = await PDFDocument.load(samplePdfBytes);
+    expect(samplePdf.getPageCount()).toBe(renderedPages.length);
+    expect(samplePdf.getTitle()).toBe("Casey Example - Europass CV");
     const skillInput = host.querySelector<HTMLInputElement>('[aria-label="Digital skills section"] .rb-entry-form input');
     expect(skillInput).not.toBeNull();
     const setInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
@@ -422,11 +787,16 @@ it("shows European sample entries when the checkbox is turned on", async () => {
       setInputValue?.call(skillInput, "My spreadsheet skills");
       skillInput?.dispatchEvent(new Event("input", { bubbles: true }));
     });
-    expect(host.textContent).toContain("Sample data: 29 sample items remain.");
+    expect(host.textContent).toContain("Sample data: 30 sample items remain.");
     await act(async () => checkbox?.click());
+    expect(host.querySelector('.rb-paper img[alt="Profile photo"]')).toBeNull();
+    const preservedDemoPhoto = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null").profilePhotoDataUrl;
+    expect(preservedDemoPhoto).not.toBe(demoPhoto);
+    expect(isValidProfilePhotoDataUrl(preservedDemoPhoto)).toBe(true);
     await act(async () => checkbox?.click());
+    expect(host.querySelector('.rb-paper img[alt="Profile photo"]')).not.toBeNull();
     expect(skillInput?.value).toBe("My spreadsheet skills");
-    expect(host.textContent).toContain("Sample data: 29 sample items remain.");
+    expect(host.textContent).toContain("Sample data: 30 sample items remain.");
     const saved = validateResumeImport(JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null"));
     expect(saved.europeanStandard).toBe(true);
     expect(saved.sections.find((item) => item.type === "memberships")?.entries).toHaveLength(1);
@@ -461,10 +831,18 @@ it("shows European sample entries when the checkbox is turned on", async () => {
       await act(async () => Array.from(host.querySelectorAll("button"))
         .find((button) => button.textContent === "Reset to sample")?.click());
       const resetCheckbox = Array.from(host.querySelectorAll<HTMLButtonElement>('[role="checkbox"]'))
-        .find((item) => item.parentElement?.textContent?.includes("European CV"));
-      await act(async () => resetCheckbox?.click());
+        .find((item) => item.parentElement?.textContent?.includes("Europass CV"));
+      await act(async () => {
+        resetCheckbox?.click();
+        await new Promise((resolve) => window.setTimeout(resolve, 1_000));
+      });
       expect(host.querySelector<HTMLButtonElement>('[aria-label="Same level for all five, language 1"]')?.textContent?.trim()).toBe("B2");
       expect(host.querySelector<HTMLButtonElement>('[aria-label="Same level for all five, language 2"]')?.textContent?.trim()).toBe("A2");
+      expect(host.querySelector('.rb-paper img[alt="Profile photo"]')).not.toBeNull();
+      expect(host.textContent).toContain("Sample data: 31 sample items remain.");
+      const resetSample = validateResumeImport(JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null"));
+      expect(resetSample.profilePhotoSample).toBe(true);
+      expect(resetSample.profilePhotoDataUrl).toBe(preservedDemoPhoto);
     } finally {
       confirm.mockRestore();
     }
@@ -474,8 +852,106 @@ it("shows European sample entries when the checkbox is turned on", async () => {
     style.remove();
     window.localStorage.removeItem(STORAGE_KEY);
     globalThis.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+    if (!wasDarkMode) document.documentElement.classList.remove("dark");
+    if (previousPopover) document.documentElement.style.setProperty("--popover", previousPopover);
+    else document.documentElement.style.removeProperty("--popover");
+    if (previousPopoverForeground) document.documentElement.style.setProperty("--popover-foreground", previousPopoverForeground);
+    else document.documentElement.style.removeProperty("--popover-foreground");
   }
-});
+}, 30_000);
+
+it("uploads, replaces, and removes a photo, closes the preview gap, and prevents reseeding", async () => {
+  window.localStorage.removeItem(STORAGE_KEY);
+  const host = document.createElement("div");
+  const style = document.createElement("style");
+  style.textContent = resumeBuilderCss;
+  document.head.append(style);
+  document.body.append(host);
+  const root = createRoot(host);
+  const previousActEnvironment = globalThis.IS_REACT_ACT_ENVIRONMENT;
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  try {
+    await act(async () => root.render(createElement(ResumeBuilder)));
+    const checkbox = Array.from(host.querySelectorAll<HTMLButtonElement>('[role="checkbox"]'))
+      .find((item) => item.parentElement?.textContent?.includes("Europass CV"));
+    expect(host.querySelector(".rb-photo-control")).toBeNull();
+    await act(async () => {
+      checkbox?.click();
+      await waitForProfilePhoto(host);
+    });
+    const makePhoto = async (color: string) => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 120;
+      canvas.height = 180;
+      const context = canvas.getContext("2d")!;
+      context.fillStyle = color;
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      const blob = await new Promise<Blob>((resolve, reject) =>
+        canvas.toBlob((value) => value ? resolve(value) : reject(new Error("Could not create test photo.")), "image/png"),
+      );
+      return new File([blob], "profile.png", { type: "image/png" });
+    };
+    await act(async () => host.querySelector<HTMLButtonElement>(".rb-photo-control button:last-of-type")?.click());
+    expect("profilePhotoDataUrl" in JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null")).toBe(false);
+    expect(host.querySelector(".rb-paper .rb-document-header.has-photo")).toBeNull();
+    expect(Array.from(host.querySelectorAll(".rb-photo-control button"))
+      .some((button) => button.textContent?.includes("Upload photo"))).toBe(true);
+    const upload = async (file: File) => {
+      const input = host.querySelector<HTMLInputElement>(".rb-photo-control input[type=file]");
+      expect(input).not.toBeNull();
+      Object.defineProperty(input!, "files", { configurable: true, value: [file] });
+      await act(async () => {
+        input!.dispatchEvent(new Event("change", { bubbles: true }));
+        await new Promise((resolve) => window.setTimeout(resolve, 1_000));
+      });
+    };
+
+    const firstPhoto = await makePhoto("#157");
+    await upload(firstPhoto);
+    const firstSaved = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null");
+    expect(firstSaved.profilePhotoDataUrl).toMatch(/^data:image\/png;base64,/);
+    expect(firstSaved.profilePhotoSample).toBe(false);
+    expect(host.querySelector('.rb-paper img[alt="Profile photo"]')?.getAttribute("src")).toBe(firstSaved.profilePhotoDataUrl);
+    const replaceButton = Array.from(host.querySelectorAll("button")).find((button) => button.textContent === "Replace photo");
+    expect(replaceButton).not.toBeUndefined();
+    const secondPhoto = await makePhoto("#a35");
+    await upload(secondPhoto);
+    const replaced = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null");
+    expect(replaced.profilePhotoDataUrl).not.toBe(firstSaved.profilePhotoDataUrl);
+    const photoPosition = host.querySelector<HTMLElement>('[aria-label="Photo position"]');
+    expect(photoPosition?.textContent).toContain("Right");
+    const preservedPhoto = replaced.profilePhotoDataUrl;
+    await act(async () => {
+      photoPosition!.click();
+    });
+    await act(async () => Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]'))
+      .find((option) => option.textContent?.trim() === "Left")?.click());
+    expect(host.querySelector(".rb-document-header")?.getAttribute("data-photo-position")).toBe("left");
+    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null").profilePhotoDataUrl).toBe(preservedPhoto);
+
+    await act(async () => Array.from(host.querySelectorAll("button"))
+      .find((button) => button.textContent === "Remove photo")?.click());
+    const removed = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null");
+    expect("profilePhotoDataUrl" in removed).toBe(false);
+    expect(host.querySelector('.rb-paper img[alt="Profile photo"]')).toBeNull();
+    const previewHeader = host.querySelector<HTMLElement>(".rb-paper .rb-document-header");
+    expect(previewHeader?.classList.contains("has-photo")).toBe(false);
+
+    await act(async () => checkbox?.click());
+    expect(host.querySelector(".rb-photo-control")).toBeNull();
+    expect("profilePhotoDataUrl" in JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null")).toBe(false);
+    await act(async () => checkbox?.click());
+    expect(host.querySelector('.rb-paper img[alt="Profile photo"]')).toBeNull();
+  } finally {
+    confirm.mockRestore();
+    await act(async () => root.unmount());
+    host.remove();
+    style.remove();
+    window.localStorage.removeItem(STORAGE_KEY);
+    globalThis.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+  }
+}, 30_000);
 
 it("keeps the sample resume fictional, marker-free, and ordered for the selected mode", () => {
   const resume = createSampleResume();
@@ -500,8 +976,8 @@ it("keeps the sample resume fictional, marker-free, and ordered for the selected
     link: "https://drive.google.com/drive/folders/1x1pobVV1iK7PNMCBSDxRW_z8e7WhtsPz",
     sample: true,
   });
-  expect(applyModeOrder(resume.sections, "Higher study", false).map((section) => section.type)).toEqual(HIGHER_STUDY_ORDER);
-  expect(applyModeOrder(resume.sections, "Higher study", false).find((section) => section.type === "publications")?.visible).toBe(true);
+  expect(applyModeOrder(resume.sections, "Higher study").map((section) => section.type)).toEqual(HIGHER_STUDY_ORDER);
+  expect(applyModeOrder(resume.sections, "Higher study").find((section) => section.type === "publications")?.visible).toBe(true);
 });
 
 it("escapes LaTeX-sensitive text and omits hidden sections", () => {
@@ -726,10 +1202,10 @@ it("keeps downloaded PDF links and entry alignment consistent with the preview",
   const pdfBytes = await createResumePdf(createSampleResume());
   pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
   const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(pdfBytes) }).promise;
-  const pages = await Promise.all(Array.from({ length: pdf.numPages }, async (_, index) => {
-    const content = await (await pdf.getPage(index + 1)).getTextContent();
-    return content.items.flatMap((item) => "str" in item ? [item] : []);
-  }));
+  const pageContents = await Promise.all(Array.from({ length: pdf.numPages }, async (_, index) =>
+    (await pdf.getPage(index + 1)).getTextContent(),
+  ));
+  const pages = pageContents.map((content) => content.items.flatMap((item) => "str" in item ? [item] : []));
   const annotations = await Promise.all(Array.from({ length: pdf.numPages }, async (_, index) =>
     (await pdf.getPage(index + 1)).getAnnotations(),
   ));
@@ -756,6 +1232,10 @@ it("keeps downloaded PDF links and entry alignment consistent with the preview",
   const experienceOrganization = items.find((item) => item.str.includes("Cedar Grove Cooperative"));
   expect(experienceTitle).toBeDefined();
   expect(experienceDate).toBeDefined();
+  expect(experienceDate!.str).toBe("2024–Present");
+  const regularBodyText = items.find((item) => item.str.startsWith("Early-career operations coordinator"));
+  expect(regularBodyText).toBeDefined();
+  expect(experienceDate!.fontName).toBe(regularBodyText!.fontName);
   expect(experienceOrganization).toBeDefined();
   expect(experienceDate!.transform[4]).toBeGreaterThan(experienceTitle!.transform[4]);
   expect(Math.abs(experienceDate!.transform[5] - experienceTitle!.transform[5])).toBeLessThan(2);

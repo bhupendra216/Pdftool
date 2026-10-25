@@ -1,4 +1,4 @@
-import { PDFDocument, PDFString, rgb, type PDFFont } from "pdf-lib";
+import { PDFDocument, PDFString, rgb, type PDFImage, type PDFFont } from "pdf-lib";
 import fontkit from "@pdf-lib/fontkit";
 import {
   PAGE_CONTENT_WIDTH_MM,
@@ -6,6 +6,9 @@ import {
   PAGE_MARGIN_MM,
   PAGE_PAGINATION_HEIGHT_MM,
   PAGE_WIDTH_MM,
+  PROFILE_PHOTO_GAP_MM,
+  PROFILE_PHOTO_HEIGHT_MM,
+  PROFILE_PHOTO_WIDTH_MM,
   LANGUAGE_LEVEL_FIELDS,
   RESUME_TEXT_STYLES,
   TYPOGRAPHY_FONTS,
@@ -15,8 +18,10 @@ import {
   publicationGroups,
   publicationAuthorIndices,
   buildResumeContactLines,
+  packResumeHeaderLines,
   equalLanguageLevel,
   validateResumeLink,
+  isValidProfilePhotoDataUrl,
   type ResumeDocument,
   type ResumeEntry,
   type ResumeLanguage,
@@ -31,6 +36,7 @@ type PdfLine = PaginationBlock & {
   size: number;
   lineHeight: number;
   align?: "center";
+  centerWidth?: number;
   rightRuns?: TextRun[];
   rightSize?: number;
   kind?: "space" | "rule" | "table";
@@ -113,6 +119,7 @@ function addText(
     groupId?: string;
     maxWidth?: number;
     align?: "center";
+    centerWidth?: number;
     lineHeight?: number;
     ruleAfter?: boolean;
     sourceId?: string;
@@ -132,6 +139,7 @@ function addRuns(
     groupId?: string;
     maxWidth?: number;
     align?: "center";
+    centerWidth?: number;
     lineHeight?: number;
     ruleAfter?: boolean;
     sourceId?: string;
@@ -148,6 +156,7 @@ function addRuns(
       size,
       runs,
       align: options.align,
+      centerWidth: options.centerWidth,
       ruleAfter: options.ruleAfter,
       sourceId: options.sourceId,
       keepWithNext: index === wrapped.length - 1 ? options.keepWithNext : false,
@@ -431,7 +440,7 @@ function addEntry(
     fonts,
     sizes.subheading,
     PAGE_CONTENT_WIDTH_MM * MM_TO_PT -
-      (entry.dates ? fonts.italic.widthOfTextAtSize(entry.dates, sizes.subheading * 0.8631578947368421) + 6 : 0),
+      (entry.dates ? fonts.regular.widthOfTextAtSize(entry.dates, sizes.subheading * 0.8631578947368421) + 6 : 0),
   );
   if (titleLines.length === 0) titleLines.push([]);
   titleLines.forEach((runs, index) => blocks.push({
@@ -440,7 +449,7 @@ function addEntry(
     lineHeight: sizes.subheading * 1.2,
     size: sizes.subheading,
     runs,
-    rightRuns: index === 0 && entry.dates ? [{ text: entry.dates, style: RESUME_TEXT_STYLES.date.pdfFace }] : undefined,
+    rightRuns: index === 0 && entry.dates ? [{ text: entry.dates, style: "regular" }] : undefined,
     rightSize: sizes.subheading * 0.8631578947368421,
     groupId,
     sourceId: `${groupId}-title`,
@@ -472,7 +481,10 @@ function addEntry(
 
 export async function createResumePdf(resume: ResumeDocument, pageBreakBefore: string[] = []): Promise<Uint8Array> {
   const document = await PDFDocument.create();
-  document.setTitle(`${resume.contact.fullName.trim() || "Resume"} - Resume`);
+  document.setTitle(`${resume.contact.fullName.trim() || "Resume"} - ${resume.europeanStandard ? "Europass CV" : "Resume"}`);
+  const profilePhoto = resume.europeanStandard && resume.profilePhotoDataUrl
+    ? await embedProfilePhoto(document, resume.profilePhotoDataUrl)
+    : undefined;
   const fonts = await loadFonts(document, resume.typography.font);
   const sizes = {
     name: resume.typography.namePt,
@@ -482,16 +494,48 @@ export async function createResumePdf(resume: ResumeDocument, pageBreakBefore: s
   };
   const blocks: PdfLine[] = [];
   const compact = resume.compactSpacing;
+  const headerBlocks: PdfLine[] = [];
+  const headerWidth = PAGE_CONTENT_WIDTH_MM * MM_TO_PT;
+  const photoTextWidth = (PAGE_CONTENT_WIDTH_MM - 2 * (PROFILE_PHOTO_WIDTH_MM + PROFILE_PHOTO_GAP_MM)) * MM_TO_PT;
+  const hasSidePhoto = Boolean(profilePhoto && resume.photoPosition !== "center");
+  const headerItems = buildResumeContactLines(resume).flatMap((line, lineIndex) => line.map((item, itemIndex) => ({
+    ...item,
+    breakBefore: item.breakBefore || (lineIndex > 0 && itemIndex === 0),
+  })));
+  const nameLineHeight = sizes.name * 1.2 + 3.75;
+  const contactLineHeight = sizes.body * 0.82 * 1.2 + 5;
+  const contactLines = packResumeHeaderLines(
+    headerItems,
+    hasSidePhoto ? photoTextWidth : headerWidth,
+    (text) => fonts.regular.widthOfTextAtSize(text, sizes.body * 0.82),
+    {
+      ...(hasSidePhoto ? {
+        fullWidth: headerWidth,
+        photoBottom: PROFILE_PHOTO_HEIGHT_MM * MM_TO_PT,
+      } : {}),
+      initialHeight: resume.contact.fullName.trim() ? nameLineHeight : 0,
+      lineHeight: contactLineHeight,
+    },
+  );
+  const photoPosition = resume.photoPosition;
+
+  if (profilePhoto && photoPosition === "center") {
+    addSpace(blocks, (PROFILE_PHOTO_HEIGHT_MM + PROFILE_PHOTO_GAP_MM) * MM_TO_PT);
+  }
   if (resume.contact.fullName.trim()) {
-    addText(blocks, resume.contact.fullName, RESUME_TEXT_STYLES.name.pdfFace, sizes.name, fonts, {
+    addText(headerBlocks, resume.contact.fullName, RESUME_TEXT_STYLES.name.pdfFace, sizes.name, fonts, {
       keepWithNext: true,
       align: "center",
-      lineHeight: sizes.name * 1.2 + 3.75,
+      centerWidth: headerWidth,
+      maxWidth: hasSidePhoto ? photoTextWidth : headerWidth,
+      lineHeight: nameLineHeight,
     });
   }
-  const contactLines = buildResumeContactLines(resume);
   for (const contactLine of contactLines) {
-    const contactRuns = contactLine.flatMap((item, index) => [
+    if (profilePhoto && contactLine.fullWidth) {
+      addSpace(headerBlocks, 0.5 * MM_TO_PT);
+    }
+    const contactRuns = contactLine.items.flatMap((item, index) => [
       ...(index > 0 ? [{ text: " • ", style: "regular" as const }] : []),
       {
         text: item.text,
@@ -500,10 +544,21 @@ export async function createResumePdf(resume: ResumeDocument, pageBreakBefore: s
         href: item.href,
       },
     ]);
-    addRuns(blocks, contactRuns, sizes.body * 0.82, fonts, {
+    addRuns(headerBlocks, contactRuns, sizes.body * 0.82, fonts, {
       align: "center",
-      lineHeight: sizes.body * 0.82 * 1.2 + 5,
+      centerWidth: headerWidth,
+      maxWidth: contactLine.fullWidth ? headerWidth : hasSidePhoto ? photoTextWidth : headerWidth,
+      lineHeight: contactLineHeight,
     });
+  }
+  if (profilePhoto) {
+    const textHeight = headerBlocks.reduce((height, block) => height + block.lineHeight, 0);
+    blocks.push(...headerBlocks);
+    if (photoPosition !== "center") {
+      addSpace(blocks, Math.max(0, PROFILE_PHOTO_HEIGHT_MM * MM_TO_PT - textHeight));
+    }
+  } else {
+    blocks.push(...headerBlocks);
   }
   if (contactLines.length) {
     addSpace(blocks, 4.5);
@@ -653,8 +708,41 @@ export async function createResumePdf(resume: ResumeDocument, pageBreakBefore: s
   const pageWidth = PAGE_WIDTH_MM * MM_TO_PT;
   const sheetHeight = PAGE_HEIGHT_MM * MM_TO_PT;
   const margin = PAGE_MARGIN_MM * MM_TO_PT;
-  pages.forEach((pageBlocks) => {
+  pages.forEach((pageBlocks, pageIndex) => {
     const page = document.addPage([pageWidth, sheetHeight]);
+    if (profilePhoto && pageIndex === 0) {
+      const photoWidth = PROFILE_PHOTO_WIDTH_MM * MM_TO_PT;
+      const photoX = photoPosition === "left"
+        ? margin
+        : photoPosition === "center"
+          ? (pageWidth - photoWidth) / 2
+          : pageWidth - margin - photoWidth;
+      const photoY = sheetHeight - margin - PROFILE_PHOTO_HEIGHT_MM * MM_TO_PT;
+      const photoHeight = PROFILE_PHOTO_HEIGHT_MM * MM_TO_PT;
+      page.drawRectangle({
+        x: photoX,
+        y: photoY,
+        width: photoWidth,
+        height: photoHeight,
+        color: rgb(1, 1, 1),
+        borderColor: rgb(0.82, 0.84, 0.86),
+        borderWidth: 0.5,
+      });
+      page.drawImage(profilePhoto, {
+        x: photoX + 0.5,
+        y: photoY + 0.5,
+        width: photoWidth - 1,
+        height: photoHeight - 1,
+      });
+      page.drawRectangle({
+        x: photoX,
+        y: photoY,
+        width: photoWidth,
+        height: photoHeight,
+        borderColor: rgb(0.82, 0.84, 0.86),
+        borderWidth: 0.5,
+      });
+    }
     let top = sheetHeight - margin;
     for (const block of pageBlocks as PdfLine[]) {
       if (block.kind === "space") {
@@ -725,7 +813,9 @@ export async function createResumePdf(resume: ResumeDocument, pageBreakBefore: s
         0,
       ) ?? 0;
       let x = margin + (block.indent ?? 0);
-      if (block.align === "center") x = (pageWidth - lineWidth) / 2;
+      if (block.align === "center") {
+        x = margin + ((block.centerWidth ?? PAGE_CONTENT_WIDTH_MM * MM_TO_PT) - lineWidth) / 2;
+      }
       for (const run of block.runs) {
         const baseline = top - block.size;
         assertFontSupportsText(fonts[run.style], run.text);
@@ -795,6 +885,37 @@ export async function createResumePdf(resume: ResumeDocument, pageBreakBefore: s
     }
   });
   return document.save();
+}
+
+async function embedProfilePhoto(document: PDFDocument, dataUrl: string): Promise<PDFImage> {
+  if (!isValidProfilePhotoDataUrl(dataUrl)) throw new Error("The profile photo data is invalid.");
+  const match = dataUrl.match(/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/);
+  if (!match) throw new Error("The profile photo format is not supported.");
+  const bytes = Uint8Array.from(atob(match[2]), (character) => character.charCodeAt(0));
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(new Blob([bytes], { type: `image/${match[1]}` }));
+  } catch {
+    throw new Error("The profile photo could not be decoded in this browser.");
+  }
+  const canvas = globalThis.document.createElement("canvas");
+  canvas.width = 420;
+  canvas.height = 540;
+  const context = canvas.getContext("2d");
+  if (!context) {
+    bitmap.close();
+    throw new Error("The profile photo could not be prepared for the PDF.");
+  }
+  const scale = Math.max(canvas.width / bitmap.width, canvas.height / bitmap.height);
+  const cropWidth = canvas.width / scale;
+  const cropHeight = canvas.height / scale;
+  context.drawImage(bitmap, (bitmap.width - cropWidth) / 2, (bitmap.height - cropHeight) / 2, cropWidth, cropHeight, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  const outputType = match[1] === "png" ? "image/png" : "image/jpeg";
+  const imageBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, outputType, 0.88));
+  if (!imageBlob) throw new Error("The profile photo could not be converted for the PDF.");
+  const imageBytes = await imageBlob.arrayBuffer();
+  return outputType === "image/png" ? document.embedPng(imageBytes) : document.embedJpg(imageBytes);
 }
 
 export function downloadBlob(blob: Blob, filename: string) {

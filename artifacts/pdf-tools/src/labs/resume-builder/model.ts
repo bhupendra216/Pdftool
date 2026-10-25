@@ -19,6 +19,7 @@ export const SECTION_TYPES = [
 
 export type SectionType = (typeof SECTION_TYPES)[number];
 export type ResumeMode = "job" | "study";
+export type PhotoPosition = "right" | "center" | "left";
 export type LegacyResumeMode = ResumeMode | "Job" | "Higher study" | "European CV" | "european";
 export type LanguageLevel = "" | "A1" | "A2" | "B1" | "B2" | "C1" | "C2";
 export type ResumeLanguage = {
@@ -185,11 +186,19 @@ export type ResumeDocument = {
   mode: ResumeMode;
   europeanStandard: boolean;
   compactSpacing: boolean;
-  student: boolean;
+  photoPosition: PhotoPosition;
+  profilePhotoDataUrl?: string;
+  profilePhotoSample: boolean;
+  profilePhotoSeedAllowed: boolean;
   contact: ResumeContact;
   sections: ResumeSection[];
   typography: TypographySettings;
 };
+
+export const PROFILE_PHOTO_MAX_BYTES = 5 * 1024 * 1024;
+export const PROFILE_PHOTO_WIDTH_MM = 30;
+export const PROFILE_PHOTO_HEIGHT_MM = 38;
+export const PROFILE_PHOTO_GAP_MM = 5;
 
 export const JOB_ORDER: SectionType[] = [
   "summary", "experience", "skills", "education", "projects", "certifications", "awards", "publications", "community", "custom",
@@ -384,7 +393,9 @@ export function createSampleResume(): ResumeDocument {
     mode: "job",
     europeanStandard: false,
     compactSpacing: false,
-    student: false,
+    photoPosition: "right",
+    profilePhotoSample: false,
+    profilePhotoSeedAllowed: true,
     contact: {
       fullName: "Casey Example",
       email: "casey.example@example.com",
@@ -422,7 +433,7 @@ export function createSampleResume(): ResumeDocument {
       section("custom", visible.has("custom")),
     ],
   };
-  resume.sections = applyModeOrder(resume.sections, resume.mode, resume.student);
+  resume.sections = applyModeOrder(resume.sections, resume.mode);
   return resume;
 }
 
@@ -430,6 +441,8 @@ export function createBlankResume(): ResumeDocument {
   const resume = createSampleResume();
   return {
     ...resume,
+    profilePhotoSample: false,
+    profilePhotoSeedAllowed: false,
     contact: { fullName: "", email: "", phone: "", location: "", nationality: "", dateOfBirth: "", address: "", links: [], sampleFields: [] },
     sections: resume.sections.map((item) => ({
       ...item,
@@ -444,8 +457,13 @@ export function createBlankResume(): ResumeDocument {
 }
 
 export function clearSampleData(resume: ResumeDocument): ResumeDocument {
+  const { profilePhotoDataUrl: _profilePhotoDataUrl, ...resumeWithoutPhoto } = resume;
+  const clearSamplePhoto = resume.profilePhotoSample;
   return {
-    ...resume,
+    ...resumeWithoutPhoto,
+    ...(!clearSamplePhoto && _profilePhotoDataUrl ? { profilePhotoDataUrl: _profilePhotoDataUrl } : {}),
+    ...(clearSamplePhoto ? { profilePhotoSample: false } : {}),
+    profilePhotoSeedAllowed: false,
     contact: {
       ...resume.contact,
       fullName: resume.contact.sampleFields.includes("fullName") ? "" : resume.contact.fullName,
@@ -551,13 +569,10 @@ export function publicationGroups(publications: ResumePublication[]): Array<{ ty
     .filter((group) => group.entries.length > 0);
 }
 
-export function applyModeOrder(sections: ResumeSection[], mode: LegacyResumeMode, student: boolean, europeanStandard = false): ResumeSection[] {
+export function applyModeOrder(sections: ResumeSection[], mode: LegacyResumeMode, europeanStandard = false): ResumeSection[] {
   const normalizedMode = normalizeResumeMode(mode);
   const order = europeanStandard ? EUROPEAN_CV_ORDER : normalizedMode === "job" ? JOB_ORDER : HIGHER_STUDY_ORDER;
-  const preferred = europeanStandard || (student && normalizedMode === "job")
-    ? (europeanStandard ? order : ["education", "projects", "experience", "skills", "certifications", "awards", "publications", "community", "summary", "custom"] as SectionType[])
-    : order;
-  const rank = new Map(preferred.map((type, index) => [type, index]));
+  const rank = new Map(order.map((type, index) => [type, index]));
   return sections
     .map((item, index) => ({ item, index }))
     .sort((left, right) =>
@@ -568,12 +583,12 @@ export function applyModeOrder(sections: ResumeSection[], mode: LegacyResumeMode
     .map(({ item }) => item);
 }
 
-export function applyModeDefaults(sections: ResumeSection[], mode: LegacyResumeMode, student: boolean, europeanStandard = false): ResumeSection[] {
+export function applyModeDefaults(sections: ResumeSection[], mode: LegacyResumeMode, europeanStandard = false): ResumeSection[] {
   return applyModeOrder(sections.map((item) =>
     europeanStandard && ["languages", "digitalSkills", "conferences", "grants", "memberships", "drivingLicence"].includes(item.type)
       ? { ...item, visible: item.visibilityCustomized ? item.visible : true }
       : item,
-  ), mode, student, europeanStandard);
+  ), mode, europeanStandard);
 }
 
 const EUROPEAN_SAMPLE_SECTIONS: SectionType[] = ["languages", "digitalSkills", "conferences", "grants", "memberships", "drivingLicence"];
@@ -622,12 +637,14 @@ export function seedEuropeanSampleSections(sections: ResumeSection[]): ResumeSec
   });
 }
 
-export function setEuropeanStandard(resume: ResumeDocument, checked: boolean): ResumeDocument {
+export function setEuropeanStandard(resume: ResumeDocument, checked: boolean, demoPhotoDataUrl = ""): ResumeDocument {
   const sections = checked ? seedEuropeanSampleSections(resume.sections) : resume.sections;
+  const seedPhoto = checked && resume.profilePhotoSeedAllowed && !resume.profilePhotoDataUrl && demoPhotoDataUrl;
   return {
     ...resume,
     europeanStandard: checked,
-    sections: applyModeDefaults(sections, resume.mode, resume.student, checked),
+    ...(seedPhoto ? { profilePhotoDataUrl: demoPhotoDataUrl, profilePhotoSample: true, profilePhotoSeedAllowed: false } : {}),
+    sections: applyModeDefaults(sections, resume.mode, checked),
   };
 }
 
@@ -651,12 +668,89 @@ export function validateResumeLink(value: string): boolean {
   }
 }
 
+export function isValidProfilePhotoDataUrl(value: unknown): value is string {
+  if (typeof value !== "string") return false;
+  const match = value.match(/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/);
+  if (!match || match[2].length % 4 !== 0) return false;
+  try {
+    const decoded = atob(match[2]);
+    if (decoded.length === 0 || decoded.length > PROFILE_PHOTO_MAX_BYTES) return false;
+    if (match[1] === "png") {
+      return decoded.length >= 45 && decoded.startsWith("\x89PNG\r\n\x1a\n") &&
+        decoded.charCodeAt(8) === 0 && decoded.charCodeAt(9) === 0 &&
+        decoded.charCodeAt(10) === 0 && decoded.charCodeAt(11) === 13 &&
+        decoded.startsWith("IHDR", 12) && decoded.endsWith("\x00\x00\x00\x00IEND\xaeB`\x82");
+    }
+    if (match[1] === "jpeg") return decoded.length >= 4 && decoded.startsWith("\xff\xd8\xff") && decoded.endsWith("\xff\xd9");
+    const riffLength = decoded.charCodeAt(4) + (decoded.charCodeAt(5) << 8) +
+      (decoded.charCodeAt(6) << 16) + (decoded.charCodeAt(7) << 24) + 8;
+    return decoded.length >= 12 && decoded.startsWith("RIFF", 0) &&
+      decoded.startsWith("WEBP", 8) && riffLength === decoded.length;
+  } catch {
+    return false;
+  }
+}
+
 export type ResumeContactHeaderItem = {
   key: string;
   text: string;
   href?: string;
   underline?: boolean;
+  breakBefore?: boolean;
 };
+
+export type ResumeHeaderLine = {
+  items: ResumeContactHeaderItem[];
+  fullWidth: boolean;
+};
+
+export function packResumeHeaderLines(
+  items: ResumeContactHeaderItem[],
+  availableWidth: number,
+  measure: (text: string) => number,
+  options: {
+    fullWidth?: number;
+    photoBottom?: number;
+    initialHeight?: number;
+    lineHeight?: number;
+  } = {},
+): ResumeHeaderLine[] {
+  const lines: ResumeHeaderLine[] = [];
+  let currentLine: ResumeContactHeaderItem[] = [];
+  let currentWidth = 0;
+  let currentLineWidth = availableWidth;
+  let currentFullWidth = false;
+  let accumulatedHeight = options.initialHeight ?? 0;
+  const separatorWidth = measure(" • ");
+  const finishLine = () => {
+    if (currentLine.length) {
+      lines.push({ items: currentLine, fullWidth: currentFullWidth });
+      const estimatedLines = Math.max(1, Math.ceil(currentWidth / currentLineWidth));
+      accumulatedHeight += estimatedLines * (options.lineHeight ?? 0);
+    }
+    currentLine = [];
+    currentWidth = 0;
+    currentFullWidth = Boolean(options.fullWidth && options.photoBottom !== undefined &&
+      accumulatedHeight >= options.photoBottom);
+    currentLineWidth = currentFullWidth ? options.fullWidth! : availableWidth;
+  };
+
+  currentFullWidth = Boolean(options.fullWidth && options.photoBottom !== undefined &&
+    accumulatedHeight >= options.photoBottom);
+  currentLineWidth = currentFullWidth ? options.fullWidth! : availableWidth;
+  for (const item of items) {
+    if (!item.text.trim()) continue;
+    if (item.breakBefore) finishLine();
+    const itemWidth = measure(item.text);
+    const nextWidth = currentWidth + (currentLine.length ? separatorWidth : 0) + itemWidth;
+    if (currentLine.length && nextWidth > currentLineWidth) finishLine();
+    currentLine.push(item);
+    currentWidth += (currentLine.length > 1 ? separatorWidth : 0) + itemWidth;
+    if (itemWidth > currentLineWidth) finishLine();
+  }
+  finishLine();
+  return lines;
+}
 
 export function buildResumeContactLines(resume: ResumeDocument): ResumeContactHeaderItem[][] {
   const links = resume.contact.links
@@ -1003,14 +1097,21 @@ export function validateResumeImport(input: unknown): ResumeDocument {
       underlineLinks,
     };
   }
-  const student = input.student === undefined ? false : boolField(input.student, "student");
-  const normalizedSections = applyModeDefaults(sections, normalizedMode, student, europeanStandard);
+  const normalizedSections = applyModeDefaults(sections, normalizedMode, europeanStandard);
+  const profilePhotoDataUrl = isValidProfilePhotoDataUrl(input.profilePhotoDataUrl)
+    ? input.profilePhotoDataUrl
+    : undefined;
   return {
     version: 3,
     mode: normalizedMode,
     europeanStandard,
     compactSpacing: input.compactSpacing === undefined ? false : boolField(input.compactSpacing, "compactSpacing"),
-    student,
+    photoPosition: input.photoPosition === "left" || input.photoPosition === "center" || input.photoPosition === "right"
+      ? input.photoPosition
+      : "right",
+    ...(profilePhotoDataUrl ? { profilePhotoDataUrl } : {}),
+    profilePhotoSample: Boolean(profilePhotoDataUrl && input.profilePhotoSample === true),
+    profilePhotoSeedAllowed: Boolean(input.profilePhotoSeedAllowed === true && !profilePhotoDataUrl),
     contact,
     sections: normalizedSections,
     typography,
@@ -1018,7 +1119,8 @@ export function validateResumeImport(input: unknown): ResumeDocument {
 }
 
 export function sampleItemCount(resume: ResumeDocument): number {
-  return resume.contact.sampleFields.length +
+  return (resume.profilePhotoDataUrl && resume.profilePhotoSample ? 1 : 0) +
+    resume.contact.sampleFields.length +
     resume.contact.links.filter((item) => item.sample).length +
     resume.sections.reduce((total, item) =>
       total + (item.summarySample ? 1 : 0) +

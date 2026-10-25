@@ -2,8 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, ReactNode } from "react";
 import {
   applyModeDefaults,
-  applyModeOrder,
   buildResumeContactLines,
+  packResumeHeaderLines,
   clearSampleData as clearResumeSampleData,
   createBlankLanguage,
   createBlankPublication,
@@ -29,6 +29,7 @@ import {
   TYPOGRAPHY_RANGES,
   sampleItemCount,
   setEuropeanStandard,
+  isValidProfilePhotoDataUrl,
   STORAGE_KEY,
   validateResumeImport,
   validateResumeLink,
@@ -38,6 +39,10 @@ import {
   PAGE_MARGIN_MM,
   PAGE_PAGINATION_HEIGHT_MM,
   PAGE_WIDTH_MM,
+  PROFILE_PHOTO_MAX_BYTES,
+  PROFILE_PHOTO_GAP_MM,
+  PROFILE_PHOTO_HEIGHT_MM,
+  PROFILE_PHOTO_WIDTH_MM,
   type PublicationStatus,
   type PublicationType,
   type ResumeDocument,
@@ -51,6 +56,7 @@ import {
 } from "./model";
 import { paginateBlocks, type PaginationBlock } from "./pagination";
 import { createResumePdf, downloadBlob } from "./pdf-export";
+import pdfKiraDemoPhoto from "@/assets/pdfkira-logo.png?inline";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -107,6 +113,13 @@ const PUBLICATION_HELP = [
 const PUBLICATION_LINK_HELP = "Paste a link to your certificate or award letter from Google Drive, Dropbox, OneDrive or your own site. Make sure sharing is set to ‘Anyone with the link can view’, or reviewers won’t be able to open it. This tool never uploads your files. Don’t link to documents that show your ID number, address or grades unless the application asks for them.";
 const SHARE_LINK_HINT = "Check that sharing is set to ‘Anyone with the link can view’.";
 const POINTS_PER_CSS_PIXEL = 1.333;
+let resumeHeaderMeasureContext: CanvasRenderingContext2D | null | undefined;
+
+function measureHeaderText(font: string, fontSize: number) {
+  resumeHeaderMeasureContext ??= document.createElement("canvas").getContext("2d");
+  if (resumeHeaderMeasureContext) resumeHeaderMeasureContext.font = `${fontSize}px ${font}`;
+  return (text: string) => resumeHeaderMeasureContext?.measureText(text).width ?? text.length * fontSize * 0.5;
+}
 
 type PaperStyle = CSSProperties & {
   "--rb-font-family": string;
@@ -175,13 +188,38 @@ export type DocumentBlock = PaginationBlock & {
   paragraphMargins?: [number, number];
 };
 
-export function createResumeContactItems(resume: ResumeDocument): Array<Array<{ key: string; content: ReactNode }>> {
-  return buildResumeContactLines(resume).map((line) => line.map((item) => ({
-    key: item.key,
-    content: item.href
-      ? <a href={item.href} target="_blank" rel="noopener noreferrer">{item.text}</a>
-      : <span>{item.text}</span>,
+export function createResumeContactItems(resume: ResumeDocument): Array<{
+  fullWidth: boolean;
+  items: Array<{ key: string; text: string; content: ReactNode }>;
+}> {
+  const font = TYPOGRAPHY_FONTS.find((option) => option.id === resume.typography.font) ?? TYPOGRAPHY_FONTS[0];
+  const fontSize = resume.typography.bodyPt * POINTS_PER_CSS_PIXEL * 0.82;
+  const measure = measureHeaderText(font.stack, fontSize);
+  const hasSidePhoto = resume.europeanStandard && Boolean(resume.profilePhotoDataUrl) && resume.photoPosition !== "center";
+  const fullWidth = PAGE_CONTENT_WIDTH_MM * 96 / 25.4;
+  const sideWidth = (PAGE_CONTENT_WIDTH_MM - (PROFILE_PHOTO_WIDTH_MM + PROFILE_PHOTO_GAP_MM) * 2) * 96 / 25.4;
+  const nameHeight = resume.contact.fullName.trim()
+    ? resume.typography.namePt * POINTS_PER_CSS_PIXEL * 1.2 + 5
+    : 0;
+  const headerItems = buildResumeContactLines(resume).flatMap((line, lineIndex) => line.map((item, itemIndex) => ({
+    ...item,
+    breakBefore: item.breakBefore || (lineIndex > 0 && itemIndex === 0),
   })));
+  const packedLines = packResumeHeaderLines(headerItems, hasSidePhoto ? sideWidth : fullWidth, measure, {
+    ...(hasSidePhoto ? { fullWidth, photoBottom: PROFILE_PHOTO_HEIGHT_MM * 96 / 25.4 } : {}),
+    initialHeight: nameHeight,
+    lineHeight: fontSize * 1.2 + 6,
+  });
+  return packedLines.map((line) => ({
+    fullWidth: line.fullWidth,
+    items: line.items.map((item) => ({
+      key: item.key,
+      text: item.text,
+      content: item.href
+        ? <a href={item.href} target="_blank" rel="noopener noreferrer">{item.text}</a>
+        : <span>{item.text}</span>,
+    })),
+  }));
 }
 
 export function escapeLatex(value: string): string {
@@ -196,6 +234,79 @@ export function escapeLatex(value: string): string {
     .replace(/\}/g, "\\}")
     .replace(/~/g, "\\textasciitilde ")
     .replace(/\^/g, "\\textasciicircum ");
+}
+
+export async function processProfilePhoto(file: File): Promise<string> {
+  if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+    throw new Error("Choose a PNG, JPEG, or WebP image.");
+  }
+  if (file.size > PROFILE_PHOTO_MAX_BYTES) {
+    throw new Error("The photo must be 5 MB or smaller.");
+  }
+  let bitmap: ImageBitmap;
+  try {
+    bitmap = await createImageBitmap(file);
+  } catch {
+    throw new Error("This image could not be read. Choose a valid PNG, JPEG, or WebP photo.");
+  }
+  const scale = Math.min(1, 600 / Math.max(bitmap.width, bitmap.height));
+  const canvas = document.createElement("canvas");
+  canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+  canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+  const context = canvas.getContext("2d");
+  if (!context) {
+    bitmap.close();
+    throw new Error("The photo could not be prepared in this browser.");
+  }
+  context.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+  bitmap.close();
+  const outputType = file.type === "image/png" ? "image/png" : "image/jpeg";
+  const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, outputType, 0.88));
+  if (!blob || blob.size > PROFILE_PHOTO_MAX_BYTES) {
+    throw new Error("The prepared photo is too large. Choose a smaller image.");
+  }
+  return await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => typeof reader.result === "string" ? resolve(reader.result) : reject(new Error("The photo could not be read."));
+    reader.onerror = () => reject(new Error("The photo could not be read."));
+    reader.readAsDataURL(blob);
+  });
+}
+
+let demoPhotoPromise: Promise<string> | undefined;
+
+function loadDemoPhotoDataUrl(): Promise<string> {
+  if (!demoPhotoPromise) {
+    demoPhotoPromise = (async () => {
+      const match = pdfKiraDemoPhoto.match(/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/);
+      if (!match) throw new Error("The bundled demo photo has an invalid image format.");
+      const imageBytes = Uint8Array.from(atob(match[2]), (character) => character.charCodeAt(0));
+      const image = new Blob([imageBytes], { type: `image/${match[1]}` });
+      return processProfilePhoto(new File([image], "pdfkira-logo.png", { type: image.type }));
+    })().catch((error: unknown) => {
+      demoPhotoPromise = undefined;
+      throw error;
+    });
+  }
+  return demoPhotoPromise;
+}
+
+function isRecordValue(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+async function discardUndecodableImportedPhoto(value: unknown) {
+  if (!isRecordValue(value) || !isValidProfilePhotoDataUrl(value.profilePhotoDataUrl)) return;
+  const match = value.profilePhotoDataUrl.match(/^data:image\/(png|jpeg|webp);base64,([A-Za-z0-9+/]+={0,2})$/);
+  if (!match) return;
+  const bytes = Uint8Array.from(atob(match[2]), (character) => character.charCodeAt(0));
+  try {
+    const bitmap = await createImageBitmap(new Blob([bytes], { type: `image/${match[1]}` }));
+    bitmap.close();
+  } catch {
+    delete value.profilePhotoDataUrl;
+    value.profilePhotoSample = false;
+  }
 }
 
 export function buildLatexResume(resume: ResumeDocument): string {
@@ -221,14 +332,31 @@ export function buildLatexResume(resume: ResumeDocument): string {
     "\\begin{document}",
   ];
 
-  const contactLines = buildResumeContactLines(resume);
+  if (resume.europeanStandard && resume.profilePhotoDataUrl) lines.push("% photo not included");
+  const latexFontSize = 11 * POINTS_PER_CSS_PIXEL;
+  const measure = measureHeaderText("Georgia", latexFontSize);
+  const headerItems = buildResumeContactLines(resume).flatMap((line, lineIndex) => line.map((item, itemIndex) => ({
+    ...item,
+    breakBefore: item.breakBefore || (lineIndex > 0 && itemIndex === 0),
+  })));
+  const hasSidePhoto = resume.europeanStandard && Boolean(resume.profilePhotoDataUrl) && resume.photoPosition !== "center";
+  const latexFullWidth = 170 * 96 / 25.4;
+  const latexSideWidth = (170 - 2 * (PROFILE_PHOTO_WIDTH_MM + PROFILE_PHOTO_GAP_MM)) * 96 / 25.4;
+  const contactLines = packResumeHeaderLines(headerItems, hasSidePhoto ? latexSideWidth : latexFullWidth, measure, {
+    ...(hasSidePhoto ? {
+      fullWidth: latexFullWidth,
+      photoBottom: PROFILE_PHOTO_HEIGHT_MM * 96 / 25.4,
+    } : {}),
+    initialHeight: resume.contact.fullName.trim() ? 11 * POINTS_PER_CSS_PIXEL * 1.2 : 0,
+    lineHeight: latexFontSize * 1.2,
+  });
   const hasHeader = Boolean(resume.contact.fullName.trim()) || contactLines.length > 0;
   if (hasHeader) lines.push("\\begin{center}");
   if (resume.contact.fullName.trim()) {
     lines.push(`\\textbf{\\Large ${escapeLatex(resume.contact.fullName)}}`);
   }
   for (const contactLine of contactLines) {
-    const items = contactLine.map((item) => item.key === "email"
+    const items = contactLine.items.map((item) => item.key === "email"
       ? `\\texttt{${escapeLatex(item.text)}}`
       : escapeLatex(item.text));
     lines.push(`\\noindent ${items.join(" \\textbullet ")}\\par`);
@@ -304,24 +432,44 @@ export function buildLatexResume(resume: ResumeDocument): string {
 
 export function createResumeBlocks(
   resume: ResumeDocument,
-  contactItems: Array<Array<{ key: string; content: ReactNode }>>,
+  contactItems: Array<{
+    fullWidth: boolean;
+    items: Array<{ key: string; text: string; content: ReactNode }>;
+  }>,
 ): DocumentBlock[] {
   const blocks: DocumentBlock[] = [{
     id: "resume-header",
     height: 0,
     content: (
-      <header className="rb-document-header">
-        {resume.contact.fullName.trim() && <h1 className="rb-name">{resume.contact.fullName}</h1>}
-        {contactItems.map((line, lineIndex) => (
-          <div className="rb-contact-line" key={`contact-line-${lineIndex}`}>
-            {line.map((item, index) => (
-              <span className="rb-contact-item" key={item.key}>
-                {index > 0 && <span className="rb-contact-separator" aria-hidden="true"> • </span>}
-                {item.content}
+      <header
+        className={`rb-document-header${resume.europeanStandard && resume.profilePhotoDataUrl ? " has-photo" : ""}`}
+        data-photo-position={resume.europeanStandard && resume.profilePhotoDataUrl ? resume.photoPosition : undefined}
+      >
+        {resume.europeanStandard && resume.profilePhotoDataUrl && resume.photoPosition === "center" && (
+          <img className="rb-profile-photo" src={resume.profilePhotoDataUrl} alt="Profile photo" />
+        )}
+        <div className="rb-header-copy">
+          {resume.contact.fullName.trim() && (
+            <h1 className="rb-name">
+              <span className="rb-header-line-content">{resume.contact.fullName}</span>
+            </h1>
+          )}
+          {contactItems.map((line, lineIndex) => (
+            <div className={`rb-contact-line${line.fullWidth ? " full-width" : ""}`} key={`contact-line-${lineIndex}`}>
+              <span className="rb-header-line-content">
+                {line.items.map((item, index) => (
+                  <span className="rb-contact-item" key={item.key}>
+                    {index > 0 && <span className="rb-contact-separator" aria-hidden="true"> • </span>}
+                    {item.content}
+                  </span>
+                ))}
               </span>
-            ))}
-          </div>
-        ))}
+            </div>
+          ))}
+        </div>
+        {resume.europeanStandard && resume.profilePhotoDataUrl && resume.photoPosition !== "center" && (
+          <img className="rb-profile-photo" src={resume.profilePhotoDataUrl} alt="Profile photo" />
+        )}
       </header>
     ),
   }];
@@ -544,6 +692,7 @@ export function ResumeBuilder() {
   const [linkError, setLinkError] = useState("");
   const [importError, setImportError] = useState("");
   const [downloadError, setDownloadError] = useState("");
+  const [photoError, setPhotoError] = useState("");
   const [isDownloading, setIsDownloading] = useState(false);
   const [mobileView, setMobileView] = useState<MobileView>("edit");
   const [publicationHelpOpen, setPublicationHelpOpen] = useState(true);
@@ -555,6 +704,7 @@ export function ResumeBuilder() {
   const addSectionRef = useRef<HTMLDetailsElement>(null);
   const sectionRefs = useRef(new Map<string, HTMLElement>());
   const importInputRef = useRef<HTMLInputElement>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
   const previewRef = useRef<HTMLElement>(null);
 
@@ -905,20 +1055,59 @@ export function ResumeBuilder() {
             ? mode === "study" ? "Research interests" : "Summary"
             : section.title,
         };
-      }), mode, current.student, current.europeanStandard),
+      }), mode, current.europeanStandard),
     }));
   }
 
   function changeEuropeanStandard(checked: boolean) {
+    if (checked && resume.profilePhotoSeedAllowed && !resume.profilePhotoDataUrl) {
+      updateResume((current) => setEuropeanStandard(current, checked));
+      void (async () => {
+        try {
+          const demoPhotoDataUrl = await loadDemoPhotoDataUrl();
+          updateResume((current) => current.europeanStandard && current.profilePhotoSeedAllowed && !current.profilePhotoDataUrl
+            ? { ...current, profilePhotoDataUrl: demoPhotoDataUrl, profilePhotoSample: true, profilePhotoSeedAllowed: false }
+            : current);
+        } catch (error) {
+          setPhotoError(error instanceof Error ? error.message : "The bundled demo photo could not be prepared.");
+        }
+      })();
+      return;
+    }
     updateResume((current) => setEuropeanStandard(current, checked));
   }
 
-  function changeStudent(checked: boolean) {
-    updateResume((current) => ({
-      ...current,
-      student: checked,
-      sections: applyModeOrder(current.sections, current.mode, checked, current.europeanStandard),
-    }));
+  async function changeProfilePhoto(file?: File) {
+    if (!file) return;
+    try {
+      const profilePhotoDataUrl = await processProfilePhoto(file);
+      setResume((current) => ({
+        ...current,
+        profilePhotoDataUrl,
+        profilePhotoSample: false,
+        profilePhotoSeedAllowed: false,
+      }));
+      setPhotoError("");
+      setLiveMessage(resume.profilePhotoDataUrl ? "Profile photo replaced." : "Profile photo added.");
+    } catch (error) {
+      setPhotoError(error instanceof Error ? error.message : "The photo could not be prepared.");
+    } finally {
+      if (photoInputRef.current) photoInputRef.current.value = "";
+    }
+  }
+
+  function removeProfilePhoto() {
+    setResume((current) => {
+      const { profilePhotoDataUrl: _profilePhotoDataUrl, ...withoutPhoto } = current;
+      return { ...withoutPhoto, profilePhotoSample: false, profilePhotoSeedAllowed: false };
+    });
+    setPhotoError("");
+    setLiveMessage("Profile photo removed.");
+  }
+
+  function changePhotoPosition(position: string) {
+    if (position !== "right" && position !== "center" && position !== "left") return;
+    updateResume((current) => ({ ...current, photoPosition: position }));
   }
 
   function resetToSample() {
@@ -963,8 +1152,9 @@ export function ResumeBuilder() {
   async function importJson(file?: File) {
     if (!file) return;
     try {
-      if (file.size > 2_000_000) throw new Error("Resume JSON files must be 2 MB or smaller.");
+      if (file.size > 7_200_000) throw new Error("Resume JSON files must be 7 MB or smaller.");
       const parsed: unknown = JSON.parse(await file.text());
+      await discardUndecodableImportedPhoto(parsed);
       const imported = validateResumeImport(parsed);
       setResume(imported);
       setImportError("");
@@ -986,7 +1176,7 @@ export function ResumeBuilder() {
       });
       const bytes = await createResumePdf(resume, pageBreakBefore);
       const safeName = resume.contact.fullName.trim().replace(/[\\/:*?"<>|]/g, "").slice(0, 80);
-      downloadBlob(new Blob([new Uint8Array(bytes)], { type: "application/pdf" }), `${safeName || "Resume"}.pdf`);
+      downloadBlob(new Blob([new Uint8Array(bytes)], { type: "application/pdf" }), `${safeName || "Resume"}${resume.europeanStandard ? "-Europass-CV" : ""}.pdf`);
       setLiveMessage("Resume PDF downloaded.");
     } catch (error) {
       setDownloadError(error instanceof Error ? error.message : "Could not create the resume PDF.");
@@ -1156,15 +1346,14 @@ export function ResumeBuilder() {
               <label className="rb-control-label">
                 <span>Format</span>
                 <Select value={resume.mode} onValueChange={(value) => changeMode(value as ResumeMode)}>
-                  <SelectTrigger aria-label="Resume format"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="rb-format-select" aria-label="Resume format"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="job">Job</SelectItem>
                     <SelectItem value="study">Higher study</SelectItem>
                   </SelectContent>
                 </Select>
               </label>
-              <label className="rb-check-label"><Checkbox checked={resume.europeanStandard} onCheckedChange={(checked) => changeEuropeanStandard(checked === true)} /> European CV</label>
-              <label className="rb-check-label"><Checkbox checked={resume.student} onCheckedChange={(checked) => changeStudent(checked === true)} /> Recent graduate or student</label>
+              <label className="rb-check-label"><Checkbox checked={resume.europeanStandard} onCheckedChange={(checked) => changeEuropeanStandard(checked === true)} /> Europass CV</label>
               <label className="rb-check-label"><Checkbox checked={resume.compactSpacing} onCheckedChange={(checked) => setResume((current) => ({ ...current, compactSpacing: checked === true }))} /> Compact spacing</label>
             </CardContent>
           </Card>
@@ -1193,7 +1382,8 @@ export function ResumeBuilder() {
           <input ref={importInputRef} className="rb-hidden-input" type="file" accept="application/json,.json" aria-label="Choose resume JSON file" onChange={(event) => void importJson(event.target.files?.[0])} />
           <p className="rb-estimate" role="status" aria-live="polite" aria-atomic="true">
             {pageCount} {pageCount === 1 ? "page" : "pages"}
-            {pageWarning ? ` — This resume is ${pageCount} pages. ${resume.mode === "job" ? "Most job applications expect one." : "Most higher study applications expect two."}` : ""}
+            {pageWarning ? ` — This resume is ${pageCount} pages.` : ""}
+            {" "}{resume.europeanStandard ? "Europass-style CVs usually run 2 pages." : resume.mode === "job" ? "Most job applications expect one." : "Most higher study applications expect two."}
           </p>
         </div>
 
@@ -1270,6 +1460,38 @@ export function ResumeBuilder() {
                   <label>Nationality<Input maxLength={100} value={resume.contact.nationality} onChange={(event) => updateContact("nationality", event.target.value)} /></label>
                   <label>Date of birth<Input maxLength={100} placeholder="12 March 1998" value={resume.contact.dateOfBirth} onChange={(event) => updateContact("dateOfBirth", event.target.value)} /></label>
                   <label>Address<Input maxLength={500} value={resume.contact.address} onChange={(event) => updateContact("address", event.target.value)} /></label>
+                  <div className="rb-photo-control">
+                    <span className="rb-photo-label">Profile photo</span>
+                    {!resume.profilePhotoDataUrl && <Button type="button" variant="outline" onClick={() => photoInputRef.current?.click()}>Upload photo</Button>}
+                    {resume.profilePhotoDataUrl && <>
+                      <img className="rb-photo-thumbnail" src={resume.profilePhotoDataUrl} alt="" />
+                      <Button type="button" variant="outline" onClick={() => photoInputRef.current?.click()}>Replace photo</Button>
+                      <Button type="button" variant="outline" onClick={removeProfilePhoto}>Remove photo</Button>
+                      <label className="rb-photo-position"><span>Photo position</span>
+                        <Select value={resume.photoPosition} onValueChange={changePhotoPosition}>
+                          <SelectTrigger className="rb-photo-position-trigger" aria-label="Photo position"><SelectValue /></SelectTrigger>
+                          <SelectContent
+                            className="rb-photo-position-menu"
+                            style={{ backgroundColor: "hsl(var(--popover))", color: "hsl(var(--popover-foreground))" }}
+                          >
+                            <SelectItem value="right">Right</SelectItem>
+                            <SelectItem value="center">Top center</SelectItem>
+                            <SelectItem value="left">Left</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </label>
+                    </>}
+                    <input
+                      ref={photoInputRef}
+                      className="rb-hidden-input"
+                      type="file"
+                      accept="image/png,image/jpeg,image/webp"
+                      aria-label={resume.profilePhotoDataUrl ? "Replace profile photo" : "Upload profile photo"}
+                      onChange={(event) => void changeProfilePhoto(event.target.files?.[0])}
+                    />
+                    <small>Stays in your browser. Many employers outside Europe prefer no photo.</small>
+                    {photoError && <span className="rb-photo-error" role="alert">{photoError}</span>}
+                  </div>
                 </>}
               </div>
               <div className="rb-links">
