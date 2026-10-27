@@ -1,4 +1,4 @@
-import { getAvailableToolPath, type ToolRecord } from '../../../api-server/src/lib/content';
+import { getToolPath, type ToolRecord } from '../../../api-server/src/lib/content';
 import { getSuppliedToolFaqs } from './toolFaqs';
 import toolContent from './toolContent.js';
 
@@ -108,6 +108,12 @@ function titleCase(slug: string) {
   return slug.split('-').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' ');
 }
 
+export function resolveRelatedToolSlugs(toolSlug: string, relatedSlugs: string[]) {
+  const distinctSlugs = relatedSlugs.filter((slug) => slug !== toolSlug);
+  for (const relatedSlug of distinctSlugs) getToolPath(relatedSlug);
+  return distinctSlugs.slice(0, 4).map((relatedSlug) => ({ toolSlug: relatedSlug }));
+}
+
 export function getToolContentRequirements(tool: ToolRecord): ToolContentRequirements {
   const suppliedFaqs = getSuppliedToolFaqs(tool.slug);
   if (tool.slug === 'delete-pages') return suppliedFaqs ? { ...customDeletePages, faqs: suppliedFaqs } : customDeletePages;
@@ -115,13 +121,7 @@ export function getToolContentRequirements(tool: ToolRecord): ToolContentRequire
 
   const name = tool.name || titleCase(tool.slug);
   const authoredContent = Object.entries(toolContent).find(([slug]) => slug === tool.slug)?.[1];
-  const relatedTools = authoredContent?.relatedTools
-    .filter((slug) => slug !== tool.slug)
-    .slice(0, 4)
-    .flatMap((toolSlug) => {
-      const toolPath = getAvailableToolPath(toolSlug);
-      return toolPath ? [{ toolSlug }] : [];
-    }) ?? [];
+  const relatedTools = resolveRelatedToolSlugs(tool.slug, authoredContent?.relatedTools ?? []);
   const useCases = authoredContent?.useCases.map(({ title, description }) => ({ title, description })) ?? [];
   const subject = tool.shortDescription.replace(/[.]+$/, '');
 

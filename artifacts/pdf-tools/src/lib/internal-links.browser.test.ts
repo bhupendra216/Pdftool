@@ -9,7 +9,10 @@ import {
 import { clientToolContent } from "../data/clientToolContent";
 import { TOOL_SEO_CONTENT } from "../data/toolSeoContent";
 import { toolContent } from "../data/toolContent";
-import { getToolContentRequirements } from "../data/toolContentRequirements";
+import {
+  getToolContentRequirements,
+  resolveRelatedToolSlugs,
+} from "../data/toolContentRequirements";
 
 const registeredToolSlugs = new Set(
   tools.filter((tool) => tool.status === "available").map((tool) => tool.slug),
@@ -82,6 +85,30 @@ describe("internal links", () => {
         expect(getToolPath(item.toolSlug)).toBe(`/tools/${item.toolSlug}`);
       }
     }
+
+    const replacementCardCounts = {
+      "pdf-to-word": 4,
+      "word-to-pdf": 4,
+      "protect-pdf": 4,
+      "unlock-pdf": 4,
+    };
+    for (const [slug, expectedCount] of Object.entries(replacementCardCounts)) {
+      const tool = tools.find((entry) => entry.slug === slug);
+      if (!tool) throw new Error(`Expected ${slug} to exist in the tool registry.`);
+      expect(getToolContentRequirements(tool).relatedTools).toHaveLength(expectedCount);
+    }
+  });
+
+  it("fails related-tool resolution for an unknown slug, even beyond the display limit", () => {
+    expect(() =>
+      resolveRelatedToolSlugs("merge-pdf", [
+        "split-pdf",
+        "compress-pdf",
+        "organize-pdf",
+        "pdf-to-word",
+        "not-a-registered-tool",
+      ]),
+    ).toThrow('Tool "not-a-registered-tool" is not available in the tool registry.');
   });
 
   it("assigns every available registry tool one canonical sitemap path", () => {

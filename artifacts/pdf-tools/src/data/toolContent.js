@@ -73,7 +73,7 @@ export const toolContent = {
       { title: 'Reports', description: 'Turn annual reports into editable file formats for updates.', audience: 'Business Owners' },
       { title: 'Assignments', description: 'Convert a reference PDF into a Word file for notes and edits.', audience: 'Students' },
     ],
-    relatedTools: ['word-to-pdf', 'pdf-to-excel', 'compress-pdf'],
+    relatedTools: ['word-to-pdf', 'pdf-to-excel', 'compress-pdf', 'ocr-pdf'],
   },
   'word-to-pdf': {
     howToSteps: [
@@ -92,7 +92,7 @@ export const toolContent = {
       { title: 'Proposals', description: 'Convert client proposals into a fixed layout for printing.', audience: 'Agencies' },
       { title: 'Reports', description: 'Share final versions as a locked format for easy delivery.', audience: 'Teams' },
     ],
-    relatedTools: ['pdf-to-word', 'compress-pdf'],
+    relatedTools: ['pdf-to-word', 'compress-pdf', 'merge-pdf', 'protect-pdf'],
   },
   'pdf-to-excel': {
     howToSteps: [
@@ -339,7 +339,7 @@ export const toolContent = {
       { title: 'Financial Files', description: 'Protect statements, invoices, and account documents.', audience: 'Finance Teams' },
       { title: 'Contracts', description: 'Keep agreements protected until the correct recipients open them.', audience: 'Legal Teams' },
     ],
-    relatedTools: ['unlock-pdf', 'sign-pdf', 'watermark-pdf'],
+    relatedTools: ['unlock-pdf', 'sign-pdf', 'watermark-pdf', 'compress-pdf'],
   },
   'unlock-pdf': {
     howToSteps: [
@@ -358,7 +358,7 @@ export const toolContent = {
       { title: 'Team Workflows', description: 'Make protected documents readable after authorized access is confirmed.', audience: 'Operations Teams' },
       { title: 'Reporting', description: 'Open necessary documents quickly for review and processing.', audience: 'Managers' },
     ],
-    relatedTools: ['protect-pdf', 'sign-pdf', 'compress-pdf'],
+    relatedTools: ['protect-pdf', 'sign-pdf', 'compress-pdf', 'organize-pdf'],
   },
   'sign-pdf': {
     howToSteps: [

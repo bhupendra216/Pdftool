@@ -25,10 +25,8 @@ PDFKira offers PDF tools for students, professionals, and businesses. Some tools
 - **PDF to Word**: https://pdfkira.com/tools/pdf-to-word
 - **PDF to Excel**: https://pdfkira.com/tools/pdf-to-excel
 - **PDF to JPG**: https://pdfkira.com/tools/pdf-to-jpg
-- **PDF to PNG**: https://pdfkira.com/tools/pdf-to-png
 - **PDF to Markdown**: https://pdfkira.com/tools/pdf-to-markdown
 - **Word to PDF**: https://pdfkira.com/tools/word-to-pdf
-- **Excel to PDF**: https://pdfkira.com/tools/excel-to-pdf
 - **JPG to PDF**: https://pdfkira.com/tools/jpg-to-pdf
 
 ## Processing details
@@ -39,16 +37,15 @@ PDFKira offers PDF tools for students, professionals, and businesses. Some tools
 
 ### Edit PDF
 - **Edit PDF (Text & Images)**: https://pdfkira.com/tools/edit-pdf
-- **Add Watermark**: https://pdfkira.com/tools/add-watermark
+- **Watermark PDF**: https://pdfkira.com/tools/watermark-pdf
 - **Add Page Numbers**: https://pdfkira.com/tools/add-page-numbers
-- **Flatten PDF**: https://pdfkira.com/tools/flatten-pdf
 
 ### Organize PDF
 - **Merge PDF**: https://pdfkira.com/tools/merge-pdf
 - **Split PDF**: https://pdfkira.com/tools/split-pdf
 - **Extract Pages**: https://pdfkira.com/tools/extract-pages
 - **Delete Pages**: https://pdfkira.com/tools/delete-pages
-- **Reorder Pages**: https://pdfkira.com/tools/reorder-pages
+- **Organize PDF**: https://pdfkira.com/tools/organize-pdf
 - **Rotate PDF**: https://pdfkira.com/tools/rotate-pdf
 
 ### Optimize PDF
@@ -57,7 +54,7 @@ PDFKira offers PDF tools for students, professionals, and businesses. Some tools
 ### Secure PDF
 - **Sign PDF**: https://pdfkira.com/tools/sign-pdf
 - **Protect PDF (Add Password)**: https://pdfkira.com/tools/protect-pdf
-- **Remove Password**: https://pdfkira.com/tools/remove-password
+- **Unlock PDF**: https://pdfkira.com/tools/unlock-pdf
 
 ---
 
