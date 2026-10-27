@@ -10,6 +10,7 @@ import { ArrowLeft, ArrowRight, Clock } from "lucide-react";
 import { BrandMark } from "@/components/brand/BrandMark";
 import { SITE_NAME } from "@/lib/site-config";
 import { hasDistinctBlogDescription, prepareBlogPostBody } from "@/lib/blog-content";
+import { getToolPath } from "../../../api-server/src/lib/content";
 
 export function BlogDetail() {
   const { slug } = useParams<{ slug: string }>();
@@ -101,7 +102,7 @@ export function BlogDetail() {
               Put this guide into practice using our free, secure <strong>{relatedTool.name}</strong> tool.
             </p>
             <Button size="lg" asChild className="rounded-full px-8 shadow-md">
-              <Link href={`/tools/${relatedTool.slug}`}>
+              <Link href={getToolPath(relatedTool.slug)}>
                 Use {relatedTool.name} <ArrowRight className="w-4 h-4 ml-2" />
               </Link>
             </Button>

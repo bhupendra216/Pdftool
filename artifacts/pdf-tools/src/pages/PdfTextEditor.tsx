@@ -10,6 +10,7 @@ import { replacePdfPagesWithImages, type ReplacementRasterPdfPage } from '../lib
 import { getPdfViewportBounds, pdfToViewport, viewportToPdf, type PdfRect } from '../lib/pdf-coords';
 import { getOriginalLineMaskRect, getReplacementBaseline, getSafeTextGeometry, medianRgbColor, roundPdfFontSize, validateTextItemGeometry } from '../lib/pdf-text-geometry';
 import { detectEditorFont, editorFontVariant, embedEditorFont, FONT_REGISTRY, getCachedEditorTextMetrics, loadEditorPreviewFonts, loadEditorTextMetrics, cssFamilyFor, getEditorFontAliasMatch, normalizePdfFontName, splitTextForPdf, type EditorFontFamily, type FontDetectionHints, type FontDetectionStatus, type PdfTextFontRun } from '../lib/fonts/registry';
+import { getToolPath } from '../../../api-server/src/lib/content';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.min.mjs', import.meta.url).toString();
 
@@ -1279,8 +1280,8 @@ function PdfTextEditor() {
         </div>}
       </div>
       {file && <p className="mb-4 text-sm text-muted-foreground">{status}</p>}
-      {error && <p role="alert" className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-foreground">{error} {error.includes('password-protected') && <a className="underline" href="/tools/unlock-pdf">Unlock PDF tool</a>}</p>}
-      {exportWarnings.length > 0 && <div role="alert" className="mb-4 rounded-xl border border-amber-500/40 p-4 text-sm"><p>Some changes couldn&apos;t be applied: {exportWarnings.join(', ')}. Try converting this PDF with our <a href="/tools/compress-pdf" className="underline">Repair/Compress tool</a> first.</p></div>}
+      {error && <p role="alert" className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-foreground">{error} {error.includes('password-protected') && <a className="underline" href={getToolPath("unlock-pdf")}>Unlock PDF tool</a>}</p>}
+      {exportWarnings.length > 0 && <div role="alert" className="mb-4 rounded-xl border border-amber-500/40 p-4 text-sm"><p>Some changes couldn&apos;t be applied: {exportWarnings.join(', ')}. Try converting this PDF with our <a href={getToolPath("compress-pdf")} className="underline">Repair/Compress tool</a> first.</p></div>}
       {edits.some((entry) => entry.type === 'delete') && <p role="note" className="mb-4 rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm">Visual delete only — the original text may still exist in the file&apos;s data layer. For sensitive content, redact with a dedicated tool.</p>}
 
       {!file ? (
@@ -1355,7 +1356,7 @@ function PdfTextEditor() {
               const cssViewport = page.viewport.clone({ scale: width / page.viewportWidth });
               return <section key={page.pageNumber} id={`pdf-page-${page.pageNumber}`} data-page-number={page.pageNumber} className="rounded-2xl bg-slate-900 p-3">
                 <div className="mb-2 flex items-center justify-between"><h3 className="text-sm font-medium text-white">Page {page.pageNumber}</h3><Badge variant="secondary">{page.textItems.length} texts</Badge></div>
-                {!page.textItems.length && <p className="mb-2 rounded bg-amber-100 p-2 text-xs text-black">This page appears to be a scanned image — text can&apos;t be selected. Use Whiteout + Add Text, or run OCR first with our <a className="underline" href="/tools/ocr-pdf">OCR PDF tool</a>.</p>}
+                {!page.textItems.length && <p className="mb-2 rounded bg-amber-100 p-2 text-xs text-black">This page appears to be a scanned image — text can&apos;t be selected. Use Whiteout + Add Text, or run OCR first with our <a className="underline" href={getToolPath("ocr-pdf")}>OCR PDF tool</a>.</p>}
                 <div data-pdf-edit-area data-pdf-page-canvas className="relative mx-auto overflow-hidden bg-white shadow-lg" style={{ width, height }} onClick={(event) => {
                   if (addTextMode) void addTextAtPoint(page.pageNumber, event.clientX, event.clientY, event.currentTarget);
                 }}>

@@ -2,7 +2,7 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { HelmetProvider } from "react-helmet-async";
 import { expect, it } from "vitest";
-import { blogPosts, tools } from "../../../api-server/src/lib/content";
+import { blogPosts, getToolPath, tools } from "../../../api-server/src/lib/content";
 import ResumeBuilderPage from "./resume-builder";
 import resumeGuideMarkdown from "../../content/posts/2026-10-27-job-resume-vs-europass-cv-what-to-include-and-how-to-format-each.md?raw";
 import { TOOL_SEO_CONTENT } from "@/data/toolSeoContent";
@@ -22,14 +22,17 @@ it("renders all resume page content, links only registered tools, and publishes 
   expect(publishedPosts).toHaveLength(1);
   expect(publishedPosts[0].title).toBe(title);
   expect(publishedPosts[0].excerpt).toBe(description);
-  expect(publishedPosts[0].content.trim()).toBe(prepareBlogPostBody(resumeGuideMarkdown, title).trim());
+  expect(prepareBlogPostBody(publishedPosts[0].content, title).trim()).toBe(
+    prepareBlogPostBody(resumeGuideMarkdown, title).trim(),
+  );
   expect(blogPosts.filter((post) => post.title === title)).toHaveLength(1);
   expect(blogPosts.filter((post) => post.excerpt === description)).toHaveLength(1);
   const availableToolSlugs = new Set(tools.filter((tool) => tool.status === "available").map((tool) => tool.slug));
-  const blogToolLinks = [...resumeGuideMarkdown.matchAll(/\]\(\/tools\/([^)\s]+)\)/g)].map((match) => match[1]);
+  const blogToolLinks = [...resumeGuideMarkdown.matchAll(/\]\(tool:([^)]+)\)/g)].map((match) => match[1]);
   expect(blogToolLinks).toHaveLength(2);
   for (const slug of blogToolLinks) {
     expect(availableToolSlugs.has(slug)).toBe(true);
+    expect(getToolPath(slug)).toBe(`/tools/${slug}`);
   }
 
   const container = document.createElement("div");

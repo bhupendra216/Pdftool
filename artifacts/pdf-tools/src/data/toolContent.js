@@ -16,7 +16,7 @@ export const toolContent = {
       { title: 'Tax Documents', description: 'Merge receipts, forms, and statements for organized filing.', audience: 'Small Business' },
       { title: 'Research Papers', description: 'Bundle chapters, references, and appendices into one file.', audience: 'Students' },
     ],
-    relatedTools: ['split-pdf', 'compress-pdf', 'reorder-pages', 'pdf-to-word'],
+    relatedTools: ['split-pdf', 'compress-pdf', 'organize-pdf', 'pdf-to-word'],
   },
   'split-pdf': {
     howToSteps: [
@@ -35,7 +35,7 @@ export const toolContent = {
       { title: 'Class Notes', description: 'Extract just the module pages you need to study.', audience: 'Students' },
       { title: 'Contracts', description: 'Pull the relevant agreement pages into a clean one-page handoff.', audience: 'Teams' },
     ],
-    relatedTools: ['merge-pdf', 'reorder-pages', 'compress-pdf', 'pdf-to-word'],
+    relatedTools: ['merge-pdf', 'organize-pdf', 'compress-pdf', 'pdf-to-word'],
   },
   'compress-pdf': {
     howToSteps: [
@@ -54,7 +54,7 @@ export const toolContent = {
       { title: 'University Applications', description: 'Reduce forms to fit upload requirements without losing readability.', audience: 'Students' },
       { title: 'Client Files', description: 'Create lighter file shares for immediate feedback or review.', audience: 'Teams' },
     ],
-    relatedTools: ['merge-pdf', 'pdf-to-images', 'pdf-to-word', 'split-pdf'],
+    relatedTools: ['merge-pdf', 'pdf-to-jpg', 'pdf-to-word', 'split-pdf'],
   },
   'pdf-to-word': {
     howToSteps: [
@@ -73,7 +73,7 @@ export const toolContent = {
       { title: 'Reports', description: 'Turn annual reports into editable file formats for updates.', audience: 'Business Owners' },
       { title: 'Assignments', description: 'Convert a reference PDF into a Word file for notes and edits.', audience: 'Students' },
     ],
-    relatedTools: ['word-to-pdf', 'pdf-to-excel', 'pdf-to-powerpoint', 'compress-pdf'],
+    relatedTools: ['word-to-pdf', 'pdf-to-excel', 'compress-pdf'],
   },
   'word-to-pdf': {
     howToSteps: [
@@ -92,7 +92,7 @@ export const toolContent = {
       { title: 'Proposals', description: 'Convert client proposals into a fixed layout for printing.', audience: 'Agencies' },
       { title: 'Reports', description: 'Share final versions as a locked format for easy delivery.', audience: 'Teams' },
     ],
-    relatedTools: ['pdf-to-word', 'excel-to-pdf', 'powerpoint-to-pdf', 'compress-pdf'],
+    relatedTools: ['pdf-to-word', 'compress-pdf'],
   },
   'pdf-to-excel': {
     howToSteps: [
@@ -111,7 +111,7 @@ export const toolContent = {
       { title: 'Invoices', description: 'Extract line items and totals for easy reconciliation.', audience: 'Bookkeepers' },
       { title: 'Data Cleanup', description: 'Move table information from static documents into Excel.', audience: 'Analysts' },
     ],
-    relatedTools: ['excel-to-pdf', 'pdf-to-word', 'compress-pdf', 'pdf-to-text'],
+    relatedTools: ['pdf-to-word', 'compress-pdf', 'ocr-pdf'],
   },
   'excel-to-pdf': {
     howToSteps: [
@@ -130,7 +130,7 @@ export const toolContent = {
       { title: 'Client Delivery', description: 'Send numbers to clients as a professional, read-only view.', audience: 'Agencies' },
       { title: 'Inventory', description: 'Archive stock lists and updates in a secure PDF format.', audience: 'Retail Owners' },
     ],
-    relatedTools: ['pdf-to-excel', 'word-to-pdf', 'powerpoint-to-pdf', 'compress-pdf'],
+    relatedTools: ['pdf-to-excel', 'word-to-pdf', 'compress-pdf'],
   },
   'pdf-to-powerpoint': {
     howToSteps: [
@@ -149,7 +149,7 @@ export const toolContent = {
       { title: 'Training', description: 'Turn manuals and notes into presentation formats.', audience: 'Teams' },
       { title: 'Academic Slides', description: 'Rebuild lecture material from PDFs into slides.', audience: 'Students' },
     ],
-    relatedTools: ['powerpoint-to-pdf', 'pdf-to-word', 'pdf-to-images', 'compress-pdf'],
+    relatedTools: ['pdf-to-word', 'pdf-to-jpg', 'compress-pdf'],
   },
   'powerpoint-to-pdf': {
     howToSteps: [
@@ -168,7 +168,7 @@ export const toolContent = {
       { title: 'Training Sessions', description: 'Distribute workshop slides as final PDF copies.', audience: 'Teams' },
       { title: 'Archives', description: 'Save presentation records in a stable, shareable format.', audience: 'Organizations' },
     ],
-    relatedTools: ['pdf-to-powerpoint', 'word-to-pdf', 'compress-pdf', 'pdf-to-images'],
+    relatedTools: ['word-to-pdf', 'compress-pdf', 'pdf-to-jpg'],
   },
   'pdf-to-images': {
     howToSteps: [
@@ -187,7 +187,7 @@ export const toolContent = {
       { title: 'Design Mockups', description: 'Use pages as visual references in presentation work.', audience: 'Designers' },
       { title: 'Page Reviews', description: 'Capture specific PDF pages for sign-off or review.', audience: 'Teams' },
     ],
-    relatedTools: ['images-to-pdf', 'pdf-to-text', 'compress-pdf', 'pdf-to-word'],
+    relatedTools: ['jpg-to-pdf', 'ocr-pdf', 'compress-pdf', 'pdf-to-word'],
   },
   'images-to-pdf': {
     howToSteps: [
@@ -206,7 +206,7 @@ export const toolContent = {
       { title: 'Portfolio Delivery', description: 'Package visual captures for client review.', audience: 'Designers' },
       { title: 'Forms', description: 'Combine images of forms or checklists into one document.', audience: 'Teams' },
     ],
-    relatedTools: ['pdf-to-images', 'compress-images', 'word-to-pdf', 'merge-pdf'],
+    relatedTools: ['pdf-to-jpg', 'image-compress', 'word-to-pdf', 'merge-pdf'],
   },
   'pdf-to-text': {
     howToSteps: [
@@ -244,7 +244,7 @@ export const toolContent = {
       { title: 'Reports', description: 'Use plain text for clear equations in reports and email drafts.', audience: 'Researchers' },
       { title: 'Collaboration', description: 'Move formulas into Notion, Slack, Docs, and Word without formatting issues.', audience: 'Teams' },
     ],
-    relatedTools: ['pdf-to-text', 'ocr-pdf', 'pdf-to-word'],
+    relatedTools: ['ocr-pdf', 'ocr-pdf', 'pdf-to-word'],
   },
   'ocr-pdf': {
     howToSteps: [
@@ -263,7 +263,7 @@ export const toolContent = {
       { title: 'Invoices', description: 'Extract data from scanned receipts and statements.', audience: 'Bookkeepers' },
       { title: 'Forms', description: 'Convert paper forms into text that can be repurposed quickly.', audience: 'Teams' },
     ],
-    relatedTools: ['pdf-to-text', 'pdf-to-word', 'compress-pdf', 'images-to-pdf'],
+    relatedTools: ['ocr-pdf', 'pdf-to-word', 'compress-pdf', 'jpg-to-pdf'],
   },
   'rotate-pdf': {
     howToSteps: [
@@ -282,7 +282,7 @@ export const toolContent = {
       { title: 'Forms', description: 'Correct orientation for easier printing and sharing.', audience: 'Administrators' },
       { title: 'Reports', description: 'Align all pages before sending to clients or managers.', audience: 'Teams' },
     ],
-    relatedTools: ['reorder-pages', 'split-pdf', 'compress-pdf', 'pdf-to-images'],
+    relatedTools: ['organize-pdf', 'split-pdf', 'compress-pdf', 'pdf-to-jpg'],
   },
   'reorder-pages': {
     howToSteps: [
@@ -320,7 +320,7 @@ export const toolContent = {
       { title: 'Course Materials', description: 'Mark internal documents for consistent ownership.', audience: 'Educators' },
       { title: 'Drafts', description: 'Flag documents clearly as confidential or under review.', audience: 'Teams' },
     ],
-    relatedTools: ['protect-pdf', 'flatten-pdf', 'sign-pdf', 'compress-pdf'],
+    relatedTools: ['protect-pdf', 'sign-pdf', 'compress-pdf'],
   },
   'protect-pdf': {
     howToSteps: [
@@ -339,7 +339,7 @@ export const toolContent = {
       { title: 'Financial Files', description: 'Protect statements, invoices, and account documents.', audience: 'Finance Teams' },
       { title: 'Contracts', description: 'Keep agreements protected until the correct recipients open them.', audience: 'Legal Teams' },
     ],
-    relatedTools: ['unlock-pdf', 'flatten-pdf', 'sign-pdf', 'add-watermark'],
+    relatedTools: ['unlock-pdf', 'sign-pdf', 'watermark-pdf'],
   },
   'unlock-pdf': {
     howToSteps: [
@@ -358,7 +358,7 @@ export const toolContent = {
       { title: 'Team Workflows', description: 'Make protected documents readable after authorized access is confirmed.', audience: 'Operations Teams' },
       { title: 'Reporting', description: 'Open necessary documents quickly for review and processing.', audience: 'Managers' },
     ],
-    relatedTools: ['protect-pdf', 'flatten-pdf', 'sign-pdf', 'compress-pdf'],
+    relatedTools: ['protect-pdf', 'sign-pdf', 'compress-pdf'],
   },
   'sign-pdf': {
     howToSteps: [
@@ -377,7 +377,7 @@ export const toolContent = {
       { title: 'Approval Forms', description: 'Sign internal approvals or employee forms', audience: 'HR Teams' },
       { title: 'Client Delivery', description: 'Finalize documents for presentation or acceptance.', audience: 'Agencies' },
     ],
-    relatedTools: ['protect-pdf', 'unlock-pdf', 'flatten-pdf', 'add-watermark'],
+    relatedTools: ['protect-pdf', 'unlock-pdf', 'watermark-pdf'],
   },
   'flatten-pdf': {
     howToSteps: [
@@ -396,7 +396,7 @@ export const toolContent = {
       { title: 'Legal Review', description: 'Lock signatures, notes, and annotations into a final document.', audience: 'Legal Teams' },
       { title: 'Internal Approvals', description: 'Keep approval versions final for distribution.', audience: 'Managers' },
     ],
-    relatedTools: ['protect-pdf', 'sign-pdf', 'unlock-pdf', 'add-watermark'],
+    relatedTools: ['protect-pdf', 'sign-pdf', 'unlock-pdf', 'watermark-pdf'],
   },
   'pdf-to-pdfa': {
     howToSteps: [
@@ -435,7 +435,7 @@ export const toolContent = {
       { title: 'Email', description: 'Shrink large photos so they pass attachment limits.', audience: 'Professionals' },
       { title: 'Portfolio Files', description: 'Compress photos for cleaner sharing and faster review.', audience: 'Designers' },
     ],
-    relatedTools: ['images-to-pdf', 'pdf-to-images', 'compress-pdf', 'protect-pdf'],
+    relatedTools: ['jpg-to-pdf', 'pdf-to-jpg', 'compress-pdf', 'protect-pdf'],
   },
 };
 

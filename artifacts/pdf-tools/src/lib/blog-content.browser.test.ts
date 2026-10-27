@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blogPosts } from "../../../api-server/src/lib/content";
+import { blogPosts, resolveBlogToolLinks } from "../../../api-server/src/lib/content";
 import { hasDistinctBlogDescription, prepareBlogPostBody } from "./blog-content";
 
 describe("blog catalog content", () => {
@@ -23,7 +23,9 @@ describe("blog catalog content", () => {
       expect(post.excerpt.length).toBeGreaterThanOrEqual(50);
       expect(post.excerpt.length).toBeLessThanOrEqual(200);
       expect(post.title).not.toMatch(/\s\|\s*PDFKira\s*$/i);
-      expect(prepareBlogPostBody(post.content, post.title)).toBe(post.content.trimStart());
+      expect(prepareBlogPostBody(post.content, post.title)).toBe(
+        resolveBlogToolLinks(post.content.trimStart()),
+      );
     }
   });
 

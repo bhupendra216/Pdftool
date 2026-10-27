@@ -1,4 +1,5 @@
 import { Link } from "wouter";
+import { getToolPath } from "../../../../api-server/src/lib/content";
 import { BrandMark } from "@/components/brand/BrandMark";
 
 export function Footer() {
@@ -20,10 +21,10 @@ export function Footer() {
             <h3 className="font-semibold mb-4 text-foreground">Product</h3>
             <ul className="space-y-3">
               <li><Link href="/tools" className="text-sm text-muted-foreground hover:text-primary transition-colors">All Tools</Link></li>
-              <li><Link href="/tools/pdf-to-markdown" className="text-sm text-muted-foreground hover:text-primary transition-colors">PDF to Markdown</Link></li>
-              <li><Link href="/tools/add-page-numbers" className="text-sm text-muted-foreground hover:text-primary transition-colors">Add Page Numbers</Link></li>
-              <li><Link href="/tools/image-converter" className="text-sm text-muted-foreground hover:text-primary transition-colors">Image Converter</Link></li>
-              <li><Link href="/tools/qr-code-generator" className="text-sm text-muted-foreground hover:text-primary transition-colors">QR Code Generator</Link></li>
+              <li><Link href={getToolPath("pdf-to-markdown")} className="text-sm text-muted-foreground hover:text-primary transition-colors">PDF to Markdown</Link></li>
+              <li><Link href={getToolPath("add-page-numbers")} className="text-sm text-muted-foreground hover:text-primary transition-colors">Add Page Numbers</Link></li>
+              <li><Link href={getToolPath("image-converter")} className="text-sm text-muted-foreground hover:text-primary transition-colors">Image Converter</Link></li>
+              <li><Link href={getToolPath("qr-code-generator")} className="text-sm text-muted-foreground hover:text-primary transition-colors">QR Code Generator</Link></li>
             </ul>
           </div>
 

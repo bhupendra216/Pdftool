@@ -1,4 +1,4 @@
-import type { ToolRecord } from '../../../api-server/src/lib/content';
+import { getAvailableToolPath, type ToolRecord } from '../../../api-server/src/lib/content';
 import { getSuppliedToolFaqs } from './toolFaqs';
 import toolContent from './toolContent.js';
 
@@ -18,7 +18,7 @@ export interface ToolContentRequirements {
     type: 'browser-only' | 'server-processed' | 'hybrid';
     description: string;
   };
-  relatedTools: Array<{ tool: string; reason?: string }>;
+  relatedTools: Array<{ toolSlug: string; reason?: string }>;
   proTips?: string[];
   commonMistakes?: string[];
 }
@@ -56,10 +56,10 @@ const customDeletePages: ToolContentRequirements = {
   technicalSpecs: { inputFormats: ['PDF'], outputFormats: ['PDF'], maxFileSize: '50MB', processingTime: 'A few seconds for typical documents' },
   privacyModel: { type: 'browser-only', description: 'The page selection and PDF export run locally in your browser; the selected document is not uploaded for processing.' },
   relatedTools: [
-    { tool: '/tools/merge-pdf', reason: 'Combine the cleaned document with another PDF.' },
-    { tool: '/tools/split-pdf', reason: 'Extract a page range when you want a separate section.' },
-    { tool: '/tools/compress-pdf', reason: 'Reduce the size of the remaining pages for email or sharing.' },
-    { tool: '/tools/organize-pdf', reason: 'Reorder pages after removing unwanted content.' },
+    { toolSlug: 'merge-pdf', reason: 'Combine the cleaned document with another PDF.' },
+    { toolSlug: 'split-pdf', reason: 'Extract a page range when you want a separate section.' },
+    { toolSlug: 'compress-pdf', reason: 'Reduce the size of the remaining pages for email or sharing.' },
+    { toolSlug: 'organize-pdf', reason: 'Reorder pages after removing unwanted content.' },
   ],
   proTips: ['Keep the original file until you have checked the output.', 'Use thumbnails and page numbers together when similar pages appear next to each other.'],
   commonMistakes: ['Selecting a page by appearance without checking its page number', 'Deleting the source file before reviewing the downloaded copy'],
@@ -118,7 +118,10 @@ export function getToolContentRequirements(tool: ToolRecord): ToolContentRequire
   const relatedTools = authoredContent?.relatedTools
     .filter((slug) => slug !== tool.slug)
     .slice(0, 4)
-    .map((slug) => ({ tool: `/tools/${slug}` })) ?? [];
+    .flatMap((toolSlug) => {
+      const toolPath = getAvailableToolPath(toolSlug);
+      return toolPath ? [{ toolSlug }] : [];
+    }) ?? [];
   const useCases = authoredContent?.useCases.map(({ title, description }) => ({ title, description })) ?? [];
   const subject = tool.shortDescription.replace(/[.]+$/, '');
 

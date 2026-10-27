@@ -21,6 +21,7 @@ import { resolveToolOgImage } from '@/data/seoConfig';
 import { getToolSeoContent } from '@/lib/toolSeoContent';
 import { ToolCard } from "@/components/shared/ToolCard";
 import { hasDistinctBlogDescription } from "@/lib/blog-content";
+import { getToolPath } from "../../../api-server/src/lib/content";
 import { Button } from "@/components/ui/button";
 import OrganizeGrid from "@/components/organize/OrganizeGrid";
 import { Icon } from "@/components/ui/icon";
@@ -1492,7 +1493,7 @@ export function ToolDetail(props?: any) {
       .filter((line) => line.text.length > 0);
   };
 
-  const toolUrl = `${SITE_URL}/tools/${tool?.slug || ''}`;
+  const toolUrl = `${SITE_URL}${tool ? getToolPath(tool.slug) : "/tools"}`;
 
   const pageHeading = useMemo(() => {
     switch (tool?.slug) {
@@ -2385,9 +2386,9 @@ export function ToolDetail(props?: any) {
                   {errorMessage && (
                     <div role="alert" className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">
                       {errorMessage}
-                      {markdownEmpty && <> <Link className="underline" href="/tools/ocr-pdf">Open OCR PDF</Link></>}
-                      {tool?.slug === "pdf-to-markdown" && /password-protected/i.test(errorMessage) && <> <Link className="underline" href="/tools/unlock-pdf">Open Unlock PDF</Link></>}
-                      {tool?.slug === "pdf-to-markdown" && /damaged or is not a valid PDF/i.test(errorMessage) && <> If this is an image-only scan, try <Link className="underline" href="/tools/ocr-pdf">OCR PDF</Link>.</>}
+                      {markdownEmpty && <> <Link className="underline" href={getToolPath("ocr-pdf")}>Open OCR PDF</Link></>}
+                      {tool?.slug === "pdf-to-markdown" && /password-protected/i.test(errorMessage) && <> <Link className="underline" href={getToolPath("unlock-pdf")}>Open Unlock PDF</Link></>}
+                      {tool?.slug === "pdf-to-markdown" && /damaged or is not a valid PDF/i.test(errorMessage) && <> If this is an image-only scan, try <Link className="underline" href={getToolPath("ocr-pdf")}>OCR PDF</Link>.</>}
                       {tool?.slug === "pdf-to-markdown" && skippedImageCount > 0 && <> {extractedImageCount} images extracted. {skippedImageCount} could not be extracted.</>}
                     </div>
                   )}
@@ -2911,9 +2912,9 @@ export function ToolDetail(props?: any) {
                   {errorMessage && (
                     <p role="alert" className="mt-4 text-sm text-destructive">
                       {errorMessage}
-                      {markdownEmpty && <> <Link className="underline" href="/tools/ocr-pdf">Open OCR PDF</Link></>}
-                      {tool.slug === "pdf-to-markdown" && /password-protected/i.test(errorMessage) && <> <Link className="underline" href="/tools/unlock-pdf">Open Unlock PDF</Link></>}
-                      {tool.slug === "pdf-to-markdown" && /damaged or is not a valid PDF/i.test(errorMessage) && <> If this is an image-only scan, try <Link className="underline" href="/tools/ocr-pdf">OCR PDF</Link>.</>}
+                      {markdownEmpty && <> <Link className="underline" href={getToolPath("ocr-pdf")}>Open OCR PDF</Link></>}
+                      {tool.slug === "pdf-to-markdown" && /password-protected/i.test(errorMessage) && <> <Link className="underline" href={getToolPath("unlock-pdf")}>Open Unlock PDF</Link></>}
+                      {tool.slug === "pdf-to-markdown" && /damaged or is not a valid PDF/i.test(errorMessage) && <> If this is an image-only scan, try <Link className="underline" href={getToolPath("ocr-pdf")}>OCR PDF</Link>.</>}
                       {tool.slug === "pdf-to-markdown" && skippedImageCount > 0 && <> {extractedImageCount} images extracted. {skippedImageCount} could not be extracted.</>}
                     </p>
                   )}
@@ -3374,7 +3375,7 @@ export function ToolDetail(props?: any) {
                   <p aria-live="polite" className="text-center text-muted-foreground mb-6">{progressStage}</p>
                   {tool.slug === "pdf-to-markdown" && markdownNoTextWarning && (
                     <p role="status" className="mb-6 rounded-xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-center">
-                      No text found. This PDF may be scanned or image-only. Run it through the <Link className="underline" href="/tools/ocr-pdf">OCR PDF tool</Link> first.
+                      No text found. This PDF may be scanned or image-only. Run it through the <Link className="underline" href={getToolPath("ocr-pdf")}>OCR PDF tool</Link> first.
                     </p>
                   )}
                   <Progress aria-label="Conversion progress" value={progress} className="h-3 mb-4" />
@@ -3542,7 +3543,7 @@ export function ToolDetail(props?: any) {
                       <h3 className="text-2xl font-bold mb-4 text-center">Markdown conversion complete</h3>
                       <p className="text-center text-muted-foreground mb-6">
                         {!markdownTextFound
-                          ? <>No text found. This PDF may be scanned or image-only. Run it through the <Link className="underline" href="/tools/ocr-pdf">OCR PDF tool</Link> first. Only images were found. The ZIP contains {extractedImageCount} image{extractedImageCount === 1 ? "" : "s"}; no text was extracted.</>
+                          ? <>No text found. This PDF may be scanned or image-only. Run it through the <Link className="underline" href={getToolPath("ocr-pdf")}>OCR PDF tool</Link> first. Only images were found. The ZIP contains {extractedImageCount} image{extractedImageCount === 1 ? "" : "s"}; no text was extracted.</>
                           : extractedImageCount > 0
                             ? `Markdown and ${extractedImageCount} image${extractedImageCount === 1 ? "" : "s"} are ready. The ZIP contains the Markdown file and an images/ folder.`
                             : "Your PDF has been converted to Markdown and is ready to download or copy."}

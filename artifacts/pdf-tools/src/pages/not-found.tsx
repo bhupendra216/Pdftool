@@ -2,12 +2,13 @@ import { useSEO } from "@/hooks/use-seo";
 import { Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { BrandMark } from "@/components/brand/BrandMark";
+import { getToolPath } from "../../../api-server/src/lib/content";
 
 const popularLinks = [
-  { label: "Merge PDF", href: "/tools/merge-pdf" },
-  { label: "Compress PDF", href: "/tools/compress-pdf" },
-  { label: "Split PDF", href: "/tools/split-pdf" },
-  { label: "Image Converter", href: "/tools/image-converter" },
+  { label: "Merge PDF", href: getToolPath("merge-pdf") },
+  { label: "Compress PDF", href: getToolPath("compress-pdf") },
+  { label: "Split PDF", href: getToolPath("split-pdf") },
+  { label: "Image Converter", href: getToolPath("image-converter") },
 ];
 
 export default function NotFound() {

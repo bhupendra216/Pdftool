@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { Link } from "wouter";
+import { getToolPath } from "../../../../api-server/src/lib/content";
 import { useSEOAdvanced } from "@/hooks/use-seo";
 import { SITE_URL } from "@/lib/site-config";
 import { getClientToolContent } from "@/data/clientToolContent";
@@ -8,7 +9,7 @@ export function ClientToolPage({ slug, children }: { slug: "pdf-to-excel" | "sig
   const tool = getClientToolContent(slug);
   if (!tool) throw new Error(`Missing content for client tool: ${slug}`);
 
-  const canonical = `${SITE_URL}/tools/${tool.slug}`;
+  const canonical = `${SITE_URL}${getToolPath(tool.slug)}`;
   const structuredData = {
     "@context": "https://schema.org",
     "@graph": [
@@ -89,8 +90,8 @@ export function ClientToolPage({ slug, children }: { slug: "pdf-to-excel" | "sig
             <h2 className="text-2xl font-bold tracking-tight text-foreground">Related tools</h2>
             <ul className="mt-4 flex flex-wrap gap-3">
               {tool.related.map((item) => (
-                <li key={item.href}>
-                  <Link href={item.href} className="inline-flex rounded-full border border-border bg-card px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5">
+                <li key={item.toolSlug}>
+                  <Link href={getToolPath(item.toolSlug)} className="inline-flex rounded-full border border-border bg-card px-4 py-2 text-sm font-medium text-primary hover:bg-primary/5">
                     {item.label}
                   </Link>
                 </li>

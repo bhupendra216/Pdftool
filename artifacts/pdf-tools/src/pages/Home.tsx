@@ -9,7 +9,7 @@ import { BlogCard } from "@/components/shared/BlogCard";
 import { FaqSection } from "@/components/shared/FaqSection";
 import { ArrowRight, Search, ShieldCheck, Zap, HeartHandshake } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
-import { tools as toolCatalog } from "../../../api-server/src/lib/content";
+import { getToolPath, tools as toolCatalog } from "../../../api-server/src/lib/content";
 
 const categoryGroups = [
   { id: "pdf-editing", name: "Edit PDF", icon: "✏️", slugs: ["edit-pdf", "delete-pages", "organize-pdf", "rotate-pdf"] },
@@ -21,10 +21,10 @@ const categoryGroups = [
 ];
 
 const quickActions = [
-  ["Merge PDF", "/tools/merge-pdf", "📄"],
-  ["Compress", "/tools/compress-pdf", "🗜️"],
-  ["Sign PDF", "/tools/sign-pdf", "✍️"],
-  ["OCR PDF", "/tools/ocr-pdf", "🔎"],
+  ["Merge PDF", "merge-pdf", "📄"],
+  ["Compress", "compress-pdf", "🗜️"],
+  ["Sign PDF", "sign-pdf", "✍️"],
+  ["OCR PDF", "ocr-pdf", "🔎"],
 ];
 
 export function Home() {
@@ -82,7 +82,7 @@ export function Home() {
               {searchQuery && (
                 <div className="absolute z-20 mt-2 w-full overflow-hidden rounded-2xl border border-border bg-card p-2 shadow-xl">
                   {searchResults.length > 0 ? searchResults.map((tool) => (
-                    <Link key={tool.slug} href={`/tools/${tool.slug}`} className="block rounded-xl px-4 py-3 hover:bg-secondary">
+                    <Link key={tool.slug} href={getToolPath(tool.slug)} className="block rounded-xl px-4 py-3 hover:bg-secondary">
                       <span className="font-semibold text-foreground">{tool.name}</span>
                       <span className="ml-2 text-sm text-muted-foreground">{tool.shortDescription}</span>
                     </Link>
@@ -92,9 +92,9 @@ export function Home() {
             </div>
 
             <div className="mt-6 flex flex-wrap justify-center gap-3">
-              {quickActions.map(([label, href, icon]) => (
-                <Button key={href} variant="outline" asChild className="rounded-full">
-                  <Link href={href}><span aria-hidden="true">{icon}</span><span className="ml-2">{label}</span></Link>
+              {quickActions.map(([label, slug, icon]) => (
+                <Button key={slug} variant="outline" asChild className="rounded-full">
+                  <Link href={getToolPath(slug)}><span aria-hidden="true">{icon}</span><span className="ml-2">{label}</span></Link>
                 </Button>
               ))}
             </div>
@@ -150,14 +150,14 @@ export function Home() {
       <section className="border-y border-border bg-secondary/30 py-12 md:py-16">
         <div className="container mx-auto grid gap-6 px-4 md:grid-cols-2 md:px-6">
           {[
-            { icon: "💼", title: "For work", text: "Prepare business documents in fewer steps.", links: [["Merge reports", "/tools/merge-pdf"], ["Sign contracts", "/tools/sign-pdf"], ["Convert to Excel", "/tools/pdf-to-excel"]] },
-            { icon: "🎓", title: "For students", text: "Organize assignments, notes, and scanned textbooks.", links: [["Combine assignments", "/tools/merge-pdf"], ["OCR textbooks", "/tools/ocr-pdf"], ["Compress notes", "/tools/compress-pdf"]] },
+            { icon: "💼", title: "For work", text: "Prepare business documents in fewer steps.", links: [["Merge reports", "merge-pdf"], ["Sign contracts", "sign-pdf"], ["Convert to Excel", "pdf-to-excel"]] },
+            { icon: "🎓", title: "For students", text: "Organize assignments, notes, and scanned textbooks.", links: [["Combine assignments", "merge-pdf"], ["OCR textbooks", "ocr-pdf"], ["Compress notes", "compress-pdf"]] },
           ].map((useCase) => (
             <div key={useCase.title} className="rounded-2xl border border-border bg-card p-6 md:p-8">
               <h2 className="text-2xl font-bold">{useCase.icon} {useCase.title}</h2>
               <p className="mt-2 text-muted-foreground">{useCase.text}</p>
               <div className="mt-5 flex flex-wrap gap-2">
-                {useCase.links.map(([label, href]) => <Button key={href} variant="outline" size="sm" asChild><Link href={href}>{label} <ArrowRight className="ml-1 h-3.5 w-3.5" /></Link></Button>)}
+                {useCase.links.map(([label, slug]) => <Button key={slug} variant="outline" size="sm" asChild><Link href={getToolPath(slug)}>{label} <ArrowRight className="ml-1 h-3.5 w-3.5" /></Link></Button>)}
               </div>
             </div>
           ))}

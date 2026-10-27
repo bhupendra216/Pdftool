@@ -5,6 +5,7 @@ import DirtyPreview from '@/components/DirtyPreview';
 import { processPage, type TransformSettings } from '@/lib/transform/processPage';
 import { PDFDocument } from 'pdf-lib';
 import * as pdfjsLib from 'pdfjs-dist';
+import { getToolPath } from '../../../api-server/src/lib/content';
 
 const MAX_FILE_BYTES = 50 * 1024 * 1024;
 const MAX_PAGES = 30;
@@ -317,7 +318,7 @@ export default function DirtyPDF() {
           <p role="alert" className="rounded-md border border-destructive/40 bg-destructive/5 p-3 text-sm text-destructive">
             {errorMessage}{' '}
             {errorMessage.startsWith('This PDF is password-protected') && (
-              <a className="font-medium underline" href="/tools/unlock-pdf">Unlock it with our Unlock PDF tool</a>
+              <a className="font-medium underline" href={getToolPath("unlock-pdf")}>Unlock it with our Unlock PDF tool</a>
             )}
           </p>
         )}

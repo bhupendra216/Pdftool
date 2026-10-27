@@ -12,7 +12,7 @@ export interface ClientToolContent {
   steps: [string, string, string];
   benefits: [{ title: string; description: string }, { title: string; description: string }, { title: string; description: string }];
   faqs: [ClientToolFaq, ClientToolFaq, ClientToolFaq, ClientToolFaq, ClientToolFaq];
-  related: { label: string; href: string }[];
+  related: { label: string; toolSlug: string }[];
 }
 
 import { getSuppliedToolFaqs } from './toolFaqs';
@@ -42,10 +42,10 @@ export const clientToolContent: ClientToolContent[] = [
       { question: "Is the PDF to Excel converter free?", answer: "Yes. PDFKira's PDF to Excel conversion is free to use, with no account required." },
     ],
     related: [
-      { label: "Merge PDF", href: "/tools/merge-pdf" },
-      { label: "Compress PDF", href: "/tools/compress-pdf" },
-      { label: "OCR PDF", href: "/tools/ocr-pdf" },
-      { label: "PDF to Word", href: "/tools/pdf-to-word" },
+      { label: "Merge PDF", toolSlug: "merge-pdf" },
+      { label: "Compress PDF", toolSlug: "compress-pdf" },
+      { label: "OCR PDF", toolSlug: "ocr-pdf" },
+      { label: "PDF to Word", toolSlug: "pdf-to-word" },
     ],
   },
   {
@@ -72,10 +72,10 @@ export const clientToolContent: ClientToolContent[] = [
       { question: "Is this PDF signing tool free?", answer: "Yes. PDFKira's local PDF signing tool is free to use, with no account required." },
     ],
     related: [
-      { label: "Merge PDF", href: "/tools/merge-pdf" },
-      { label: "Compress PDF", href: "/tools/compress-pdf" },
-      { label: "PDF to Excel", href: "/tools/pdf-to-excel" },
-      { label: "OCR PDF", href: "/tools/ocr-pdf" },
+      { label: "Merge PDF", toolSlug: "merge-pdf" },
+      { label: "Compress PDF", toolSlug: "compress-pdf" },
+      { label: "PDF to Excel", toolSlug: "pdf-to-excel" },
+      { label: "OCR PDF", toolSlug: "ocr-pdf" },
     ],
   },
   {
@@ -102,10 +102,10 @@ export const clientToolContent: ClientToolContent[] = [
       { question: "Is OCR PDF free?", answer: "Yes. PDFKira's browser-based OCR is free to use, with no account required." },
     ],
     related: [
-      { label: "Merge PDF", href: "/tools/merge-pdf" },
-      { label: "Compress PDF", href: "/tools/compress-pdf" },
-      { label: "PDF to Excel", href: "/tools/pdf-to-excel" },
-      { label: "PDF to Word", href: "/tools/pdf-to-word" },
+      { label: "Merge PDF", toolSlug: "merge-pdf" },
+      { label: "Compress PDF", toolSlug: "compress-pdf" },
+      { label: "PDF to Excel", toolSlug: "pdf-to-excel" },
+      { label: "PDF to Word", toolSlug: "pdf-to-word" },
     ],
   },
 ];

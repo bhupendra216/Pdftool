@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { ThemeToggle } from "./ThemeToggle";
 import { BrandMark } from "@/components/brand/BrandMark";
+import { getToolPath } from "../../../../api-server/src/lib/content";
 
 export function Navbar() {
   const [location] = useLocation();
@@ -13,8 +14,8 @@ export function Navbar() {
 
   const links = [
     { href: "/tools", label: "All Tools" },
-    { href: "/tools/pdf-to-markdown", label: "PDF to Markdown" },
-    { href: "/tools/add-page-numbers", label: "Add Page Numbers" },
+    { href: getToolPath("pdf-to-markdown"), label: "PDF to Markdown" },
+    { href: getToolPath("add-page-numbers"), label: "Add Page Numbers" },
     { href: "/blog", label: "Blog" },
     { href: "/ai-jobs", label: "AI Jobs" },
   ];

@@ -2,7 +2,14 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { marked } from 'marked';
-import { blogPosts, tools, type ToolRecord } from '../artifacts/api-server/src/lib/content.ts';
+import {
+  blogPosts,
+  getCanonicalToolPaths,
+  getToolPath,
+  resolveBlogToolLinks,
+  tools,
+  type ToolRecord,
+} from '../artifacts/api-server/src/lib/content.ts';
 import { getToolSeoContent } from '../artifacts/pdf-tools/src/lib/toolSeoContent.ts';
 import { resolveToolOgImage, toolsSEO } from '../artifacts/pdf-tools/src/data/seoConfig.js';
 import { clientToolContent } from '../artifacts/pdf-tools/src/data/clientToolContent';
@@ -135,25 +142,9 @@ function blogDescription(article: (typeof blogPosts)[number]) {
   return firstParagraph.length > 160 ? `${firstParagraph.slice(0, 157).trimEnd()}...` : firstParagraph;
 }
 
-const legacyToolLinks: Record<string, string> = {
-  '/pdf-to-ppt': '/tools/pdf-to-word',
-  '/images-to-pdf': '/tools/jpg-to-pdf',
-  '/pdf-to-images': '/tools/pdf-to-jpg',
-  '/add-watermark': '/tools/watermark-pdf',
-  '/flatten-pdf': '/tools/edit-pdf',
-  '/reorder-pages': '/tools/organize-pdf',
-  '/excel-to-pdf': '/tools/pdf-to-excel',
-  '/ppt-to-pdf': '/tools/pdf-to-word',
-  '/pdf-editor': '/tools/edit-pdf',
-  '/compress-images': '/tools/image-compress',
-  '/pdf-to-csv': '/tools/pdf-to-excel',
-  '/pdf-to-pdfa': '/tools/transform-pdf',
-  '/pdf-to-text': '/tools/ocr-pdf',
-};
-
 function renderBlogArticleBody(article: (typeof blogPosts)[number]) {
-  const markdown = blogMarkdown(article);
-  const articleHtml = String(marked.parse(markdown)).replace(/href="(\/[^"]+)"/g, (_match, href: string) => `href="${legacyToolLinks[href] || (tools.some((tool) => `/tools/${tool.slug}` === href) ? href : href)}"`);
+  const markdown = resolveBlogToolLinks(blogMarkdown(article));
+  const articleHtml = String(marked.parse(markdown));
   const publishedDate = formatArticleDate(article.publishedAt);
   const updatedDate = article.updatedAt ? formatArticleDate(article.updatedAt) : '';
   const articleText = `${article.title} ${article.excerpt ?? ''} ${markdown}`.toLowerCase();
@@ -164,7 +155,7 @@ function renderBlogArticleBody(article: (typeof blogPosts)[number]) {
   const toolCtas = relatedToolSlugs.length
     ? `<section><h2>Try a PDF tool</h2><ul>${relatedToolSlugs.map((slug) => {
       const tool = tools.find((entry) => entry.slug === slug);
-      return tool ? `<li><a href="/tools/${slug}">${escapeHtml(tool.name)}</a> — ${escapeHtml(tool.shortDescription)}</li>` : '';
+      return tool ? `<li><a href="${getToolPath(slug)}">${escapeHtml(tool.name)}</a> — ${escapeHtml(tool.shortDescription)}</li>` : '';
     }).join('')}</ul></section>`
     : '';
 
@@ -189,7 +180,7 @@ function renderBlogArticleBody(article: (typeof blogPosts)[number]) {
 }
 
 function toolPageUrl(slug: string) {
-  return `${siteUrl}/tools/${slug}`;
+  return `${siteUrl}${getToolPath(slug)}`;
 }
 
 function renderBreadcrumbs(items: Array<{ name: string; url?: string }>) {
@@ -221,7 +212,7 @@ function renderToolInternalLinks(tool: ToolRecord) {
     .map((slug) => tools.find((entry) => entry.slug === slug))
     .filter((entry): entry is ToolRecord => Boolean(entry && entry.status === 'available'))
     .slice(0, 4);
-  return `${category ? `<section><h2>Explore ${escapeHtml(category.name)}</h2><p>${escapeHtml(category.description)}</p><ul>${related.map((entry) => `<li><a href="/tools/${entry.slug}">${escapeHtml(entry.name)}</a> — ${escapeHtml(entry.shortDescription)}</li>`).join('')}</ul><p><a href="/categories/${category.id}">Browse all ${escapeHtml(category.name)} →</a></p></section>` : ''}<section><h2>More PDF tools</h2><p><a href="/tools">Browse all PDF tools →</a> · <a href="/blog">Read PDF guides →</a></p></section>`;
+  return `${category ? `<section><h2>Explore ${escapeHtml(category.name)}</h2><p>${escapeHtml(category.description)}</p><ul>${related.map((entry) => `<li><a href="${getToolPath(entry.slug)}">${escapeHtml(entry.name)}</a> — ${escapeHtml(entry.shortDescription)}</li>`).join('')}</ul><p><a href="/categories/${category.id}">Browse all ${escapeHtml(category.name)} →</a></p></section>` : ''}<section><h2>More PDF tools</h2><p><a href="/tools">Browse all PDF tools →</a> · <a href="/blog">Read PDF guides →</a></p></section>`;
 }
 
 function renderCategoryPageHtml(category: typeof toolCategories[number], assets: { jsPath: string; cssPath: string }) {
@@ -236,12 +227,12 @@ function renderCategoryPageHtml(category: typeof toolCategories[number], assets:
       '@type': 'ListItem', position: index + 1, name: tool.name, url: toolPageUrl(tool.slug),
     })),
   };
-  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(category.name)} | PDFKira</title><meta name="description" content="${escapeHtml(category.description)}"><link rel="canonical" href="${canonical}"><script type="application/ld+json">${JSON.stringify(jsonLd).replace(/</g, '\\u003c')}</script><link rel="stylesheet" href="${assets.cssPath}"><style>${SEO_FALLBACK_STYLE}</style></head><body><div id="seo-fallback" style="display:block"><main><${'h1'}>${escapeHtml(category.name)}</h1>${renderBreadcrumbs([{ name: 'Home', url: '/' }, { name: 'Tools', url: '/tools' }, { name: category.name }])}<p>${escapeHtml(category.description)}</p><section><h2>Tools in this category</h2><ul>${available.map((tool) => `<li><a href="/tools/${tool.slug}">${escapeHtml(tool.name)}</a> — ${escapeHtml(tool.shortDescription)}</li>`).join('')}</ul></section><section><h2>Related categories</h2><ul>${toolCategories.filter((other) => other.id !== category.id).slice(0, 4).map((other) => `<li><a href="/categories/${other.id}">${escapeHtml(other.name)}</a></li>`).join('')}</ul></section></main></div><div id="root"></div><script type="module" src="${assets.jsPath}"></script>${SEO_FALLBACK_RUNTIME}</body></html>`;
+  return `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>${escapeHtml(category.name)} | PDFKira</title><meta name="description" content="${escapeHtml(category.description)}"><link rel="canonical" href="${canonical}"><script type="application/ld+json">${JSON.stringify(jsonLd).replace(/</g, '\\u003c')}</script><link rel="stylesheet" href="${assets.cssPath}"><style>${SEO_FALLBACK_STYLE}</style></head><body><div id="seo-fallback" style="display:block"><main><${'h1'}>${escapeHtml(category.name)}</h1>${renderBreadcrumbs([{ name: 'Home', url: '/' }, { name: 'Tools', url: '/tools' }, { name: category.name }])}<p>${escapeHtml(category.description)}</p>  <section><h2>Tools in this category</h2><ul>${available.map((tool) => `<li><a href="${getToolPath(tool.slug)}">${escapeHtml(tool.name)}</a> — ${escapeHtml(tool.shortDescription)}</li>`).join('')}</ul></section><section><h2>Related categories</h2><ul>${toolCategories.filter((other) => other.id !== category.id).slice(0, 4).map((other) => `<li><a href="/categories/${other.id}">${escapeHtml(other.name)}</a></li>`).join('')}</ul></section></main></div><div id="root"></div><script type="module" src="${assets.jsPath}"></script>${SEO_FALLBACK_RUNTIME}</body></html>`;
 }
 
 function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath: string }) {
   if (tool.slug === PDF_TO_MARKDOWN_CONTENT.slug) {
-    const canonical = `${siteUrl}/tools/${tool.slug}`;
+    const canonical = toolPageUrl(tool.slug);
     const ogImageUrl = resolveAbsoluteImageUrl(resolveToolOgImage(tool.slug, `${siteUrl}/logo.png`));
     const structuredData = {
       '@context': 'https://schema.org',
@@ -324,7 +315,7 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
         <section><h2>Privacy and processing</h2><p>${escapeHtml(PDF_TO_MARKDOWN_CONTENT.privacyText)}</p></section>
         <section><h2>Limitations</h2><ul>${PDF_TO_MARKDOWN_CONTENT.limitations.map((limitation) => `<li>${escapeHtml(limitation)}</li>`).join('')}</ul></section>
         <section><h2>Frequently asked questions</h2>${PDF_TO_MARKDOWN_CONTENT.faqs.map((faq) => `<article><h3>${escapeHtml(faq.question)}</h3><p>${escapeHtml(faq.answer)}</p></article>`).join('')}</section>
-        <section><h2>Related tools</h2><ul>${PDF_TO_MARKDOWN_CONTENT.relatedTools.map((item) => `<li><a href="/tools/${item.slug}">${escapeHtml(item.name)}</a> — ${escapeHtml(item.reason)}</li>`).join('')}</ul></section>
+        <section><h2>Related tools</h2><ul>${PDF_TO_MARKDOWN_CONTENT.relatedTools.map((item) => `<li><a href="${getToolPath(item.slug)}">${escapeHtml(item.name)}</a> — ${escapeHtml(item.reason)}</li>`).join('')}</ul></section>
       </main>
     </div>
     <div id="root"></div>
@@ -350,7 +341,7 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
 
   const contentFaqs = content.faqs;
 
-  const toolUrl = `${siteUrl}/tools/${tool.slug}`;
+  const toolUrl = toolPageUrl(tool.slug);
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -440,7 +431,11 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
         <section><h2>Why use this tool</h2>${whyUseHtml}</section>
         <section><h2>Frequently asked questions</h2><ul>${contentFaqs.map((faq) => `<li><h3>${escapeHtml(faq.question)}</h3><p>${escapeHtml(faq.answer)}</p></li>`).join('')}</ul></section>
         ${renderToolInternalLinks(tool)}
-        ${content.relatedTools.length ? `<section><h2>Related tools</h2><ul>${content.relatedTools.map((item) => `<li><a href="${escapeHtml(item.tool)}">${escapeHtml(item.tool.replace('/tools/', '').split('-').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join(' '))}</a>${item.reason ? ` — ${escapeHtml(item.reason)}` : ''}</li>`).join('')}</ul></section>` : ''}
+        ${content.relatedTools.length ? `<section><h2>Related tools</h2><ul>${content.relatedTools.map((item) => {
+          const relatedTool = tools.find((entry) => entry.slug === item.toolSlug && entry.status === 'available');
+          if (!relatedTool) throw new Error(`Related tool "${item.toolSlug}" is not available in the tool registry.`);
+          return `<li><a href="${getToolPath(item.toolSlug)}">${escapeHtml(relatedTool.name)}</a>${item.reason ? ` — ${escapeHtml(item.reason)}` : ''}</li>`;
+        }).join('')}</ul></section>` : ''}
         ${content.proTips?.length ? `<section><h2>Pro tips</h2><ul>${content.proTips.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>` : ''}
         ${content.commonMistakes?.length ? `<section><h2>Common mistakes to avoid</h2><ul>${content.commonMistakes.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>` : ''}
 
@@ -465,7 +460,7 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
 }
 
 function renderClientToolPageHtml(tool: (typeof clientToolContent)[number], assets: { jsPath: string; cssPath: string }) {
-  const canonical = `${siteUrl}/tools/${tool.slug}`;
+  const canonical = toolPageUrl(tool.slug);
   const benefits = tool.benefits
     .map((benefit) => `<article><h3>${escapeHtml(benefit.title)}</h3><p>${escapeHtml(benefit.description)}</p></article>`)
     .join('');
@@ -473,7 +468,7 @@ function renderClientToolPageHtml(tool: (typeof clientToolContent)[number], asse
     .map((faq) => `<li><h3>${escapeHtml(faq.question)}</h3><p>${escapeHtml(faq.answer)}</p></li>`)
     .join('');
   const related = tool.related
-    .map((item) => `<li><a href="${escapeHtml(item.href)}">${escapeHtml(item.label)}</a></li>`)
+    .map((item) => `<li><a href="${escapeHtml(getToolPath(item.toolSlug))}">${escapeHtml(item.label)}</a></li>`)
     .join('');
   const expansion = `
         <section><h2>When to use ${escapeHtml(tool.name)}</h2>
@@ -571,7 +566,7 @@ function renderToolsIndexHtml(assets: { jsPath: string; cssPath: string }) {
     .map(
       (tool) => `
         <li>
-          <a href="${toolPageUrl(tool.slug)}" aria-label="Use ${escapeHtml(tool.name)}">
+          <a href="${getToolPath(tool.slug)}" aria-label="Use ${escapeHtml(tool.name)}">
             <h2>${escapeHtml(tool.name)}</h2>
             <p>${escapeHtml(tool.shortDescription)}</p>
           </a>
@@ -697,7 +692,7 @@ function renderComparisonPageHtml(assets: { jsPath: string; cssPath: string }) {
         <p>No account is required for the core browser-based workflows.</p>
         <h3>Which PDF service should I choose?</h3>
         <p>Choose the service that supports your file format, features, privacy needs, and expected usage.</p>
-        <p><a href="/tools">Browse PDF tools</a> or try <a href="/tools/merge-pdf">Merge PDF</a>.</p>
+        <p><a href="/tools">Browse PDF tools</a> or try <a href="${getToolPath('merge-pdf')}">Merge PDF</a>.</p>
       </main>
     </div>
     <script type="module" src="${assets.jsPath}"></script>
@@ -833,7 +828,7 @@ function getStaticPages() {
       path: '/blog',
       title: 'Blog and Guides',
       description: 'Guides and practical advice for working with PDFs and document tools.',
-      body: `<ul>${blogPosts.map((post) => `<li><a href="${siteUrl}/blog/${encodeURIComponent(post.slug)}">${escapeHtml(post.title)}</a><p>${escapeHtml(post.excerpt)}</p></li>`).join('')}</ul>`,
+      body: `<ul>${blogPosts.map((post) => `<li><a href="/blog/${encodeURIComponent(post.slug)}">${escapeHtml(post.title)}</a><p>${escapeHtml(post.excerpt)}</p></li>`).join('')}</ul>`,
     },
     {
       path: '/ai-jobs',
@@ -917,13 +912,13 @@ function renderHomeSeoBlock() {
       .map(
         (tool) => `
           <li>
-            <a href="${toolPageUrl(tool.slug)}" aria-label="Use ${escapeHtml(tool.name)}">
+            <a href="${getToolPath(tool.slug)}" aria-label="Use ${escapeHtml(tool.name)}">
               <h3>${escapeHtml(tool.name)}</h3>
               <p>${escapeHtml(tool.shortDescription)}</p>
             </a>
           </li>`,
       )
-      .join('') || `<li>${escapeHtml(label)} are being updated. Browse <a href="${siteUrl}/tools">all tools</a>.</li>`;
+      .join('') || `<li>${escapeHtml(label)} are being updated. Browse <a href="/tools">all tools</a>.</li>`;
 
   return `<style>${SEO_FALLBACK_STYLE}</style>
 <!-- SEO Fallback -->
@@ -1135,7 +1130,7 @@ function verifyGeneratedSeo(
   for (const tool of tools.filter((entry) => entry.status === 'available' && !clientToolSlugs.has(entry.slug))) {
     const aliasRedirect = redirects.find(
       (redirect: any) =>
-        redirect?.source === `/${tool.slug}` && redirect?.destination === `/tools/${tool.slug}`,
+        redirect?.source === `/${tool.slug}` && redirect?.destination === getToolPath(tool.slug),
     );
     if (
       redirects.length > 0 &&
@@ -1244,10 +1239,11 @@ function writeStaticFiles() {
       { loc: `${siteUrl}/`, changefreq: 'weekly', lastmod: buildDate },
       { loc: `${siteUrl}/tools`, changefreq: 'weekly', lastmod: buildDate },
       { loc: `${siteUrl}/compare/ilovepdf-vs-smallpdf-vs-pdfkira`, changefreq: 'weekly', lastmod: buildDate },
-      ...clientToolContent.map((tool) => ({ loc: `${siteUrl}/tools/${tool.slug}`, changefreq: 'weekly' as const, lastmod: buildDate })),
-      ...tools
-        .filter((tool) => tool.status === 'available' && !clientToolSlugs.has(tool.slug))
-        .map((tool) => ({ loc: `${siteUrl}/tools/${tool.slug}`, changefreq: 'weekly' as const, lastmod: buildDate })),
+      ...getCanonicalToolPaths().map((toolPath) => ({
+        loc: `${siteUrl}${toolPath}`,
+        changefreq: 'weekly' as const,
+        lastmod: buildDate,
+      })),
       ...editorialPages.map((page) => ({
         loc: `${siteUrl}${page.path}`,
         changefreq: 'monthly' as const,

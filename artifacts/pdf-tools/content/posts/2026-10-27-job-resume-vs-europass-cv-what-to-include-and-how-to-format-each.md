@@ -68,10 +68,10 @@ If words are missing, joined together or out of order, simplify the layout.
 
 The easiest way to apply in several countries is to keep one set of content and change the format:
 
-Open the [Resume & CV Builder](/tools/resume-builder) and fill in your details. Choose Job or Higher study. Tick Europass CV when you apply in Europe, add your languages and digital skills, and decide whether to include a photo. Check the page count in the preview. Aim for one page for a job resume and up to two for a Europass-style CV. Download the PDF and export the JSON, so you can create the next version in a minute.
+Open the [Resume & CV Builder](tool:resume-builder) and fill in your details. Choose Job or Higher study. Tick Europass CV when you apply in Europe, add your languages and digital skills, and decide whether to include a photo. Check the page count in the preview. Aim for one page for a job resume and up to two for a Europass-style CV. Download the PDF and export the JSON, so you can create the next version in a minute.
 
 Everything runs in your browser, so your personal details are not uploaded.
 
 ## A final check before you send
 
-Ask yourself: would a stranger understand what I did in each role? Are the dates consistent? Are the contact details correct? Does every section earn its space? For longer CVs, [Add Page Numbers](/tools/add-page-numbers) can help the reader keep track.
+Ask yourself: would a stranger understand what I did in each role? Are the dates consistent? Are the contact details correct? Does every section earn its space? For longer CVs, [Add Page Numbers](tool:add-page-numbers) can help the reader keep track.

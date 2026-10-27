@@ -2,6 +2,8 @@ function normalizeText(value: string) {
   return value.trim().replace(/\s+/g, " ").toLocaleLowerCase();
 }
 
+import { resolveBlogToolLinks } from "../../../api-server/src/lib/content";
+
 export function hasDistinctBlogDescription(title?: string | null, description?: string | null) {
   return Boolean(description?.trim()) && normalizeText(title ?? "") !== normalizeText(description ?? "");
 }
@@ -30,5 +32,5 @@ export function prepareBlogPostBody(content: string, title: string) {
     body = body.slice(firstLine.length).replace(/^(?:\r?\n)+/, "").trimStart();
   }
 
-  return body.trimStart();
+  return resolveBlogToolLinks(body.trimStart());
 }
