@@ -2,6 +2,7 @@ import { Link } from "wouter";
 import type { BlogPost } from "@workspace/api-client-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { BookOpen, Sparkles, ShieldCheck, Megaphone, Newspaper } from "lucide-react";
+import { hasDistinctBlogDescription } from "@/lib/blog-content";
 
 const categoryStyles: Record<
   string,
@@ -79,9 +80,11 @@ export function BlogCard({ post }: { post: BlogPost }) {
           <h3 className="font-bold text-xl md:text-2xl mb-3 text-foreground group-hover:text-primary transition-colors line-clamp-2">
             {post.title}
           </h3>
-          <p className="text-muted-foreground text-sm md:text-base leading-relaxed mb-6 line-clamp-3 flex-1">
-            {post.excerpt}
-          </p>
+          {hasDistinctBlogDescription(post.title, post.excerpt) && (
+            <p className="text-muted-foreground text-sm md:text-base leading-relaxed mb-6 line-clamp-3 flex-1">
+              {post.excerpt}
+            </p>
+          )}
           <div className="flex items-center text-sm font-medium text-primary mt-auto">
             Read article
             <svg

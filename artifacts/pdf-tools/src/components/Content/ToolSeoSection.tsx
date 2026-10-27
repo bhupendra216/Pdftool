@@ -2,7 +2,8 @@ import { Card, CardContent } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import FAQPageSchema from '@/components/SchemaMarkup/FAQPageSchema';
 import { FaqSection } from '@/components/shared/FaqSection';
-import { Link } from "wouter";
+import { ToolCard } from '@/components/shared/ToolCard';
+import { tools as apiServerTools } from '../../../../api-server/src/lib/content';
 
 export interface ToolSeoContent {
   slug: string;
@@ -14,11 +15,25 @@ export interface ToolSeoContent {
   technicalSpecs?: Record<string, string>;
   privacyText?: string;
   limitations?: string[];
+  notice?: string;
+  featuredGuide?: { slug: string; title: string; description: string };
   relatedTools?: { slug: string; name: string; reason: string }[];
 }
 
 export function ToolSeoSection({ content }: { content?: ToolSeoContent }) {
   if (!content) return null;
+
+  const relatedTools = content.relatedTools?.map((item) => {
+    const tool = apiServerTools.find((candidate) => candidate.slug === item.slug && candidate.status === 'available');
+    if (!tool) {
+      throw new Error(`Related tool "${item.slug}" is not available in the tool registry for "${content.slug}".`);
+    }
+
+    return {
+      slug: item.slug,
+      tool: { ...tool, name: item.name, shortDescription: item.reason },
+    };
+  });
 
   return (
     <div>
@@ -121,6 +136,11 @@ export function ToolSeoSection({ content }: { content?: ToolSeoContent }) {
                 </div>
               ))}
             </div>
+            {content.notice && (
+              <p className="mx-auto mt-8 max-w-3xl text-center text-sm leading-relaxed text-muted-foreground">
+                {content.notice}
+              </p>
+            )}
           </div>
         </section>
       )}
@@ -154,18 +174,17 @@ export function ToolSeoSection({ content }: { content?: ToolSeoContent }) {
         </div>
       </div>}
 
-      {content.relatedTools && (
-        <section className="border-t border-border/70 py-12">
-          <div className="container mx-auto max-w-5xl px-4 md:px-6">
-            <h2 className="mb-6 text-2xl font-bold text-foreground">Related tools</h2>
-            <ul className="space-y-3">
-              {content.relatedTools.map((item) => (
-                <li key={item.slug}>
-                  <Link href={`/tools/${item.slug}`} className="font-semibold text-primary underline">{item.name}</Link>
-                  <span className="text-muted-foreground"> — {item.reason}</span>
-                </li>
+      {relatedTools && relatedTools.length > 0 && (
+        <section className="border-t border-border/70 bg-background py-20">
+          <div className="container mx-auto max-w-6xl px-4 md:px-6">
+            <div className="mb-10">
+              <h2 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">Related tools</h2>
+            </div>
+            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-4">
+              {relatedTools.map(({ slug, tool }) => (
+                <ToolCard key={slug} tool={tool} />
               ))}
-            </ul>
+            </div>
           </div>
         </section>
       )}

@@ -20,6 +20,7 @@ import { toolContent } from '@/data/toolContent';
 import { resolveToolOgImage } from '@/data/seoConfig';
 import { getToolSeoContent } from '@/lib/toolSeoContent';
 import { ToolCard } from "@/components/shared/ToolCard";
+import { hasDistinctBlogDescription } from "@/lib/blog-content";
 import { Button } from "@/components/ui/button";
 import OrganizeGrid from "@/components/organize/OrganizeGrid";
 import { Icon } from "@/components/ui/icon";
@@ -3695,9 +3696,11 @@ export function ToolDetail(props?: any) {
               Featured Guide
             </Badge>
             <h2 className="text-3xl md:text-4xl font-bold mb-6">{blogPost.title}</h2>
-            <p className="text-primary-foreground/80 text-lg mb-10 max-w-2xl mx-auto">
-              {blogPost.excerpt}
-            </p>
+            {hasDistinctBlogDescription(blogPost.title, blogPost.excerpt) && (
+              <p className="text-primary-foreground/80 text-lg mb-10 max-w-2xl mx-auto">
+                {blogPost.excerpt}
+              </p>
+            )}
             <Button variant="secondary" size="lg" asChild className="rounded-full px-8 text-primary">
               <Link href={`/blog/${blogPost.slug}`}>Read the Full Guide</Link>
             </Button>

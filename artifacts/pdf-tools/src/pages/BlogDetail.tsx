@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { ArrowLeft, ArrowRight, Clock } from "lucide-react";
 import { BrandMark } from "@/components/brand/BrandMark";
+import { SITE_NAME } from "@/lib/site-config";
+import { hasDistinctBlogDescription, prepareBlogPostBody } from "@/lib/blog-content";
 
 export function BlogDetail() {
   const { slug } = useParams<{ slug: string }>();
@@ -19,8 +21,9 @@ export function BlogDetail() {
   });
 
   useSEO({
-    title: post?.title || "Loading...",
-    description: post?.excerpt || "Blog post"
+    title: post ? `${post.title.replace(/\s*\|\s*PDFKira\s*$/i, "")} | ${SITE_NAME}` : "Loading...",
+    description: post?.excerpt || "Blog post",
+    appendSiteName: false,
   });
 
   if (isLoading) {
@@ -71,9 +74,11 @@ export function BlogDetail() {
           <h1 className="text-4xl md:text-5xl lg:text-6xl font-extrabold tracking-tight mb-6 leading-tight">
             {post.title}
           </h1>
-          <p className="text-xl text-muted-foreground leading-relaxed">
-            {post.excerpt}
-          </p>
+          {hasDistinctBlogDescription(post.title, post.excerpt) && (
+            <p className="text-xl text-muted-foreground leading-relaxed">
+              {post.excerpt}
+            </p>
+          )}
         </div>
       </header>
 
@@ -81,7 +86,7 @@ export function BlogDetail() {
       <div className="container mx-auto px-4 md:px-6 max-w-3xl mt-16">
         <div className="prose prose-lg dark:prose-invert prose-headings:font-bold prose-a:text-primary hover:prose-a:text-primary/80 max-w-none">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>
-            {post.content}
+            {prepareBlogPostBody(post.content, post.title)}
           </ReactMarkdown>
         </div>
 
