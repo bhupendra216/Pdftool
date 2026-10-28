@@ -22,7 +22,7 @@ export const clientToolContent: ClientToolContent[] = [
     slug: "pdf-to-excel",
     name: "PDF to Excel",
     title: "PDF to Excel Online Free — PDFKira",
-    description: "Convert PDF tables to Excel spreadsheets in your browser for free. Files stay on your device, with no upload required.",
+    description: "Convert PDF tables to Excel spreadsheets in your browser for free. Files stay on your device with no upload required, so your data stays private.",
     intro: "Turn text-based PDF tables into an Excel workbook. Table detection is heuristic, so review the spreadsheet and adjust columns when your PDF has complex layouts.",
     steps: [
       "Choose a PDF or drag it into the upload area.",

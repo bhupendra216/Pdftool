@@ -330,6 +330,9 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
   const content = getToolContentRequirements(tool);
   const toolOgImage = resolveToolOgImage(tool.slug, `${siteUrl}/logo.png`);
   const ogImageUrl = resolveAbsoluteImageUrl(toolOgImage);
+  const metaDescription = ['edit-pdf', 'transform-pdf'].includes(tool.slug)
+    ? tool.seoDescription
+    : truncateDescriptionAtWord(content.uniqueIntro);
 
   const steps = content.howToSteps
     .map((step) => `<li><h3>${escapeHtml(step.title)}</h3><p>${escapeHtml(step.description)}</p></li>`)
@@ -349,11 +352,11 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>${escapeHtml(tool.seoTitle)}</title>
-    <meta name="description" content="${escapeHtml(truncateDescriptionAtWord(content.uniqueIntro))}" />
+    <meta name="description" content="${escapeHtml(metaDescription)}" />
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href="${toolUrl}" />
     <meta property="og:title" content="${escapeHtml(tool.seoTitle)}" />
-    <meta property="og:description" content="${escapeHtml(truncateDescriptionAtWord(content.uniqueIntro))}" />
+    <meta property="og:description" content="${escapeHtml(metaDescription)}" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="${toolUrl}" />
     <meta property="og:image" content="${ogImageUrl}" />
@@ -361,7 +364,7 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
     <meta name="twitter:site" content="@pdfkira" />
     <meta name="twitter:creator" content="@pdfkira" />
     <meta name="twitter:title" content="${escapeHtml(tool.seoTitle)}" />
-    <meta name="twitter:description" content="${escapeHtml(truncateDescriptionAtWord(content.uniqueIntro))}" />
+    <meta name="twitter:description" content="${escapeHtml(metaDescription)}" />
     <meta name="twitter:image" content="${ogImageUrl}" />
 
     <!-- React SPA CSS -->
@@ -387,7 +390,7 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
           {
             '@type': 'SoftwareApplication',
             name: tool.name,
-            description: tool.seoDescription,
+            description: metaDescription,
             operatingSystem: 'Web',
             applicationCategory: 'Utility',
             url: toolUrl,

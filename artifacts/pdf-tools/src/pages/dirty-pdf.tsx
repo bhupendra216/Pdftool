@@ -5,7 +5,7 @@ import ToolSeoSection from '@/components/Content/ToolSeoSection';
 import { getToolSeoContent } from '@/lib/toolSeoContent';
 
 export default function DirtyPdfPage() {
-  const title = 'Make PDF Look Old — Aged, Vintage & Scanned Paper Effects | PDFKira';
+  const title = 'Transform PDF: Aged Paper Effects | PDFKira';
   const description = 'Make a PDF look old with vintage paper tones, grain, creases, and scanned-paper effects. Process locally in your browser and export a flattened image PDF.';
 
   useSEOAdvanced({

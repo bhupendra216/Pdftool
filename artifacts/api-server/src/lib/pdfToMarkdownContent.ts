@@ -7,7 +7,7 @@ export const PDF_TO_MARKDOWN_CONTENT = {
   slug: "pdf-to-markdown",
   title: "PDF to Markdown Converter",
   seoTitle: "PDF to Markdown Converter: Free, Private, In Your Browser",
-  metaDescription: `Convert a text-based PDF to Markdown in your browser. Your PDF is never uploaded. Free, no sign-up, up to ${MAX_PDF_SIZE_LABEL}.`,
+  metaDescription: `Convert a text-based PDF to Markdown right in your browser. Your file is never uploaded. Free, no sign-up, supports files up to ${MAX_PDF_SIZE_LABEL}. Try it now.`,
   intro:
     "Turn a text-based PDF into Markdown for notes, documentation, and AI tools like ChatGPT and Claude. The conversion runs in your browser, so your PDF is never uploaded to a server. Copy the Markdown straight to your clipboard or download it as a file.",
   howToSteps: [
