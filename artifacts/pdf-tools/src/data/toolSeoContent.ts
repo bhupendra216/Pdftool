@@ -1,18 +1,24 @@
 import type { ToolSeoContent } from '@/components/Content/ToolSeoSection';
+import { resumeBuilderSeo } from '../../../api-server/src/lib/content';
 
 export const TOOL_SEO_CONTENT: Record<string, ToolSeoContent> = {
   'resume-builder': {
     slug: 'resume-builder',
+    howToHeading: 'How to build a resume online',
+    layouts: {
+      title: 'Resume layouts and formats',
+      description: 'Choose Job mode to lead with relevant experience, or Higher study mode to emphasize education and research. Europass CV adds its own fields and section options; it follows the Europass structure but is not an official template.',
+    },
     howItWorks: [
       { title: 'Choose your format', description: 'Pick Job for a standard resume, or Higher study for grad school and academic applications. Tick Europass CV if you are applying in Europe.' },
       { title: 'Replace the sample data', description: 'The page opens with an example resume. Overwrite it with your own details, or press Start blank. The banner shows how many sample items remain.' },
       { title: 'Add, hide and reorder sections', description: 'Turn sections on or off, and move them up or down. Summary, Experience, Education, Skills, Projects, Certifications and more are available. Europass CV adds Languages, Digital skills, Driving licence, Memberships, Conferences and Grants.' },
       { title: 'Check the live preview', description: 'The preview shows page breaks and the page count as you type. Use Compact spacing or the Text and fonts settings if you spill onto another page.' },
-      { title: 'Download your PDF', description: 'The PDF uses real, selectable text. Use Export JSON to save your resume and Import JSON to keep editing later.' },
+      { title: 'Print or save as PDF', description: 'The PDF uses real, selectable text. Use Export JSON to save your resume and Import JSON to keep editing later.' },
     ],
     whyUse: [
       { title: 'Private by design', description: 'Your resume stays in this browser. Nothing is uploaded, and there is no account to create.' },
-      { title: 'Text that parsers can read', description: 'The PDF is real, selectable text, not an image, so applicant tracking systems and recruiters can copy and search it. The layout is a single column with no tables or text boxes.' },
+      { title: 'Text that parsers can read', description: 'The PDF is real, selectable text, not an image, so applicant tracking systems and recruiters can copy and search it. Its simple, single-column layout is ATS-friendly, but compatibility depends on each system.' },
       { title: 'Two formats plus Europass CV', description: 'Job and Higher study start from different section orders. Europass CV works on top of either one and adds nationality, date of birth, address, an optional photo, and language levels on the CEFR scale (A1 to C2).' },
       { title: 'Preview that matches the PDF', description: 'Page breaks in the preview follow the same layout as the export, so what you see is what you download.' },
       { title: 'Sample data you can edit', description: 'You start with a complete example instead of an empty form, and one click clears it.' },
@@ -31,9 +37,9 @@ export const TOOL_SEO_CONTENT: Record<string, ToolSeoContent> = {
       { slug: 'ocr-pdf', name: 'OCR PDF', reason: 'make a scanned resume or certificate searchable.' },
     ],
     faq: [
-      { question: 'Is the Resume & CV Builder free?', answer: 'Yes. There is no signup, watermark or page limit.' },
+      { question: 'Is the resume builder free?', answer: 'Yes, the resume builder is free with no account, no watermark, and no limit on saving as PDF. Optional JSON import accepts files up to 2 MB.' },
       { question: 'Are my details uploaded anywhere?', answer: 'No. Your resume is edited and exported in your browser. It is not sent to a server. Your work is kept in your browser’s storage on this device, so clearing site data or switching browsers will remove it. Use Export JSON to keep a backup.' },
-      { question: 'Will applicant tracking systems read the PDF?', answer: 'The PDF contains real text in a simple single-column layout, which is what most parsers handle best. No tool can guarantee how every system reads a file, so open your PDF and check that you can select and copy the text before you apply.' },
+      { question: 'Is the resume ATS-friendly?', answer: 'The PDF uses selectable text and a simple single-column layout that is ATS-friendly. Applicant tracking systems vary, so no format can guarantee compatibility; check that you can select and copy the text in your exported PDF.' },
       { question: 'What is the difference between Job and Higher study?', answer: 'Job puts experience first and focuses on results at work. Higher study puts education, research, publications and awards earlier, which suits graduate school, scholarships and academic positions.' },
       { question: 'What does the Europass CV option change?', answer: 'It adds nationality, date of birth and address fields, places the Summary first, and turns on Languages and Digital skills. It also lets you add Driving licence, Memberships, Conferences and Grants, and an optional profile photo. It follows the Europass structure but is not an official template.' },
       { question: 'Should I include a photo or date of birth?', answer: 'It depends on the country. Photos and dates of birth are common on CVs in parts of Europe, but in the US, UK and Canada employers generally prefer you leave them out. The photo only appears in Europass CV mode and you can remove it at any time.' },

@@ -7,6 +7,7 @@ import {
   getCanonicalToolPaths,
   getToolPath,
   resolveBlogToolLinks,
+  resumeBuilderSeo,
   tools,
   type ToolRecord,
 } from '../artifacts/api-server/src/lib/content.ts';
@@ -309,7 +310,7 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
           <h1>${escapeHtml(PDF_TO_MARKDOWN_CONTENT.title)}</h1>
           <p>${escapeHtml(PDF_TO_MARKDOWN_CONTENT.intro)}</p>
         </header>
-        <section><h2>How to use PDF to Markdown</h2><ol>${PDF_TO_MARKDOWN_CONTENT.howToSteps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol></section>
+        <section><h2>${escapeHtml(PDF_TO_MARKDOWN_CONTENT.howToHeading)}</h2><ol>${PDF_TO_MARKDOWN_CONTENT.howToSteps.map((step) => `<li>${escapeHtml(step)}</li>`).join('')}</ol></section>
         <section><h2>Use cases</h2>${PDF_TO_MARKDOWN_CONTENT.useCases.map((item) => `<article><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.description)}</p><p><strong>Example:</strong> ${escapeHtml(item.example)}</p></article>`).join('')}</section>
         <section><h2>Technical specifications</h2><dl>${specs.map(([label, value]) => `<dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd>`).join('')}</dl></section>
         <section><h2>Privacy and processing</h2><p>${escapeHtml(PDF_TO_MARKDOWN_CONTENT.privacyText)}</p></section>
@@ -330,9 +331,16 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
   const content = getToolContentRequirements(tool);
   const toolOgImage = resolveToolOgImage(tool.slug, `${siteUrl}/logo.png`);
   const ogImageUrl = resolveAbsoluteImageUrl(toolOgImage);
-  const metaDescription = ['edit-pdf', 'transform-pdf'].includes(tool.slug)
+  const isResumeBuilder = tool.slug === 'resume-builder';
+  const pageTitle = isResumeBuilder ? resumeBuilderSeo.title : tool.seoTitle;
+  const metaDescription = isResumeBuilder
+    ? resumeBuilderSeo.description
+    : ['edit-pdf', 'transform-pdf'].includes(tool.slug)
     ? tool.seoDescription
     : truncateDescriptionAtWord(content.uniqueIntro);
+  if (isResumeBuilder && metaDescription.length > 160) {
+    throw new Error(`Resume Builder meta description exceeds 160 characters (${metaDescription.length}).`);
+  }
 
   const steps = content.howToSteps
     .map((step) => `<li><h3>${escapeHtml(step.title)}</h3><p>${escapeHtml(step.description)}</p></li>`)
@@ -342,7 +350,12 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
     .map((w: any) => `<div><h3>${escapeHtml(w.title)}</h3><p>${escapeHtml(w.description)}</p></div>`)
     .join('');
 
-  const contentFaqs = content.faqs;
+  const contentFaqs = isResumeBuilder && seoEntry ? seoEntry.faq : content.faqs;
+  const howToHeading = isResumeBuilder && seoEntry?.howToHeading
+    ? seoEntry.howToHeading
+    : `How to use ${tool.name}`;
+  const pageIntro = isResumeBuilder ? resumeBuilderSeo.intro : tool.shortDescription;
+  const layouts = isResumeBuilder ? seoEntry?.layouts : undefined;
 
   const toolUrl = toolPageUrl(tool.slug);
 
@@ -351,21 +364,23 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>${escapeHtml(tool.seoTitle)}</title>
+    <title>${escapeHtml(pageTitle)}</title>
     <meta name="description" content="${escapeHtml(metaDescription)}" />
     <meta name="robots" content="index, follow" />
     <link rel="canonical" href="${toolUrl}" />
-    <meta property="og:title" content="${escapeHtml(tool.seoTitle)}" />
+    <meta property="og:title" content="${escapeHtml(pageTitle)}" />
     <meta property="og:description" content="${escapeHtml(metaDescription)}" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="${toolUrl}" />
     <meta property="og:image" content="${ogImageUrl}" />
+    ${isResumeBuilder ? `<meta property="og:image:alt" content="${escapeHtml(resumeBuilderSeo.ogImageAlt)}" />` : ''}
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@pdfkira" />
     <meta name="twitter:creator" content="@pdfkira" />
-    <meta name="twitter:title" content="${escapeHtml(tool.seoTitle)}" />
+    <meta name="twitter:title" content="${escapeHtml(pageTitle)}" />
     <meta name="twitter:description" content="${escapeHtml(metaDescription)}" />
     <meta name="twitter:image" content="${ogImageUrl}" />
+    ${isResumeBuilder ? `<meta name="twitter:image:alt" content="${escapeHtml(resumeBuilderSeo.ogImageAlt)}" />` : ''}
 
     <!-- React SPA CSS -->
     <link rel="stylesheet" href="${assets.cssPath}" />
@@ -411,6 +426,16 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
               },
             })),
           },
+          ...(isResumeBuilder
+            ? [{
+              '@type': 'BreadcrumbList',
+              itemListElement: [
+                { '@type': 'ListItem', position: 1, name: 'Home', item: `${siteUrl}/` },
+                { '@type': 'ListItem', position: 2, name: 'Tools', item: `${siteUrl}/tools` },
+                { '@type': 'ListItem', position: 3, name: tool.name, item: toolUrl },
+              ],
+            }]
+            : []),
         ],
       }).replace(/</g, '\\u003c')}
     </script>
@@ -422,12 +447,13 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
         <header>
           <p>PDFKira</p>
           <h1>${escapeHtml(tool.name)}</h1>
-          <p>${escapeHtml(tool.shortDescription)}</p>
+          <p>${escapeHtml(pageIntro)}</p>
         </header>
 
         <section><h2>About ${escapeHtml(tool.name)}</h2><p>${escapeHtml(content.uniqueIntro)}</p></section>
-        <section><h2>How to use ${escapeHtml(tool.name)}</h2><ol>${steps}</ol></section>
+        <section><h2>${escapeHtml(howToHeading)}</h2><ol>${steps}</ol></section>
         ${content.useCases.length ? `<section><h2>Common use cases</h2>${content.useCases.map((item) => `<article><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.description)}</p>${item.example ? `<p><strong>Example:</strong> ${escapeHtml(item.example)}</p>` : ''}</article>`).join('')}</section>` : ''}
+        ${layouts ? `<section><h2>${escapeHtml(layouts.title)}</h2><p>${escapeHtml(layouts.description)}</p></section>` : ''}
         <section><h2>Technical specifications</h2><dl><dt>Input formats</dt><dd>${escapeHtml(content.technicalSpecs.inputFormats.join(', '))}</dd><dt>Output formats</dt><dd>${escapeHtml(content.technicalSpecs.outputFormats.join(', '))}</dd><dt>Maximum file size</dt><dd>${escapeHtml(content.technicalSpecs.maxFileSize)}</dd><dt>Typical processing time</dt><dd>${escapeHtml(content.technicalSpecs.processingTime)}</dd></dl></section>
         <section><h2>Privacy and processing</h2><p>${escapeHtml(content.privacyModel.description)}</p><p>Processing model: ${escapeHtml(content.privacyModel.type)}.</p></section>
         <section><h2>Limitations and considerations</h2><ul>${content.limitations.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>
@@ -1170,8 +1196,9 @@ function verifyGeneratedSeo(
       }
       continue;
     }
-    if (!faqPage || faqPage.mainEntity.length < 4 || faqPage.mainEntity.length > 6) {
-      throw new Error(`Tool route must have 4-6 structured FAQ entries: ${tool.slug}`);
+    const maxFaqCount = tool.slug === 'resume-builder' ? 10 : 6;
+    if (!faqPage || faqPage.mainEntity.length < 4 || faqPage.mainEntity.length > maxFaqCount) {
+      throw new Error(`Tool route must have 4-${maxFaqCount} structured FAQ entries: ${tool.slug}`);
     }
     if (!html.includes('<h2>Why use this tool</h2>') || (html.match(/<div><h3>/g) || []).length < 3) {
       throw new Error(`Tool route is missing its three benefit blocks: ${tool.slug}`);

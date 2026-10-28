@@ -45,12 +45,17 @@ it("renders all resume page content, links only registered tools, and publishes 
     });
 
     const headings = [...container.querySelectorAll("h2")].map((heading) => heading.textContent?.trim());
-    expect(headings).toContain("How it works");
+    expect(headings).toContain("How to build a resume online");
+    expect(headings).toContain("Resume layouts and formats");
     expect(headings).toContain("Why use this tool");
     expect(headings).toContain("Frequently Asked Questions");
     expect(headings).toContain("Related tools");
 
     const visibleText = container.textContent?.toLowerCase() ?? "";
+    expect(visibleText).toContain("free online resume builder and cv maker");
+    expect(visibleText).toContain("is the resume builder free?");
+    expect(visibleText).toContain("is the resume ats-friendly?");
+    expect(visibleText).toContain("optional json import accepts files up to 2 mb");
     expect(visibleText).not.toContain("resume-builder");
     for (const element of container.querySelectorAll("[alt]")) {
       expect(element.getAttribute("alt")?.toLowerCase() ?? "").not.toContain("resume-builder");

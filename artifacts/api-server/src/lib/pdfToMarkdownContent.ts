@@ -6,10 +6,11 @@ export const MAX_MARKDOWN_PDF_PAGES = 300;
 export const PDF_TO_MARKDOWN_CONTENT = {
   slug: "pdf-to-markdown",
   title: "PDF to Markdown Converter",
-  seoTitle: "PDF to Markdown Converter: Free, Private, In Your Browser",
-  metaDescription: `Convert a text-based PDF to Markdown right in your browser. Your file is never uploaded. Free, no sign-up, supports files up to ${MAX_PDF_SIZE_LABEL}. Try it now.`,
+  seoTitle: "PDF to Markdown Converter Online Free | PDFKira",
+  metaDescription: `Convert PDF to Markdown online for free. Works in your browser, so your PDF is never uploaded. No sign-up, files up to ${MAX_PDF_SIZE_LABEL}.`,
   intro:
-    "Turn a text-based PDF into Markdown for notes, documentation, and AI tools like ChatGPT and Claude. The conversion runs in your browser, so your PDF is never uploaded to a server. Copy the Markdown straight to your clipboard or download it as a file.",
+    "Convert PDF to Markdown online, free, and in your browser. Your file is never uploaded. Copy the Markdown for notes, documentation, or AI tools like ChatGPT and Claude, or download it as a file.",
+  howToHeading: "How to convert PDF to Markdown online",
   howToSteps: [
     `Choose a PDF. Select a text-based PDF from your device (up to ${MAX_PDF_SIZE_LABEL} and ${MAX_MARKDOWN_PDF_PAGES} pages).`,
     "Convert. The tool reads the PDF page by page in your browser and shows progress.",
@@ -40,14 +41,14 @@ export const PDF_TO_MARKDOWN_CONTENT = {
   ],
   technicalSpecs: {
     input: "PDF with a text layer",
-    output: "A .md file, or a .zip containing the .md file and an images folder when images are extracted",
+    output: "A .md (PDF to MD) file, or a .zip containing the .md file and an images folder when images are extracted",
     maxFileSize: MAX_PDF_SIZE_LABEL,
     maxPages: `${MAX_MARKDOWN_PDF_PAGES} pages`,
     processing: "In your browser; the PDF is not uploaded for conversion",
     cost: "Free to use; no sign-up required",
   },
   privacyText:
-    "The conversion runs entirely in your browser. Your PDF and its extracted text are not uploaded to or stored on our servers. This page loads standard analytics for page visits; conversion code does not send the file or extracted text to analytics.",
+    "The conversion runs entirely in your browser. Your PDF and its extracted text are not uploaded to or stored on our servers. Private conversion with no upload required: your PDF stays on your device. This page loads standard analytics for page visits; conversion code does not send the file or extracted text to analytics.",
   limitations: [
     "Scanned or image-only PDFs have no text layer, so OCR is not performed here. Run them through the OCR PDF tool first. If no text or extractable image is found, the tool shows an error instead of offering a blank Markdown file.",
     "Tables are emitted as plain text lines, not reconstructed Markdown tables.",

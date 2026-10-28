@@ -43,6 +43,13 @@ export interface BlogPostRecord {
   relatedToolSlug: string | null;
 }
 
+export const resumeBuilderSeo = {
+  title: "Resume Builder & CV Maker Online Free | PDFKira",
+  description: "Build a resume or CV online for free in your browser. No sign-up, no upload: your data stays on your device. Save it as a PDF.",
+  intro: "Free online resume builder and CV maker that runs in your browser, with no sign-up and no upload.",
+  ogImageAlt: "PDFKira logo for the Resume Builder and CV Maker",
+} as const;
+
 export const homepageFaqs: FaqItem[] = [
   {
     question: "Is PDFKira really free to use?",
@@ -760,8 +767,8 @@ const toolCatalog: ToolRecord[] = [
     icon: "FileText",
     popular: false,
     status: "available",
-    seoTitle: "Resume & CV Builder Online | PDFKira",
-    seoDescription: "Create and format a resume in your browser. Your resume stays on your device; print or save it as a PDF.",
+    seoTitle: resumeBuilderSeo.title,
+    seoDescription: resumeBuilderSeo.description,
     steps: [
       "Add your contact details, summary, education, experience, skills, and other sections.",
       "Arrange sections and review the live resume preview.",

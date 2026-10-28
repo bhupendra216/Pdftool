@@ -56,6 +56,7 @@ import {
 } from "./model";
 import { paginateBlocks, type PaginationBlock } from "./pagination";
 import { createResumePdf, downloadBlob } from "./pdf-export";
+import { resumeBuilderSeo } from "../../../../api-server/src/lib/content";
 import pdfKiraDemoPhoto from "@/assets/pdfkira-logo.png?inline";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -1316,7 +1317,7 @@ export function ResumeBuilder() {
         <header className="rb-header">
           <div>
             <h1>Resume &amp; CV Builder</h1>
-            <p>Draft a clear resume, then print or save it as a PDF.</p>
+            <p>{resumeBuilderSeo.intro}</p>
           </div>
           <div className="rb-privacy">Your resume stays in this browser. Nothing is uploaded.</div>
         </header>

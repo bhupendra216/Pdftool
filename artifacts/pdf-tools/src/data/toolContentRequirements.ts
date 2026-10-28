@@ -67,7 +67,7 @@ const customDeletePages: ToolContentRequirements = {
 
 const resumeBuilderContent: ToolContentRequirements = {
   uniqueIntro:
-    'Create and edit a resume in your browser with sections for your summary, education, experience, skills, and more. Your resume is saved in this browser and is not uploaded; use the browser print dialog to print or save it as a PDF.',
+    'Create and edit a resume with sections for your summary, education, experience, skills, and more. Your resume is saved in this browser and is not uploaded; use the browser print dialog to print or save it as a PDF.',
   useCases: [
     { title: 'Create a job resume', description: 'Add contact details and organize experience, skills, and education for a job application.' },
     { title: 'Prepare a higher-study CV', description: 'Arrange education, projects, publications, awards, and community work for an academic application.' },
@@ -80,6 +80,8 @@ const resumeBuilderContent: ToolContentRequirements = {
     { step: 4, title: 'Print or save as PDF', description: 'Open the browser print dialog and select a printer or its Save as PDF option.' },
   ],
   faqs: [
+    { question: 'Is the resume builder free?', answer: 'Yes, the resume builder is free with no account, no watermark, and no limit on saving as PDF. Optional JSON import accepts files up to 2 MB.' },
+    { question: 'Is the resume ATS-friendly?', answer: 'The PDF uses selectable text and a simple single-column layout that is ATS-friendly. Applicant tracking systems vary, so no format can guarantee compatibility; check that you can select and copy the text in your exported PDF.' },
     { question: 'Is my resume uploaded?', answer: 'No. Resume content is kept in this browser using local storage. The builder does not upload resume content.' },
     { question: 'How do I create a PDF?', answer: 'Select Print or save as PDF and use the browser print dialog. The builder does not create or upload a PDF through a server.' },
     { question: 'Can I export or import my resume?', answer: 'Yes. You can export a JSON copy or import a supported resume JSON file up to 2 MB.' },
@@ -88,7 +90,7 @@ const resumeBuilderContent: ToolContentRequirements = {
   limitations: [
     'Resume data is saved in the current browser; clearing browser storage or using another device does not transfer it.',
     'PDF output is produced by the browser print dialog, so final pagination and printer settings depend on the browser.',
-    'JSON import is limited to files up to 2 MB and to the fields supported by the builder.',
+    'Optional JSON import accepts files up to 2 MB and only supports fields recognized by the builder.',
   ],
   technicalSpecs: {
     inputFormats: ['No resume file required', 'Optional JSON import (up to 2 MB)'],

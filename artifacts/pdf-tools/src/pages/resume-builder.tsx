@@ -1,8 +1,10 @@
-import { useSEO } from "@/hooks/use-seo";
+import { useSEOAdvanced } from "@/hooks/use-seo";
 import { ResumeBuilder } from "@/labs/resume-builder/ResumeBuilder";
 import "@/labs/resume-builder/resume-builder.css";
 import ToolSeoSection from "@/components/Content/ToolSeoSection";
 import { TOOL_SEO_CONTENT } from "@/data/toolSeoContent";
+import { resumeBuilderSeo } from "../../../api-server/src/lib/content";
+import { SITE_URL } from "@/lib/site-config";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Link } from "wouter";
@@ -10,9 +12,33 @@ import { Link } from "wouter";
 export default function ResumeBuilderPage() {
   const content = TOOL_SEO_CONTENT["resume-builder"];
 
-  useSEO({
-    title: "Resume & CV Builder",
-    description: "Create and format a resume in your browser. Your resume stays on your device; print or save it as a PDF.",
+  useSEOAdvanced({
+    title: resumeBuilderSeo.title,
+    description: resumeBuilderSeo.description,
+    canonical: `${SITE_URL}/tools/resume-builder`,
+    ogImageAlt: resumeBuilderSeo.ogImageAlt,
+    jsonLd: {
+      "@context": "https://schema.org",
+      "@graph": [
+        {
+          "@type": "SoftwareApplication",
+          name: "Resume & CV Builder",
+          description: resumeBuilderSeo.description,
+          operatingSystem: "Web",
+          applicationCategory: "Utility",
+          url: `${SITE_URL}/tools/resume-builder`,
+          offers: { "@type": "Offer", price: 0, priceCurrency: "USD" },
+        },
+        {
+          "@type": "BreadcrumbList",
+          itemListElement: [
+            { "@type": "ListItem", position: 1, name: "Home", item: `${SITE_URL}/` },
+            { "@type": "ListItem", position: 2, name: "Tools", item: `${SITE_URL}/tools` },
+            { "@type": "ListItem", position: 3, name: "Resume & CV Builder", item: `${SITE_URL}/tools/resume-builder` },
+          ],
+        },
+      ],
+    },
   });
 
   return (

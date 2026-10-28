@@ -140,7 +140,7 @@ export function getToolSeoContent(slug: string): ToolSeoContent | undefined {
         apiTool?.shortDescription || '',
         explicit.whyUse,
       ),
-      faq: slug === 'transform-pdf'
+      faq: slug === 'transform-pdf' || slug === 'resume-builder'
         ? explicit.faq
         : ensureToolFaqs(apiTool?.name || explicit.slug || slug, slug, explicit.faq),
     };

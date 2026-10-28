@@ -7,6 +7,8 @@ import { tools as apiServerTools } from '../../../../api-server/src/lib/content'
 
 export interface ToolSeoContent {
   slug: string;
+  howToHeading?: string;
+  layouts?: { title: string; description: string };
   howItWorks: { title: string; description: string }[];
   whyUse: { title: string; description: string }[];
   faq: { question: string; answer: string }[];
@@ -40,7 +42,7 @@ export function ToolSeoSection({ content }: { content?: ToolSeoContent }) {
       {content.howToSteps ? (
         <section className="border-t border-border/70 bg-card/60 py-16">
           <div className="container mx-auto max-w-5xl px-4 md:px-6">
-            <h2 className="mb-8 text-3xl font-bold tracking-tight text-foreground">How to use PDF to Markdown</h2>
+            <h2 className="mb-8 text-3xl font-bold tracking-tight text-foreground">{content.howToHeading ?? 'How to use PDF to Markdown'}</h2>
             <ol className="list-decimal space-y-3 pl-6 text-muted-foreground">
               {content.howToSteps.map((step, index) => <li key={index}>{step}</li>)}
             </ol>
@@ -50,7 +52,7 @@ export function ToolSeoSection({ content }: { content?: ToolSeoContent }) {
       <section className="border-t border-border/70 bg-card/60 py-20">
         <div className="container mx-auto max-w-5xl px-4 md:px-6">
           <div className="mx-auto mb-12 max-w-2xl text-center">
-            <h2 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">How it works</h2>
+            <h2 className="text-3xl font-bold tracking-tight text-foreground md:text-4xl">{content.howToHeading ?? 'How it works'}</h2>
             <p className="mt-4 text-base text-muted-foreground md:text-lg">A short, clear walkthrough to get you from upload to result.</p>
           </div>
           <div className="grid gap-6 md:grid-cols-3">
@@ -81,6 +83,15 @@ export function ToolSeoSection({ content }: { content?: ToolSeoContent }) {
                 </article>
               ))}
             </div>
+          </div>
+        </section>
+      )}
+
+      {content.layouts && (
+        <section className="border-t border-border/70 py-12">
+          <div className="container mx-auto max-w-5xl px-4 md:px-6">
+            <h2 className="mb-4 text-2xl font-bold text-foreground">{content.layouts.title}</h2>
+            <p className="leading-relaxed text-muted-foreground">{content.layouts.description}</p>
           </div>
         </section>
       )}
