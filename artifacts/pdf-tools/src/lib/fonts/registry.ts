@@ -1,10 +1,13 @@
-import type { PDFDocument, PDFFont } from 'pdf-lib';
+import { decodePDFRawStream, PDFArray, PDFDict, PDFDocument, PDFName, PDFRawStream, type PDFFont } from 'pdf-lib';
+import { createShapingFont, shapeTextByScript, type ShapedTextRun, type ShapingFont } from './text-shaping';
 
 export type EditorFontFamily =
   | 'Liberation Sans' | 'Liberation Serif' | 'Liberation Mono'
   | 'Carlito' | 'Caladea' | 'Gelasio' | 'DejaVu Sans' | 'DejaVu Serif'
   | 'Noto Sans' | 'Noto Serif' | 'Lato' | 'Open Sans' | 'Roboto'
-  | 'Source Sans 3' | 'Merriweather' | 'Montserrat';
+  | 'Source Sans 3' | 'Merriweather' | 'Montserrat'
+  | 'Noto Sans Hebrew' | 'Noto Serif Hebrew' | 'Heebo'
+  | 'Noto Sans Georgian' | 'Noto Sans Armenian';
 
 export type FontVariant = 'regular' | 'bold' | 'italic' | 'boldItalic';
 export type FontDetectionStatus = 'detected' | 'fallback';
@@ -30,6 +33,9 @@ export type FontDetectionHints = {
 export type EditorTextMetrics = {
   widthOfTextAtSize(text: string, size: number): number;
   heightAtSize(size: number): number;
+  shapeTextAtSize(text: string, size: number): ShapedTextRun[];
+  missingFromPrimary(text: string): string[];
+  missingCharacters(text: string): string[];
 };
 
 export type PdfTextFontRun = {
@@ -102,6 +108,26 @@ const fontFiles: Record<EditorFontFamily, Record<FontVariant, string>> = {
     regular: 'montserrat-regular.ttf', bold: 'montserrat-bold.ttf',
     italic: 'montserrat-italic.ttf', boldItalic: 'montserrat-bold-italic.ttf',
   },
+  'Noto Sans Hebrew': {
+    regular: 'noto-sans-hebrew-regular.ttf', bold: 'noto-sans-hebrew-bold.ttf',
+    italic: 'noto-sans-hebrew-regular.ttf', boldItalic: 'noto-sans-hebrew-bold.ttf',
+  },
+  'Noto Serif Hebrew': {
+    regular: 'noto-serif-hebrew-regular.ttf', bold: 'noto-serif-hebrew-bold.ttf',
+    italic: 'noto-serif-hebrew-regular.ttf', boldItalic: 'noto-serif-hebrew-bold.ttf',
+  },
+  Heebo: {
+    regular: 'heebo-variable.ttf', bold: 'heebo-variable.ttf',
+    italic: 'heebo-variable.ttf', boldItalic: 'heebo-variable.ttf',
+  },
+  'Noto Sans Georgian': {
+    regular: 'noto-sans-georgian-regular.ttf', bold: 'noto-sans-georgian-bold.ttf',
+    italic: 'noto-sans-georgian-regular.ttf', boldItalic: 'noto-sans-georgian-bold.ttf',
+  },
+  'Noto Sans Armenian': {
+    regular: 'noto-sans-armenian-regular.ttf', bold: 'noto-sans-armenian-bold.ttf',
+    italic: 'noto-sans-armenian-regular.ttf', boldItalic: 'noto-sans-armenian-bold.ttf',
+  },
 };
 
 const fontBytesCache = new Map<string, Promise<Uint8Array>>();
@@ -109,9 +135,44 @@ const textMetricsCache = new Map<string, Promise<EditorTextMetrics>>();
 const resolvedTextMetrics = new Map<string, EditorTextMetrics>();
 const previewFontCache = new Map<string, Promise<void>>();
 const registeredFontkitDocuments = new WeakSet<PDFDocument>();
+const shapingFontCache = new Map<string, Promise<ShapingFont>>();
+const fontsThatRequireFullEmbedding = new Set<EditorFontFamily>([
+  'Carlito',
+  'Roboto',
+  'Source Sans 3',
+  'Merriweather',
+  'Heebo',
+  'Noto Sans Hebrew',
+  'Noto Serif Hebrew',
+  'Noto Sans Georgian',
+  'Noto Sans Armenian',
+]);
 
 function fontKey(family: EditorFontFamily, variant: FontVariant) {
   return `${family}:${variant}`;
+}
+
+function getFontWeight(variant: FontVariant) {
+  return variant === 'bold' || variant === 'boldItalic' ? 700 : 400;
+}
+
+function getShapingFont(family: EditorFontFamily, variant: FontVariant) {
+  const key = fontKey(family, variant);
+  const cached = shapingFontCache.get(key);
+  if (cached) return cached;
+  const pending = loadFontBytes(family, variant).then(async (bytes) => {
+    const fontkit = (await import('@pdf-lib/fontkit')).default;
+    const parsed = fontkit.create(bytes);
+    return createShapingFont(
+      key,
+      bytes,
+      parsed.characterSet,
+      family === 'Heebo' ? getFontWeight(variant) : undefined,
+    );
+  });
+  shapingFontCache.set(key, pending);
+  void pending.catch(() => shapingFontCache.delete(key));
+  return pending;
 }
 
 function loadFontBytes(family: EditorFontFamily, variant: FontVariant) {
@@ -128,12 +189,20 @@ function loadFontBytes(family: EditorFontFamily, variant: FontVariant) {
   return pending;
 }
 
-export function getCachedEditorTextMetrics(family: EditorFontFamily, variant: FontVariant) {
-  return resolvedTextMetrics.get(fontKey(family, variant));
+export function getCachedEditorTextMetrics(
+  family: EditorFontFamily,
+  variant: FontVariant,
+  fallbackFamily: EditorFontFamily = 'Noto Sans',
+) {
+  return resolvedTextMetrics.get(`${fontKey(family, variant)}:${fallbackFamily}`);
 }
 
-export async function loadEditorTextMetrics(family: EditorFontFamily, variant: FontVariant) {
-  const key = fontKey(family, variant);
+export async function loadEditorTextMetrics(
+  family: EditorFontFamily,
+  variant: FontVariant,
+  fallbackFamily: EditorFontFamily = 'Noto Sans',
+) {
+  const key = `${fontKey(family, variant)}:${fallbackFamily}`;
   const cached = textMetricsCache.get(key);
   if (cached) return cached;
   const pending = (async (): Promise<EditorTextMetrics> => {
@@ -141,17 +210,66 @@ export async function loadEditorTextMetrics(family: EditorFontFamily, variant: F
     const fontkit = (await import('@pdf-lib/fontkit')).default;
     const scratchDocument = await ScratchPdfDocument.create();
     scratchDocument.registerFontkit(fontkit);
-    const primary = await scratchDocument.embedFont(await loadFontBytes(family, variant), { subset: true });
-    const fallback = family === 'Noto Sans'
-      ? primary
-      : await scratchDocument.embedFont(await loadFontBytes('Noto Sans', variant), { subset: true });
+    const [primaryBytes, primaryShapingFont] = await Promise.all([
+      loadFontBytes(family, variant),
+      getShapingFont(family, variant),
+    ]);
+    const primary = await scratchDocument.embedFont(primaryBytes, { subset: true });
+    const effectiveFallbackFamily = family === fallbackFamily ? undefined : fallbackFamily;
+    const [fallback, fallbackShapingFont] = effectiveFallbackFamily
+      ? await Promise.all([
+        loadFontBytes(effectiveFallbackFamily, variant).then((bytes) => scratchDocument.embedFont(bytes, { subset: true })),
+        getShapingFont(effectiveFallbackFamily, variant),
+      ])
+      : [primary, primaryShapingFont] as const;
+    const shapingFonts = effectiveFallbackFamily
+      ? [primaryShapingFont, fallbackShapingFont]
+      : [primaryShapingFont];
     return {
       widthOfTextAtSize(text, size) {
-        return splitTextForPdf(text, primary, fallback).reduce((width, run) =>
-          width + run.font.widthOfTextAtSize(run.text, size), 0);
+        if (/^[\u0000-\u007f]*$/u.test(text)) {
+          return splitTextForPdf(text, primary, fallback).reduce(
+            (width, run) => width + run.font.widthOfTextAtSize(run.text, size),
+            0,
+          );
+        }
+        return shapeTextByScript(text, shapingFonts).reduce(
+          (width, run) => width + run.advanceWidth / run.unitsPerEm * size,
+          0,
+        );
       },
       heightAtSize(size) {
         return primary.heightAtSize(size);
+      },
+      shapeTextAtSize(text, size) {
+        return shapeTextByScript(text, shapingFonts).map((run) => ({
+          ...run,
+          scale: size / run.unitsPerEm,
+          glyphs: run.glyphs.map((glyph) => ({
+            ...glyph,
+            xAdvance: glyph.xAdvance / run.unitsPerEm * size,
+            yAdvance: glyph.yAdvance / run.unitsPerEm * size,
+            xOffset: glyph.xOffset / run.unitsPerEm * size,
+            yOffset: glyph.yOffset / run.unitsPerEm * size,
+          })),
+          advanceWidth: run.advanceWidth / run.unitsPerEm * size,
+        }));
+      },
+      missingFromPrimary(text) {
+        const primaryCharacters = new Set(primary.getCharacterSet());
+        return [...new Set([...text]
+          .filter((character) => !/\s/u.test(character))
+          .filter((character) => !primaryCharacters.has(character.codePointAt(0) ?? 0)))];
+      },
+      missingCharacters(text) {
+        const primaryCharacters = new Set(primary.getCharacterSet());
+        const fallbackCharacters = new Set(fallback.getCharacterSet());
+        return [...new Set([...text]
+          .filter((character) => !/\s/u.test(character))
+          .filter((character) => {
+            const codePoint = character.codePointAt(0) ?? 0;
+            return !primaryCharacters.has(codePoint) && !fallbackCharacters.has(codePoint);
+          }))];
       },
     };
   })();
@@ -161,16 +279,20 @@ export async function loadEditorTextMetrics(family: EditorFontFamily, variant: F
   return pending;
 }
 
-export async function loadEditorPreviewFonts(family: EditorFontFamily, variant: FontVariant) {
-  const families = family === 'Noto Sans' ? [family] : [family, 'Noto Sans' as const];
+export async function loadEditorPreviewFonts(
+  family: EditorFontFamily,
+  variant: FontVariant,
+  fallbackFamily: EditorFontFamily = 'Noto Sans',
+) {
+  const families = family === fallbackFamily ? [family] : [family, fallbackFamily];
   await Promise.all(families.map(async (fontFamily) => {
     const key = fontKey(fontFamily, variant);
     const cached = previewFontCache.get(key);
     if (cached) return cached;
     const pending = loadFontBytes(fontFamily, variant).then(async (bytes) => {
       const face = new FontFace(fontFamily, bytes.slice().buffer as ArrayBuffer, {
-        weight: variant === 'bold' || variant === 'boldItalic' ? '700' : '400',
-        style: variant === 'italic' || variant === 'boldItalic' ? 'italic' : 'normal',
+        weight: fontFamily === 'Heebo' ? '100 900' : String(getFontWeight(variant)),
+        style: 'normal',
       });
       await face.load();
       document.fonts.add(face);
@@ -188,34 +310,150 @@ export async function embedEditorFont(document: PDFDocument, family: EditorFontF
     registeredFontkitDocuments.add(document);
   }
   const bytes = await loadFontBytes(family, variant);
-  return document.embedFont(bytes, { subset: true });
+  return document.embedFont(bytes, { subset: !fontsThatRequireFullEmbedding.has(family) });
+}
+
+export type EditorGlyphCheck = {
+  font: PDFFont;
+  family: EditorFontFamily;
+  text: string;
+  glyphs: Array<{ glyphId: number; codePoints: number[] }>;
+};
+
+export async function captureEditorGlyphCheck(
+  font: PDFFont,
+  family: EditorFontFamily,
+  variant: FontVariant,
+  text: string,
+): Promise<EditorGlyphCheck> {
+  const fontkit = (await import('@pdf-lib/fontkit')).default;
+  const sourceFont = fontkit.create(await loadFontBytes(family, variant));
+  const layoutGlyphs = sourceFont.layout(text).glyphs;
+  const encoded = font.encodeText(text).asBytes();
+  if (encoded.length !== layoutGlyphs.length * 2) {
+    throw new Error(`Could not validate ${family}: the encoded glyph map does not match the edited text.`);
+  }
+
+  const glyphs = layoutGlyphs.map((glyph, index) => ({
+    glyphId: encoded[index * 2] * 256 + encoded[index * 2 + 1],
+    codePoints: [...glyph.codePoints],
+  }));
+  const coveredCodePoints = new Set(glyphs.flatMap((glyph) => glyph.codePoints));
+  for (const character of text) {
+    const codePoint = character.codePointAt(0) ?? 0;
+    if (!/\s/u.test(character) && !coveredCodePoints.has(codePoint)) {
+      throw new Error(`Could not validate ${family}: no glyph was encoded for U+${codePoint.toString(16).toUpperCase()}.`);
+    }
+  }
+
+  return { font, family, text, glyphs };
+}
+
+async function readEmbeddedFontProgram(stream: PDFRawStream) {
+  return decodePDFRawStream(stream).decode();
+}
+
+export async function verifyEditorPdfGlyphs(bytes: Uint8Array, checks: EditorGlyphCheck[]) {
+  if (checks.length === 0) return;
+  const document = await PDFDocument.load(bytes);
+  const fontkit = (await import('@pdf-lib/fontkit')).default;
+  const embeddedFonts = new Map<string, ReturnType<typeof fontkit.create>>();
+
+  for (const check of checks) {
+    const fontKey = `${check.font.ref.objectNumber}:${check.font.ref.generationNumber}`;
+    let embeddedFont = embeddedFonts.get(fontKey);
+    if (!embeddedFont) {
+      const fontObject = document.context.lookup(check.font.ref, PDFDict);
+      const descendantsRef = fontObject.get(PDFName.of('DescendantFonts'));
+      if (!descendantsRef) throw new Error(`Could not verify the embedded ${check.family} font.`);
+      const descendants = document.context.lookup(descendantsRef, PDFArray);
+      const cidFontRef = descendants.get(0);
+      if (!cidFontRef) throw new Error(`Could not verify the embedded ${check.family} font.`);
+      const cidFont = document.context.lookup(cidFontRef, PDFDict);
+      if (cidFont.get(PDFName.of('CIDToGIDMap'))?.toString() !== '/Identity') {
+        throw new Error(`Could not verify the glyph map for the embedded ${check.family} font.`);
+      }
+      const descriptorRef = cidFont.get(PDFName.of('FontDescriptor'));
+      if (!descriptorRef) throw new Error(`Could not read the embedded ${check.family} font descriptor.`);
+      const descriptor = document.context.lookup(descriptorRef, PDFDict);
+      const fontFileRef = descriptor.get(PDFName.of('FontFile2'));
+      if (!fontFileRef) throw new Error(`Could not read the embedded ${check.family} TrueType font.`);
+      const fontFileObject = document.context.lookup(fontFileRef);
+      if (!(fontFileObject instanceof PDFRawStream)) {
+        throw new Error(`Could not read the embedded ${check.family} TrueType font.`);
+      }
+      const fontFile = fontFileObject;
+      const fontProgram = await readEmbeddedFontProgram(fontFile);
+      try {
+        embeddedFont = fontkit.create(fontProgram);
+      } catch (reason) {
+        throw new Error(`Could not read the embedded ${check.family} TrueType font.`, { cause: reason });
+      }
+      embeddedFonts.set(fontKey, embeddedFont);
+    }
+
+    for (const glyph of check.glyphs) {
+      if (glyph.codePoints.every((codePoint) => /\s/u.test(String.fromCodePoint(codePoint)))) continue;
+      const codePoint = glyph.codePoints.find((value) => !/\s/u.test(String.fromCodePoint(value))) ?? 0;
+      let hasOutline = false;
+      try {
+        hasOutline = glyph.glyphId !== 0 && embeddedFont.getGlyph(glyph.glyphId).path.toSVG().length > 0;
+      } catch (reason) {
+        throw new Error(
+          `Edited PDF font ${check.family} has an unreadable outline for U+${codePoint.toString(16).toUpperCase()}.`,
+          { cause: reason },
+        );
+      }
+      if (!hasOutline) {
+        throw new Error(
+          `Edited PDF font ${check.family} has a blank glyph for U+${codePoint.toString(16).toUpperCase()}.`,
+        );
+      }
+    }
+  }
 }
 
 export function splitTextForPdf(text: string, primary: PDFFont, fallback: PDFFont): PdfTextFontRun[] {
+  return splitTextForPdfUsingFonts(text, [primary, fallback]);
+}
+
+export function splitTextForPdfUsingFonts(text: string, fonts: PDFFont[]): PdfTextFontRun[] {
+  if (!fonts.length) throw new Error('No font is available for this text.');
   const runs: PdfTextFontRun[] = [];
-  const primaryCharacters = new Set(primary.getCharacterSet());
-  const fallbackCharacters = new Set(fallback.getCharacterSet());
+  const characterSets = fonts.map((font) => new Set(font.getCharacterSet()));
   for (const character of text) {
     const codePoint = character.codePointAt(0) ?? 0;
-    let selectedFont = primaryCharacters.has(codePoint) ? primary : fallback;
-    let outputCharacter = character;
-    if (selectedFont === fallback && !fallbackCharacters.has(codePoint)) {
-      outputCharacter = fallbackCharacters.has(0xfffd) ? '\uFFFD' : '?';
+    const previous = runs.at(-1)?.font;
+    let selectedIndex = characterSets.findIndex((characters) => characters.has(codePoint));
+    if (/\s/u.test(character) && previous) {
+      const previousIndex = fonts.indexOf(previous);
+      if (previousIndex >= 0 && characterSets[previousIndex].has(codePoint)) selectedIndex = previousIndex;
     }
+    if (selectedIndex < 0) {
+      throw new Error(`No selected or fallback font contains U+${codePoint.toString(16).toUpperCase()}.`);
+    }
+    let selectedFont = fonts[selectedIndex];
     try {
-      selectedFont.encodeText(outputCharacter);
-    } catch {
-      selectedFont = fallback;
+      selectedFont.encodeText(character);
+    } catch (reason) {
+      const nextIndex = fonts.findIndex((font, index) => index !== selectedIndex && characterSets[index].has(codePoint));
+      if (nextIndex < 0) {
+        throw new Error(`The selected fonts cannot encode U+${codePoint.toString(16).toUpperCase()}.`, { cause: reason });
+      }
+      selectedFont = fonts[nextIndex];
       try {
-        selectedFont.encodeText(outputCharacter);
-      } catch {
-        outputCharacter = '?';
-        selectedFont.encodeText(outputCharacter);
+        selectedFont.encodeText(character);
+      } catch (fallbackReason) {
+        throw new Error(`The selected fonts cannot encode U+${codePoint.toString(16).toUpperCase()}.`, { cause: fallbackReason });
       }
     }
+    if (previous && /\s/u.test(character) &&
+      fonts.indexOf(previous) === selectedIndex) {
+      selectedFont = previous;
+    }
     const last = runs.at(-1);
-    if (last?.font === selectedFont) last.text += outputCharacter;
-    else runs.push({ text: outputCharacter, font: selectedFont });
+    if (last?.font === selectedFont) last.text += character;
+    else runs.push({ text: character, font: selectedFont });
   }
   return runs;
 }
@@ -227,24 +465,31 @@ export const FONT_REGISTRY: Array<{
   family: EditorFontFamily;
   group: string;
   displayName: string;
+  languages: string;
+  sample: string;
   compatible?: boolean;
 }> = [
-  { family: 'Liberation Sans', group: 'Compatible', displayName: 'Arial', compatible: true },
-  { family: 'Liberation Serif', group: 'Compatible', displayName: 'Times New Roman', compatible: true },
-  { family: 'Liberation Mono', group: 'Compatible', displayName: 'Courier New', compatible: true },
-  { family: 'Carlito', group: 'Compatible', displayName: 'Calibri', compatible: true },
-  { family: 'Caladea', group: 'Compatible', displayName: 'Cambria', compatible: true },
-  { family: 'Gelasio', group: 'Compatible', displayName: 'Georgia', compatible: true },
-  { family: 'DejaVu Sans', group: 'Sans-serif', displayName: 'Verdana' },
-  { family: 'Noto Sans', group: 'Sans-serif', displayName: 'Noto Sans' },
-  { family: 'Lato', group: 'Sans-serif', displayName: 'Lato' },
-  { family: 'Open Sans', group: 'Sans-serif', displayName: 'Open Sans' },
-  { family: 'Roboto', group: 'Sans-serif', displayName: 'Roboto' },
-  { family: 'Source Sans 3', group: 'Sans-serif', displayName: 'Source Sans 3' },
-  { family: 'DejaVu Serif', group: 'Serif', displayName: 'DejaVu Serif' },
-  { family: 'Noto Serif', group: 'Serif', displayName: 'Noto Serif' },
-  { family: 'Merriweather', group: 'Serif', displayName: 'Merriweather' },
-  { family: 'Montserrat', group: 'Display', displayName: 'Montserrat' },
+  { family: 'Liberation Sans', group: 'Compatible', displayName: 'Arial', languages: 'Latin', sample: 'The quick brown fox', compatible: true },
+  { family: 'Liberation Serif', group: 'Compatible', displayName: 'Times New Roman', languages: 'Latin', sample: 'The quick brown fox', compatible: true },
+  { family: 'Liberation Mono', group: 'Compatible', displayName: 'Courier New', languages: 'Latin', sample: 'The quick brown fox', compatible: true },
+  { family: 'Carlito', group: 'Compatible', displayName: 'Calibri', languages: 'Latin', sample: 'The quick brown fox', compatible: true },
+  { family: 'Caladea', group: 'Compatible', displayName: 'Cambria', languages: 'Latin (limited; extended scripts use fallback)', sample: 'The quick brown fox', compatible: true },
+  { family: 'Gelasio', group: 'Compatible', displayName: 'Georgia', languages: 'Latin (limited; Greek and Cyrillic use fallback)', sample: 'The quick brown fox', compatible: true },
+  { family: 'DejaVu Sans', group: 'Sans-serif', displayName: 'Verdana', languages: 'Latin, Greek, Cyrillic', sample: 'Καλημέρα · Привіт' },
+  { family: 'Noto Sans', group: 'Latin Extended', displayName: 'Noto Sans', languages: 'Latin, Vietnamese, Greek, Cyrillic', sample: 'Příliš žluťoučký kůň' },
+  { family: 'Lato', group: 'Sans-serif', displayName: 'Lato', languages: 'Latin, Greek, Cyrillic', sample: 'Zażółć gęślą jaźń' },
+  { family: 'Open Sans', group: 'Sans-serif', displayName: 'Open Sans', languages: 'Latin, Greek, Cyrillic (West African ɔ uses fallback)', sample: 'Nguyễn Thị Hương' },
+  { family: 'Roboto', group: 'Sans-serif', displayName: 'Roboto', languages: 'Latin, Vietnamese, Greek, Cyrillic', sample: 'İstanbul · Καλημέρα' },
+  { family: 'Source Sans 3', group: 'Sans-serif', displayName: 'Source Sans 3', languages: 'Latin, Vietnamese, Greek, Cyrillic', sample: 'Příliš žluťoučký kůň' },
+  { family: 'DejaVu Serif', group: 'Serif', displayName: 'DejaVu Serif', languages: 'Latin, Greek, Cyrillic', sample: 'Καλημέρα · Привіт' },
+  { family: 'Noto Serif', group: 'Serif', displayName: 'Noto Serif', languages: 'Latin, Vietnamese, Greek, Cyrillic', sample: 'Nguyễn Thị Hương' },
+  { family: 'Merriweather', group: 'Serif', displayName: 'Merriweather', languages: 'Latin, Vietnamese, Cyrillic (Greek and ɔ use fallback)', sample: 'Zażółć gęślą jaźń' },
+  { family: 'Montserrat', group: 'Display', displayName: 'Montserrat', languages: 'Latin, Vietnamese, Cyrillic (Greek uses fallback)', sample: 'Příliš žluťoučký kůň' },
+  { family: 'Noto Sans Hebrew', group: 'Hebrew', displayName: 'Noto Sans Hebrew', languages: 'Hebrew', sample: 'שלום עולם' },
+  { family: 'Noto Serif Hebrew', group: 'Hebrew', displayName: 'Noto Serif Hebrew', languages: 'Hebrew', sample: 'שלום עולם' },
+  { family: 'Heebo', group: 'Hebrew', displayName: 'Heebo', languages: 'Hebrew', sample: 'שלום עולם' },
+  { family: 'Noto Sans Georgian', group: 'Georgian', displayName: 'Noto Sans Georgian', languages: 'Georgian', sample: 'გამარჯობა' },
+  { family: 'Noto Sans Armenian', group: 'Armenian', displayName: 'Noto Sans Armenian', languages: 'Armenian', sample: 'Բարեւ աշխարհ' },
 ];
 
 const aliases: Array<[RegExp, EditorFontFamily]> = [
@@ -253,6 +498,9 @@ const aliases: Array<[RegExp, EditorFontFamily]> = [
   [/liberation\s*sans/, 'Liberation Sans'], [/liberation\s*serif/, 'Liberation Serif'],
   [/liberation\s*mono/, 'Liberation Mono'], [/carlito/, 'Carlito'], [/caladea/, 'Caladea'],
   [/gelasio/, 'Gelasio'], [/dejavu\s*sans/, 'DejaVu Sans'], [/dejavu\s*serif/, 'DejaVu Serif'],
+  [/noto\s*sans\s*hebrew/, 'Noto Sans Hebrew'], [/noto\s*serif\s*hebrew/, 'Noto Serif Hebrew'],
+  [/heebo/, 'Heebo'], [/noto\s*sans\s*georgian/, 'Noto Sans Georgian'],
+  [/noto\s*sans\s*armenian/, 'Noto Sans Armenian'],
   [/noto\s*sans/, 'Noto Sans'], [/noto\s*serif/, 'Noto Serif'], [/open\s?sans/, 'Open Sans'],
   [/source\s?sans/, 'Source Sans 3'], [/lato/, 'Lato'], [/roboto/, 'Roboto'],
   [/merriweather/, 'Merriweather'], [/montserrat/, 'Montserrat'],
@@ -344,10 +592,10 @@ export function editorFontVariant(bold: boolean | undefined, italic: boolean | u
   return bold ? italic ? 'boldItalic' : 'bold' : italic ? 'italic' : 'regular';
 }
 
-export function cssFamilyFor(family: EditorFontFamily) {
-  const fallbackFamily = family === 'Noto Sans' ? '' : ', "Noto Sans"';
-  const generic = family.includes('Serif') || ['Caladea', 'Gelasio', 'Merriweather'].includes(family)
+export function cssFamilyFor(family: EditorFontFamily, fallbackFamily: EditorFontFamily = 'Noto Sans') {
+  const fallback = family === fallbackFamily ? '' : `, "${fallbackFamily}"`;
+  const generic = family.includes('Serif') || ['Caladea', 'Gelasio', 'Merriweather', 'Noto Serif Hebrew'].includes(family)
     ? 'serif'
     : family === 'Liberation Mono' ? 'monospace' : 'sans-serif';
-  return `"${family}"${fallbackFamily}, ${generic}`;
+  return `"${family}"${fallback}, ${generic}`;
 }

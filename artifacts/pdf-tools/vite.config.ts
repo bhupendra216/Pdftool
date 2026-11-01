@@ -60,6 +60,9 @@ export default defineConfig(async () => {
       },
       dedupe: ["react", "react-dom"],
     },
+    optimizeDeps: {
+      exclude: ["harfbuzzjs"],
+    },
     root: path.resolve(import.meta.dirname),
     build: {
       outDir: path.resolve(import.meta.dirname, "dist/public"),

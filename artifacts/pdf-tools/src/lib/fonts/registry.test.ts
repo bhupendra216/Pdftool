@@ -90,4 +90,16 @@ describe('Edit PDF font detection', () => {
       assert.ok(bytes.byteLength > 0);
     });
   });
+
+  it('reports selected-font coverage gaps and validates the chosen fallback', async () => {
+    await withFontAssetFetch(async () => {
+      const metrics = await loadEditorTextMetrics('Noto Sans Hebrew', 'regular', 'Noto Sans');
+      assert.ok(metrics.missingFromPrimary('English שלום').includes('E'));
+      assert.deepEqual(metrics.missingCharacters('English שלום'), []);
+
+      const limitedFallback = await loadEditorTextMetrics('Montserrat', 'regular', 'Noto Sans');
+      assert.ok(limitedFallback.missingCharacters('שלום').length > 0);
+      assert.throws(() => limitedFallback.shapeTextAtSize('שלום', 18), /No selected or fallback font contains/);
+    });
+  });
 });

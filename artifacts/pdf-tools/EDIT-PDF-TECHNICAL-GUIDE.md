@@ -16,6 +16,9 @@ The page is served at `/tools/edit-pdf`. The route loads [`edit-pdf.tsx`](src/pa
 | `pdfjs-dist` (PDF.js) | Opens the source PDF, extracts text items and font metadata, and renders page previews and thumbnails to canvas. Its worker is configured from `pdf.worker.min.mjs`. |
 | `pdf-lib` | Loads and copies source pages, embeds subsetted TTF fonts through fontkit, draws masks and replacement text, adds highlights, underlines and link annotations, and serializes the output PDF. |
 | `@pdf-lib/fontkit` | Parses bundled fonts and supports custom-font embedding in `pdf-lib`. |
+| `harfbuzzjs` | Shapes non-ASCII text into glyph IDs, outlines, advances, and offsets. |
+| `bidi-js` | Reorders mixed left-to-right and right-to-left text for visual layout. |
+| `svgpath` | Scales and positions HarfBuzz glyph outlines as PDF vector paths. |
 | `file-saver` | Saves the generated PDF as `<original-name>-edited.pdf`. |
 | `lucide-react` | Supplies the editor toolbar icons. |
 
@@ -26,7 +29,7 @@ The editor's supporting code groups text into lines in [`pdf-text-lines.ts`](src
 1. The user chooses or drops a PDF. The editor checks the file type and rejects files larger than 50 MB. Password-protected PDFs are not opened; the interface directs users to the Unlock PDF tool first.
 2. PDF.js reads the file in the browser, extracts text spans and their geometry, and renders pages and thumbnails to canvas. Text spans close to one another on the same baseline are grouped into editable lines.
 3. The user selects a line to edit, double-clicks to open its text editor, or chooses **Add Text** and clicks on a page. Edits are held in React state; undo and redo track committed changes.
-4. On download, `pdf-lib` copies the source pages and draws the changes over them. Replacement or deleted text is covered by an opaque rectangle whose color is sampled from the nearby rendered page. Replacement or added text is drawn over that mask using the selected style and position.
+4. On download, `pdf-lib` copies the source pages and draws the changes over them. Replacement or deleted text is covered by an opaque rectangle whose color is sampled from the nearby rendered page. Replacement or added text is drawn over that mask using the selected style and position. Non-ASCII lines use shaped glyph outlines for visible text and an invisible text layer for extraction and search.
 5. The output bytes are saved locally through FileSaver.js. No Edit PDF API request is involved in this flow.
 
 PDF coordinates are measured in points, while the interactive preview is rendered at scaled pixel dimensions. The coordinate helpers convert between those spaces so moving and resizing a textbox remains aligned with the page.
@@ -35,20 +38,26 @@ PDF coordinates are measured in points, while the interactive preview is rendere
 
 The editor supports changing extracted text, adding a new text box, moving and resizing text boxes, setting alignment, changing text color and size, bold and italic styles, underline, highlight color, and adding an HTTP, HTTPS, or mailto link. Existing font sizes are preserved and rounded to two decimals; values typed by the user are constrained to 8–72 points. **Center on page** centers measured text width on the visible page bounds, while **Fit to margins** uses margins inferred from body-sized text lines. A line edit replaces the grouped line as one edit rather than preserving each original text run independently. Wrapping and positioning use the selected embedded font's metrics.
 
-Undo and redo apply to committed edits. The page preview is a rendered canvas with a separate overlay for pending changes; it is not a full in-place reconstruction of the original PDF content stream.
+Undo and redo apply to committed edits. The page preview is a rendered canvas with a separate overlay for pending changes; it is not a full in-place reconstruction of the original PDF content stream. Text layout, wrapping, and export use the same selected-font and fallback-font metrics.
 
 ## Fonts: picker names and embedded files
 
 The font picker and font detection logic are in [`registry.ts`](src/lib/fonts/registry.ts). The picker offers these family names or compatibility aliases:
 
 - Compatible aliases: Liberation Sans (Arial), Liberation Serif (Times New Roman), Liberation Mono (Courier New), Carlito (Calibri), Caladea (Cambria), and Gelasio (Georgia).
-- Sans-serif: DejaVu Sans, Noto Sans, Lato, Open Sans, Roboto, and Source Sans 3.
+- Sans-serif: DejaVu Sans, Lato, Open Sans, Roboto, and Source Sans 3.
 - Serif: DejaVu Serif, Noto Serif, and Merriweather.
 - Display: Montserrat.
+- Latin Extended: Noto Sans, with Vietnamese, Greek, and Cyrillic coverage.
+- Hebrew: Noto Sans Hebrew, Noto Serif Hebrew, and Heebo.
+- Georgian: Noto Sans Georgian.
+- Armenian: Noto Sans Armenian.
 
 Font detection normalizes common PDF font names and maps aliases to one of those choices. For unknown names it first uses PDF.js font flags (serif, monospace, bold, and italic), then serif/monospace name hints, and finally Liberation Sans. The UI keeps a fallback marker and names the selected family and reason.
 
-Every picker family has bundled regular, bold, italic, and bold-italic TTF assets under `public/fonts/edit/`. Fonts load only when a selected family/style is needed, are embedded as subsets through `@pdf-lib/fontkit`, and use the same `pdf-lib` metrics in preview and export. Characters missing from the selected face are emitted with the bundled Noto Sans fallback. Font files and license notices ship with the app; no runtime font-provider request is made.
+Fonts load from `public/fonts/edit/` only when needed; no runtime font-provider request is made. The editor offers a selectable fallback face and warns when text uses fallback glyphs or is not covered by either face. For non-ASCII edited lines, HarfBuzz shapes script and direction runs, and the resulting outlines are drawn as PDF paths. An invisible text layer retains logical text for extraction; it prefers Noto Sans for covered characters to avoid unreliable Unicode mappings in some source faces, then uses the selected fallback and primary faces for scripts Noto Sans does not cover. PDF export fails explicitly if a font cannot load, if a character lacks coverage, or if an embedded text-layer glyph has no outline. Mixed Hebrew and Latin/numbers use the bundled bidi implementation; Hebrew/Georgian/Armenian families currently provide regular and bold files, with regular/bold reused for their italic variants. Heebo is a local variable font shaped at the selected weight. Static font families use regular, bold, italic, and bold-italic files where supplied. A small set of historically problematic edit fonts is embedded without subsetting.
+
+The current shaping scope is Latin and Latin Extended (including Vietnamese), Greek, Cyrillic, Hebrew, Georgian, and Armenian. Arabic joining, full Arabic/Persian/Urdu bidi behavior, CJK, Devanagari, Thai, and other scripts are not included in this phase.
 
 ## Deletion, flattening, and document fidelity
 
@@ -64,6 +73,8 @@ More generally, the export path is designed for common text changes, not for pre
 - [`src/pages/edit-pdf-mvp.tsx`](src/pages/edit-pdf-mvp.tsx): compatibility re-export for the active editor.
 - [`src/pages/PdfTextEditor.tsx`](src/pages/PdfTextEditor.tsx): file loading, rendering, editing state, controls, and PDF export.
 - [`src/lib/fonts/registry.ts`](src/lib/fonts/registry.ts): font aliases, fallback detection, lazy font loading, fontkit embedding, and shared text metrics.
+- [`src/lib/fonts/text-shaping.ts`](src/lib/fonts/text-shaping.ts): script/direction runs, bidi ordering, and HarfBuzz glyph shaping.
+- [`src/lib/fonts/draw-shaped-text.ts`](src/lib/fonts/draw-shaped-text.ts): shaped outline placement in the exported PDF.
 - [`src/lib/pdf-text-lines.ts`](src/lib/pdf-text-lines.ts): grouping extracted text spans into edit lines.
 - [`src/lib/pdf-coords.ts`](src/lib/pdf-coords.ts): PDF-point and viewport coordinate conversion.
 - [`src/lib/image-only-pdf.ts`](src/lib/image-only-pdf.ts): replacement-page rasterization while copying non-deletion pages unchanged.
