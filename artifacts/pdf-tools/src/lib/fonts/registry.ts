@@ -1,13 +1,14 @@
+import './regenerator-runtime';
 import { decodePDFRawStream, PDFArray, PDFDict, PDFDocument, PDFName, PDFRawStream, type PDFFont } from 'pdf-lib';
-import { createShapingFont, shapeTextByScript, type ShapedTextRun, type ShapingFont } from './text-shaping';
+import { containsDevanagariText, createShapingFont, getUnsupportedScriptCharacters, isJoinControl, shapeTextByScript, type ShapedTextRun, type ShapingFont } from './text-shaping';
+import { sanitizeTextForRendering } from '../pdf-text-sanitize';
 
 export type EditorFontFamily =
   | 'Liberation Sans' | 'Liberation Serif' | 'Liberation Mono'
   | 'Carlito' | 'Caladea' | 'Gelasio' | 'DejaVu Sans' | 'DejaVu Serif'
   | 'Noto Sans' | 'Noto Serif' | 'Lato' | 'Open Sans' | 'Roboto'
   | 'Source Sans 3' | 'Merriweather' | 'Montserrat'
-  | 'Noto Sans Hebrew' | 'Noto Serif Hebrew' | 'Heebo'
-  | 'Noto Sans Georgian' | 'Noto Sans Armenian';
+  | 'Noto Sans Devanagari' | 'Noto Serif Devanagari' | 'Mukta';
 
 export type FontVariant = 'regular' | 'bold' | 'italic' | 'boldItalic';
 export type FontDetectionStatus = 'detected' | 'fallback';
@@ -32,11 +33,53 @@ export type FontDetectionHints = {
 
 export type EditorTextMetrics = {
   widthOfTextAtSize(text: string, size: number): number;
+  measureTextAtSize(text: string, size: number): { width: number; uncoveredCodePoints: number[] };
   heightAtSize(size: number): number;
   shapeTextAtSize(text: string, size: number): ShapedTextRun[];
   missingFromPrimary(text: string): string[];
   missingCharacters(text: string): string[];
 };
+
+export function getEditorFontCoverageWarning(
+  family: EditorFontFamily,
+  uncoveredCharacters: string[],
+  fallbackAvailable: boolean,
+) {
+  if (!uncoveredCharacters.length) return null;
+  const unsupportedScripts = getUnsupportedScriptCharacters(uncoveredCharacters.join(''));
+  if (unsupportedScripts.length) {
+    const scripts = unsupportedScripts.map(({ script }) => script).join(', ');
+    const characters = unsupportedScripts.flatMap(({ characters }) => characters)
+      .map((character) => `⟦${character}⟧`).join(' ');
+    return `The ${scripts} script${unsupportedScripts.length === 1 ? ' is' : 's are'} not supported yet. Characters: ${characters}. Remove them before exporting.`;
+  }
+  const displayName = FONT_REGISTRY.find((font) => font.family === family)?.displayName ?? family;
+  const marked = [...new Set(uncoveredCharacters)].map((character) => `⟦${character}⟧`).join(' ');
+  return `Some characters are not in ${displayName}: ${marked}. Choose another font${fallbackAvailable ? '' : ' before exporting'}.`;
+}
+
+export function assertEditorFontCoverage(
+  metrics: EditorTextMetrics,
+  family: EditorFontFamily,
+  fallbackFamily: EditorFontFamily,
+  text: string,
+) {
+  text = sanitizeTextForRendering(text);
+  const unsupportedScripts = getUnsupportedScriptCharacters(text);
+  if (unsupportedScripts.length) {
+    const details = unsupportedScripts.map(({ script, characters }) => {
+      const codePoints = characters.map((character) =>
+        `${character} (U+${(character.codePointAt(0) ?? 0).toString(16).toUpperCase()})`);
+      return `${script} script is not supported yet: ${codePoints.join(', ')}`;
+    });
+    throw new Error(`Cannot export text: ${details.join('; ')}.`);
+  }
+  const uncoveredCharacters = metrics.missingCharacters(text);
+  if (!uncoveredCharacters.length) return;
+  const characters = [...new Set(uncoveredCharacters)].map((character) =>
+    `${character} (U+${(character.codePointAt(0) ?? 0).toString(16).toUpperCase()})`);
+  throw new Error(`Cannot export text: ${family} and ${fallbackFamily} do not cover ${characters.join(', ')}.`);
+}
 
 export type PdfTextFontRun = {
   text: string;
@@ -108,25 +151,17 @@ const fontFiles: Record<EditorFontFamily, Record<FontVariant, string>> = {
     regular: 'montserrat-regular.ttf', bold: 'montserrat-bold.ttf',
     italic: 'montserrat-italic.ttf', boldItalic: 'montserrat-bold-italic.ttf',
   },
-  'Noto Sans Hebrew': {
-    regular: 'noto-sans-hebrew-regular.ttf', bold: 'noto-sans-hebrew-bold.ttf',
-    italic: 'noto-sans-hebrew-regular.ttf', boldItalic: 'noto-sans-hebrew-bold.ttf',
+  'Noto Sans Devanagari': {
+    regular: 'noto-sans-devanagari-regular.ttf', bold: 'noto-sans-devanagari-regular.ttf',
+    italic: 'noto-sans-devanagari-regular.ttf', boldItalic: 'noto-sans-devanagari-regular.ttf',
   },
-  'Noto Serif Hebrew': {
-    regular: 'noto-serif-hebrew-regular.ttf', bold: 'noto-serif-hebrew-bold.ttf',
-    italic: 'noto-serif-hebrew-regular.ttf', boldItalic: 'noto-serif-hebrew-bold.ttf',
+  'Noto Serif Devanagari': {
+    regular: 'noto-serif-devanagari-regular.ttf', bold: 'noto-serif-devanagari-regular.ttf',
+    italic: 'noto-serif-devanagari-regular.ttf', boldItalic: 'noto-serif-devanagari-regular.ttf',
   },
-  Heebo: {
-    regular: 'heebo-variable.ttf', bold: 'heebo-variable.ttf',
-    italic: 'heebo-variable.ttf', boldItalic: 'heebo-variable.ttf',
-  },
-  'Noto Sans Georgian': {
-    regular: 'noto-sans-georgian-regular.ttf', bold: 'noto-sans-georgian-bold.ttf',
-    italic: 'noto-sans-georgian-regular.ttf', boldItalic: 'noto-sans-georgian-bold.ttf',
-  },
-  'Noto Sans Armenian': {
-    regular: 'noto-sans-armenian-regular.ttf', bold: 'noto-sans-armenian-bold.ttf',
-    italic: 'noto-sans-armenian-regular.ttf', boldItalic: 'noto-sans-armenian-bold.ttf',
+  Mukta: {
+    regular: 'mukta-regular.ttf', bold: 'mukta-regular.ttf',
+    italic: 'mukta-regular.ttf', boldItalic: 'mukta-regular.ttf',
   },
 };
 
@@ -141,11 +176,9 @@ const fontsThatRequireFullEmbedding = new Set<EditorFontFamily>([
   'Roboto',
   'Source Sans 3',
   'Merriweather',
-  'Heebo',
-  'Noto Sans Hebrew',
-  'Noto Serif Hebrew',
-  'Noto Sans Georgian',
-  'Noto Sans Armenian',
+  'Noto Sans Devanagari',
+  'Noto Serif Devanagari',
+  'Mukta',
 ]);
 
 function fontKey(family: EditorFontFamily, variant: FontVariant) {
@@ -167,7 +200,6 @@ function getShapingFont(family: EditorFontFamily, variant: FontVariant) {
       key,
       bytes,
       parsed.characterSet,
-      family === 'Heebo' ? getFontWeight(variant) : undefined,
     );
   });
   shapingFontCache.set(key, pending);
@@ -193,16 +225,87 @@ export function getCachedEditorTextMetrics(
   family: EditorFontFamily,
   variant: FontVariant,
   fallbackFamily: EditorFontFamily = 'Noto Sans',
+  text = '',
 ) {
-  return resolvedTextMetrics.get(`${fontKey(family, variant)}:${fallbackFamily}`);
+  const usesAutomaticDevanagariFallback = containsDevanagariText(text) &&
+    !isDevanagariFamily(family) && !isDevanagariFamily(fallbackFamily);
+  return resolvedTextMetrics.get(`${fontKey(family, variant)}:${fallbackFamily}:${usesAutomaticDevanagariFallback}`);
+}
+
+function isDevanagariFamily(family: EditorFontFamily) {
+  return family === 'Noto Sans Devanagari' || family === 'Noto Serif Devanagari' || family === 'Mukta';
+}
+
+export const DEVANAGARI_FONT_NAME_MAPPINGS: ReadonlyArray<{
+  pattern: RegExp;
+  family: EditorFontFamily;
+}> = [
+  { pattern: /(?:noto\s*serif\s*devanagari|sanskrit\s*text|kokila|aparajita)/u, family: 'Noto Serif Devanagari' },
+  { pattern: /(?:mukta|utsaah|light|humanist)/u, family: 'Mukta' },
+  { pattern: /(?:noto\s*sans\s*devanagari|mangal|nirmala\s*ui|kalimati|sagarmatha|arial\s*unicode\s*ms|sakal\s*bharati|lohit\s*devanagari|gargi|samanata)/u, family: 'Noto Sans Devanagari' },
+];
+
+const legacyDevanagariFontPattern = /\b(?:preeti|kantipur|himali|kruti\s*dev|devlys|chanakya|shusha)\b/iu;
+const serifDevanagariFontPattern = /serif|sanskrit\s*text|kokila|aparajita/iu;
+const lightHumanistFontPattern = /mukta|utsaah|light|humanist/iu;
+
+export function isDevanagariEditorFont(family: EditorFontFamily) {
+  return isDevanagariFamily(family);
+}
+
+export function isLegacyDevanagariFontName(name: string) {
+  return legacyDevanagariFontPattern.test(name);
+}
+
+export function looksLikeLegacyDevanagariText(text: string) {
+  const letters = [...text].filter((character) => /\p{L}/u.test(character));
+  if (letters.length < 8 || letters.some((character) => /[\u0900-\u097f]/u.test(character))) return false;
+  const latinLetters = letters.filter((character) => /[A-Za-z]/u.test(character));
+  if (latinLetters.length / letters.length < 0.9) return false;
+  const words: string[] = Array.from(text.matchAll(/[A-Za-z]+/gu), ([word]) => word);
+  if (words.length < 3) return false;
+  const commonEnglishWords = new Set(['a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 'in', 'is', 'it', 'of', 'on', 'or', 'the', 'to', 'was', 'were', 'with']);
+  const englishWordCount = words.filter((word) => commonEnglishWords.has(word.toLowerCase())).length;
+  return englishWordCount === 0 && words.every((word) =>
+    word.length >= 2 && !/[aeiouy]{3}|[bcdfghjklmnpqrstvwxz]{5}/iu.test(word));
+}
+
+export function getSuggestedDevanagariFont(
+  originalName: string,
+  hints: FontDetectionHints = {},
+): EditorFontFamily {
+  const normalized = normalizePdfFontName(originalName);
+  const mapped = DEVANAGARI_FONT_NAME_MAPPINGS.find(({ pattern }) => pattern.test(normalized))?.family;
+  if (mapped) return mapped;
+  if (lightHumanistFontPattern.test(normalized)) return 'Mukta';
+  const flags = hints.flags ?? hints.descriptorFlags ?? hints.descriptor?.flags ??
+    hints.fontObj?.flags ?? hints.fontObj?.descriptor?.flags ?? 0;
+  const serif = hints.isSerifFont ?? hints.fontObj?.isSerifFont ?? Boolean(flags & 2);
+  return serif || serifDevanagariFontPattern.test(normalized)
+    ? 'Noto Serif Devanagari'
+    : 'Noto Sans Devanagari';
+}
+
+export function resolveDevanagariEditorFont(
+  originalName: string,
+  hints: FontDetectionHints = {},
+): { family: EditorFontFamily; status: FontDetectionStatus } {
+  const suggested = getSuggestedDevanagariFont(originalName, hints);
+  const originalMatch = getEditorFontAliasMatch(originalName);
+  return isDevanagariFamily(originalMatch ?? 'Liberation Sans') && originalMatch === suggested
+    ? { family: originalMatch, status: 'detected' }
+    : { family: suggested, status: 'fallback' };
 }
 
 export async function loadEditorTextMetrics(
   family: EditorFontFamily,
   variant: FontVariant,
   fallbackFamily: EditorFontFamily = 'Noto Sans',
+  text = '',
 ) {
-  const key = `${fontKey(family, variant)}:${fallbackFamily}`;
+  const usesAutomaticDevanagariFallback = containsDevanagariText(text) &&
+    !isDevanagariFamily(family) && !isDevanagariFamily(fallbackFamily);
+  const key = `${fontKey(family, variant)}:${fallbackFamily}:${usesAutomaticDevanagariFallback}`;
   const cached = textMetricsCache.get(key);
   if (cached) return cached;
   const pending = (async (): Promise<EditorTextMetrics> => {
@@ -222,21 +325,34 @@ export async function loadEditorTextMetrics(
         getShapingFont(effectiveFallbackFamily, variant),
       ])
       : [primary, primaryShapingFont] as const;
-    const shapingFonts = effectiveFallbackFamily
-      ? [primaryShapingFont, fallbackShapingFont]
-      : [primaryShapingFont];
-    return {
-      widthOfTextAtSize(text, size) {
+    const devanagariShapingFont = usesAutomaticDevanagariFallback
+      ? await getShapingFont('Noto Sans Devanagari', 'regular')
+      : undefined;
+    const shapingFonts = [
+      primaryShapingFont,
+      ...(effectiveFallbackFamily ? [fallbackShapingFont] : []),
+      ...(devanagariShapingFont ? [devanagariShapingFont] : []),
+    ];
+    const measureTextAtSize = (text: string, size: number) => {
         if (/^[\u0000-\u007f]*$/u.test(text)) {
-          return splitTextForPdf(text, primary, fallback).reduce(
-            (width, run) => width + run.font.widthOfTextAtSize(run.text, size),
-            0,
-          );
+          return {
+            width: splitTextForPdf(text, primary, fallback).reduce(
+              (width, run) => width + run.font.widthOfTextAtSize(run.text, size),
+              0,
+            ),
+            uncoveredCodePoints: [],
+          };
         }
-        return shapeTextByScript(text, shapingFonts).reduce(
-          (width, run) => width + run.advanceWidth / run.unitsPerEm * size,
-          0,
-        );
+        const runs = shapeTextByScript(text, shapingFonts);
+        return {
+          width: runs.reduce((width, run) => width + run.advanceWidth / run.unitsPerEm * size, 0),
+          uncoveredCodePoints: [...new Set(runs.flatMap((run) => run.uncoveredCodePoints))],
+        };
+    };
+    return {
+      measureTextAtSize,
+      widthOfTextAtSize(text, size) {
+        return measureTextAtSize(text, size).width;
       },
       heightAtSize(size) {
         return primary.heightAtSize(size);
@@ -258,24 +374,28 @@ export async function loadEditorTextMetrics(
       missingFromPrimary(text) {
         const primaryCharacters = new Set(primary.getCharacterSet());
         return [...new Set([...text]
-          .filter((character) => !/\s/u.test(character))
+          .filter((character) => !/\s/u.test(character) && !isJoinControl(character))
           .filter((character) => !primaryCharacters.has(character.codePointAt(0) ?? 0)))];
       },
       missingCharacters(text) {
         const primaryCharacters = new Set(primary.getCharacterSet());
         const fallbackCharacters = new Set(fallback.getCharacterSet());
+        const devanagariCharacters = devanagariShapingFont?.characterSet;
         return [...new Set([...text]
-          .filter((character) => !/\s/u.test(character))
+          .filter((character) => !/\s/u.test(character) && !isJoinControl(character))
           .filter((character) => {
             const codePoint = character.codePointAt(0) ?? 0;
-            return !primaryCharacters.has(codePoint) && !fallbackCharacters.has(codePoint);
+            return !primaryCharacters.has(codePoint) && !fallbackCharacters.has(codePoint) &&
+              !devanagariCharacters?.has(codePoint);
           }))];
       },
     };
   })();
   textMetricsCache.set(key, pending);
-  void pending.then((metrics) => resolvedTextMetrics.set(key, metrics));
-  void pending.catch(() => textMetricsCache.delete(key));
+  void pending.then(
+    (metrics) => resolvedTextMetrics.set(key, metrics),
+    () => textMetricsCache.delete(key),
+  );
   return pending;
 }
 
@@ -283,15 +403,19 @@ export async function loadEditorPreviewFonts(
   family: EditorFontFamily,
   variant: FontVariant,
   fallbackFamily: EditorFontFamily = 'Noto Sans',
+  text = '',
 ) {
-  const families = family === fallbackFamily ? [family] : [family, fallbackFamily];
-  await Promise.all(families.map(async (fontFamily) => {
+  const families = new Set<EditorFontFamily>([family, fallbackFamily]);
+  if (containsDevanagariText(text) && !isDevanagariFamily(family) && !isDevanagariFamily(fallbackFamily)) {
+    families.add('Noto Sans Devanagari');
+  }
+  await Promise.all([...families].map(async (fontFamily) => {
     const key = fontKey(fontFamily, variant);
     const cached = previewFontCache.get(key);
     if (cached) return cached;
     const pending = loadFontBytes(fontFamily, variant).then(async (bytes) => {
       const face = new FontFace(fontFamily, bytes.slice().buffer as ArrayBuffer, {
-        weight: fontFamily === 'Heebo' ? '100 900' : String(getFontWeight(variant)),
+        weight: String(getFontWeight(variant)),
         style: 'normal',
       });
       await face.load();
@@ -338,10 +462,11 @@ export async function captureEditorGlyphCheck(
     glyphId: encoded[index * 2] * 256 + encoded[index * 2 + 1],
     codePoints: [...glyph.codePoints],
   }));
-  const coveredCodePoints = new Set(glyphs.flatMap((glyph) => glyph.codePoints));
-  for (const character of text) {
+  const coveredCodePoints = new Set<number>(sourceFont.characterSet);
+  const characters = [...text];
+  for (const [characterIndex, character] of characters.entries()) {
     const codePoint = character.codePointAt(0) ?? 0;
-    if (!/\s/u.test(character) && !coveredCodePoints.has(codePoint)) {
+    if (!/\s/u.test(character) && !isJoinControl(character) && !coveredCodePoints.has(codePoint)) {
       throw new Error(`Could not validate ${family}: no glyph was encoded for U+${codePoint.toString(16).toUpperCase()}.`);
     }
   }
@@ -418,12 +543,29 @@ export function splitTextForPdf(text: string, primary: PDFFont, fallback: PDFFon
 }
 
 export function splitTextForPdfUsingFonts(text: string, fonts: PDFFont[]): PdfTextFontRun[] {
+  text = sanitizeTextForRendering(text);
   if (!fonts.length) throw new Error('No font is available for this text.');
   const runs: PdfTextFontRun[] = [];
   const characterSets = fonts.map((font) => new Set(font.getCharacterSet()));
-  for (const character of text) {
+  const characters = [...text];
+  for (const [characterIndex, character] of characters.entries()) {
     const codePoint = character.codePointAt(0) ?? 0;
     const previous = runs.at(-1)?.font;
+    if (isJoinControl(character)) {
+      const previousIndex = previous ? fonts.indexOf(previous) : -1;
+      const nextCharacter = characters.slice(characterIndex + 1).find((candidate) => !isJoinControl(candidate));
+      const nextCodePoint = nextCharacter?.codePointAt(0);
+      const selectedFont = previousIndex >= 0
+        ? previous
+        : nextCodePoint === undefined
+          ? undefined
+          : fonts.find((font) => font.getCharacterSet().includes(nextCodePoint));
+      if (!selectedFont) throw new Error('No selected or fallback font is available for a join control.');
+      const last = runs.at(-1);
+      if (last?.font === selectedFont) last.text += character;
+      else runs.push({ text: character, font: selectedFont });
+      continue;
+    }
     let selectedIndex = characterSets.findIndex((characters) => characters.has(codePoint));
     if (/\s/u.test(character) && previous) {
       const previousIndex = fonts.indexOf(previous);
@@ -485,12 +627,24 @@ export const FONT_REGISTRY: Array<{
   { family: 'Noto Serif', group: 'Serif', displayName: 'Noto Serif', languages: 'Latin, Vietnamese, Greek, Cyrillic', sample: 'Nguyễn Thị Hương' },
   { family: 'Merriweather', group: 'Serif', displayName: 'Merriweather', languages: 'Latin, Vietnamese, Cyrillic (Greek and ɔ use fallback)', sample: 'Zażółć gęślą jaźń' },
   { family: 'Montserrat', group: 'Display', displayName: 'Montserrat', languages: 'Latin, Vietnamese, Cyrillic (Greek uses fallback)', sample: 'Příliš žluťoučký kůň' },
-  { family: 'Noto Sans Hebrew', group: 'Hebrew', displayName: 'Noto Sans Hebrew', languages: 'Hebrew', sample: 'שלום עולם' },
-  { family: 'Noto Serif Hebrew', group: 'Hebrew', displayName: 'Noto Serif Hebrew', languages: 'Hebrew', sample: 'שלום עולם' },
-  { family: 'Heebo', group: 'Hebrew', displayName: 'Heebo', languages: 'Hebrew', sample: 'שלום עולם' },
-  { family: 'Noto Sans Georgian', group: 'Georgian', displayName: 'Noto Sans Georgian', languages: 'Georgian', sample: 'გამარჯობა' },
-  { family: 'Noto Sans Armenian', group: 'Armenian', displayName: 'Noto Sans Armenian', languages: 'Armenian', sample: 'Բարեւ աշխարհ' },
+  { family: 'Noto Sans Devanagari', group: 'Devanagari (Hindi, Nepali, Marathi)', displayName: 'Noto Sans Devanagari', languages: 'Hindi, Nepali, Marathi', sample: 'नमस्ते · नेपाल राष्ट्र · मराठी' },
+  { family: 'Noto Serif Devanagari', group: 'Devanagari (Hindi, Nepali, Marathi)', displayName: 'Noto Serif Devanagari', languages: 'Hindi, Nepali, Marathi', sample: 'हिन्दी भाषा · काठमाडौं · मराठी' },
+  { family: 'Mukta', group: 'Devanagari (Hindi, Nepali, Marathi)', displayName: 'Mukta', languages: 'Hindi, Nepali, Marathi', sample: 'क्षत्रिय · प्रधानमन्त्री · मराठी' },
 ];
+
+export const FONT_MENU_GROUP_ORDER = [
+  'Compatible',
+  'Devanagari (Hindi, Nepali, Marathi)',
+  'Broad coverage',
+  'Sans-serif',
+  'Serif',
+  'Display',
+];
+
+export function getEditorFontMenuGroup(family: EditorFontFamily) {
+  if (['DejaVu Sans', 'Noto Sans', 'DejaVu Serif', 'Noto Serif'].includes(family)) return 'Broad coverage';
+  return FONT_REGISTRY.find((font) => font.family === family)?.group ?? 'Compatible';
+}
 
 const aliases: Array<[RegExp, EditorFontFamily]> = [
   // Embedded clone names are identities, not fallbacks. Keep these before
@@ -498,10 +652,9 @@ const aliases: Array<[RegExp, EditorFontFamily]> = [
   [/liberation\s*sans/, 'Liberation Sans'], [/liberation\s*serif/, 'Liberation Serif'],
   [/liberation\s*mono/, 'Liberation Mono'], [/carlito/, 'Carlito'], [/caladea/, 'Caladea'],
   [/gelasio/, 'Gelasio'], [/dejavu\s*sans/, 'DejaVu Sans'], [/dejavu\s*serif/, 'DejaVu Serif'],
-  [/noto\s*sans\s*hebrew/, 'Noto Sans Hebrew'], [/noto\s*serif\s*hebrew/, 'Noto Serif Hebrew'],
-  [/heebo/, 'Heebo'], [/noto\s*sans\s*georgian/, 'Noto Sans Georgian'],
-  [/noto\s*sans\s*armenian/, 'Noto Sans Armenian'],
-  [/noto\s*sans/, 'Noto Sans'], [/noto\s*serif/, 'Noto Serif'], [/open\s?sans/, 'Open Sans'],
+  [/noto\s*sans\s*devanagari/, 'Noto Sans Devanagari'],
+  [/noto\s*serif\s*devanagari/, 'Noto Serif Devanagari'], [/mukta/, 'Mukta'],
+  [/^noto\s*sans$/, 'Noto Sans'], [/^noto\s*serif$/, 'Noto Serif'], [/open\s?sans/, 'Open Sans'],
   [/source\s?sans/, 'Source Sans 3'], [/lato/, 'Lato'], [/roboto/, 'Roboto'],
   [/merriweather/, 'Merriweather'], [/montserrat/, 'Montserrat'],
   [/symbol|zapfdingbats/, 'Liberation Sans'], // Base-14 Symbol fonts have no free metric-identical clone.
@@ -517,10 +670,20 @@ export function getEditorFontAliasMatch(name?: string): EditorFontFamily | undef
   return aliases.find(([pattern]) => pattern.test(normalized))?.[1];
 }
 
+export function resolveEditorFontFamily(value: unknown) {
+  const match = FONT_REGISTRY.find((font) => font.family === value);
+  return {
+    family: match?.family ?? 'Liberation Sans',
+    usedFallback: !match,
+  };
+}
+
 export function normalizePdfFontName(name: string) {
   return name
-    .replace(/^[^+]*\+/, '')
-    .replace(/(?:[-, ]?(?:bolditalic|bold|italic|oblique|semibold|medium|light|regular|psmt|mt|ps|bd))+$/i, '')
+    .replace(/^[A-Z]{6}\+/, '')
+    .replace(/(?:[-, _]?(?:bolditalic|bold\s*italic|semibold|demibold|bold|italic|oblique|semilight|light|medium|regular|roman|psmt|mt|ps|bd))+$/iu, '')
+    .replace(/[-,_\s]*\d+$/u, '')
+    .replace(/[^a-z0-9]+/giu, ' ')
     .trim()
     .toLowerCase();
 }
@@ -563,7 +726,7 @@ export function detectEditorFont(name?: string, hints: FontDetectionHints = {}):
     ? 'Liberation Mono'
     : serifNamePattern.test(raw) ? 'Liberation Serif' : undefined;
   const flagFallback = monospaceFlag ? 'Liberation Mono' : serifFlag ? 'Liberation Serif' : undefined;
-  const font = match ?? flagFallback ?? nameFallback ?? 'Liberation Sans';
+  const font = match ?? (normalized.startsWith('noto') ? undefined : flagFallback ?? nameFallback) ?? 'Liberation Sans';
   const registryFont = FONT_REGISTRY.find((entry) => entry.family === font);
   const status = match && !isGeneric && !isLatexFallback ? 'detected' : 'fallback';
   const identityLabel = embeddedIdentityLabels.find(([pattern]) => pattern.test(normalized))?.[1];
@@ -592,10 +755,17 @@ export function editorFontVariant(bold: boolean | undefined, italic: boolean | u
   return bold ? italic ? 'boldItalic' : 'bold' : italic ? 'italic' : 'regular';
 }
 
-export function cssFamilyFor(family: EditorFontFamily, fallbackFamily: EditorFontFamily = 'Noto Sans') {
-  const fallback = family === fallbackFamily ? '' : `, "${fallbackFamily}"`;
-  const generic = family.includes('Serif') || ['Caladea', 'Gelasio', 'Merriweather', 'Noto Serif Hebrew'].includes(family)
+export function cssFamilyFor(
+  family: EditorFontFamily,
+  fallbackFamily: EditorFontFamily = 'Noto Sans',
+  additionalFallbacks: EditorFontFamily[] = [],
+) {
+  const fallbacks = [...new Set([fallbackFamily, ...additionalFallbacks])]
+    .filter((fallback) => fallback !== family)
+    .map((fallback) => `"${fallback}"`)
+    .join(', ');
+  const generic = family.includes('Serif') || ['Caladea', 'Gelasio', 'Merriweather'].includes(family)
     ? 'serif'
     : family === 'Liberation Mono' ? 'monospace' : 'sans-serif';
-  return `"${family}"${fallback}, ${generic}`;
+  return `"${family}"${fallbacks ? `, ${fallbacks}` : ''}, ${generic}`;
 }

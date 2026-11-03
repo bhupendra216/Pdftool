@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { PDFDocument } from 'pdf-lib';
 import { describe, it } from 'node:test';
-import { detectEditorFont, embedEditorFont, FONT_REGISTRY, loadEditorTextMetrics, splitTextForPdf, type EditorFontFamily, type FontVariant } from './registry';
+import { assertEditorFontCoverage, detectEditorFont, embedEditorFont, FONT_MENU_GROUP_ORDER, FONT_REGISTRY, getEditorFontCoverageWarning, getSuggestedDevanagariFont, isLegacyDevanagariFontName, loadEditorTextMetrics, normalizePdfFontName, resolveDevanagariEditorFont, resolveEditorFontFamily, splitTextForPdf, type EditorFontFamily, type FontVariant } from './registry';
+import { getGraphemeBoundaries, getGraphemeSegments, nearestGraphemeBoundary } from './text-shaping';
 
 const fontAssetDirectory = new URL('../../../public/fonts/edit/', import.meta.url);
 
@@ -22,6 +23,48 @@ async function withFontAssetFetch<T>(run: () => Promise<T>) {
 }
 
 describe('Edit PDF font detection', () => {
+  it('normalizes subset font names and maps legacy Devanagari family names to real bundled fonts', () => {
+    assert.equal(normalizePdfFontName('ABCDEF+NotoSansDevanagari-Bold'), 'noto sans devanagari');
+    assert.equal(resolveDevanagariEditorFont('NotoSansDevanagari-Regular-9668').status, 'detected');
+    assert.equal(getSuggestedDevanagariFont('Mangal'), 'Noto Sans Devanagari');
+    assert.equal(getSuggestedDevanagariFont('Nirmala UI'), 'Noto Sans Devanagari');
+    assert.equal(getSuggestedDevanagariFont('Kalimati'), 'Noto Sans Devanagari');
+    assert.equal(getSuggestedDevanagariFont('Sagarmatha'), 'Noto Sans Devanagari');
+    assert.equal(getSuggestedDevanagariFont('Arial Unicode MS'), 'Noto Sans Devanagari');
+    assert.equal(getSuggestedDevanagariFont('Sakal Bharati'), 'Noto Sans Devanagari');
+    assert.equal(getSuggestedDevanagariFont('Lohit Devanagari'), 'Noto Sans Devanagari');
+    assert.equal(getSuggestedDevanagariFont('Gargi'), 'Noto Sans Devanagari');
+    assert.equal(getSuggestedDevanagariFont('Samanata'), 'Noto Sans Devanagari');
+    assert.equal(getSuggestedDevanagariFont('Noto Serif Devanagari'), 'Noto Serif Devanagari');
+    assert.equal(getSuggestedDevanagariFont('Kokila'), 'Noto Serif Devanagari');
+    assert.equal(getSuggestedDevanagariFont('Aparajita'), 'Noto Serif Devanagari');
+    assert.equal(getSuggestedDevanagariFont('Sanskrit Text'), 'Noto Serif Devanagari');
+    assert.equal(getSuggestedDevanagariFont('Utsaah'), 'Mukta');
+    assert.equal(getSuggestedDevanagariFont('Unrecognized', { isSerifFont: true }), 'Noto Serif Devanagari');
+    assert.equal(getSuggestedDevanagariFont('Unrecognized'), 'Noto Sans Devanagari');
+    for (const name of ['Preeti', 'Kantipur', 'Himali', 'Kruti Dev', 'DevLys', 'Chanakya', 'Shusha']) {
+      assert.equal(isLegacyDevanagariFontName(name), true, name);
+    }
+  });
+
+  it('orders the font menu and excludes removed script groups', () => {
+    assert.deepEqual(FONT_MENU_GROUP_ORDER.slice(0, 3), [
+      'Compatible',
+      'Devanagari (Hindi, Nepali, Marathi)',
+      'Broad coverage',
+    ]);
+    assert.equal(FONT_REGISTRY.length, 19);
+    assert.ok(FONT_REGISTRY.every((font) => !['Hebrew', 'Georgian', 'Armenian'].includes(font.group)));
+  });
+
+  it('maps an obsolete saved family id to Arial', () => {
+    assert.deepEqual(resolveEditorFontFamily('retired-font-id'), {
+      family: 'Liberation Sans',
+      usedFallback: true,
+    });
+    assert.equal(detectEditorFont('Noto Sans retired').font, 'Liberation Sans');
+  });
+
   it('loads every bundled family and style variant', async () => {
     await withFontAssetFetch(async () => {
       const variants: FontVariant[] = ['regular', 'bold', 'italic', 'boldItalic'];
@@ -91,15 +134,46 @@ describe('Edit PDF font detection', () => {
     });
   });
 
-  it('reports selected-font coverage gaps and validates the chosen fallback', async () => {
+  it('warns and blocks export for unsupported script text without throwing while measuring', async () => {
     await withFontAssetFetch(async () => {
-      const metrics = await loadEditorTextMetrics('Noto Sans Hebrew', 'regular', 'Noto Sans');
-      assert.ok(metrics.missingFromPrimary('English שלום').includes('E'));
-      assert.deepEqual(metrics.missingCharacters('English שלום'), []);
+      const text = 'שלום עולם · გამარჯობა · Բարեւ աշխարհ';
+      const metrics = await loadEditorTextMetrics('Liberation Sans', 'regular', 'Noto Sans', text);
+      assert.doesNotThrow(() => metrics.measureTextAtSize(text, 18));
+      assert.doesNotThrow(() => metrics.shapeTextAtSize(text, 18));
+      assert.match(getEditorFontCoverageWarning('Liberation Sans', [...text], false) ?? '', /not supported yet/u);
+      assert.throws(
+        () => assertEditorFontCoverage(metrics, 'Liberation Sans', 'Noto Sans', text),
+        /Hebrew script is not supported yet/u,
+      );
+    });
+  });
 
-      const limitedFallback = await loadEditorTextMetrics('Montserrat', 'regular', 'Noto Sans');
-      assert.ok(limitedFallback.missingCharacters('שלום').length > 0);
-      assert.throws(() => limitedFallback.shapeTextAtSize('שלום', 18), /No selected or fallback font contains/);
+  it('shapes mixed Latin and Devanagari runs, including digits, punctuation, and join controls', async () => {
+      await withFontAssetFetch(async () => {
+        const text = 'Kathmandu काठमाडौं 2082, क्ष ज्ञ श्र क्‍ष क्‌ष';
+        const metrics = await loadEditorTextMetrics('Noto Sans', 'regular', 'Noto Sans', text);
+        const runs = metrics.shapeTextAtSize(text, 18);
+
+        assert.ok(runs.some((run) => run.script === 'Latin' && /Kathmandu/u.test(run.text)));
+        assert.ok(runs.some((run) => run.script === 'Devanagari' && /काठमाडौं/u.test(run.text)));
+        assert.ok(runs.some((run) => run.script === 'Devanagari' && /2082/u.test(run.text)));
+        assert.ok(runs.filter((run) => run.script === 'Devanagari').every((run) => run.direction === 'ltr'));
+        assert.ok(runs.some((run) => /क्‍ष/u.test(run.text)));
+        assert.ok(runs.some((run) => /क्‌ष/u.test(run.text)));
+        assert.equal(metrics.missingCharacters(text).length, 0);
+      });
+  });
+
+  it('does not split Devanagari grapheme clusters when wrapping long words', () => {
+      assert.deepEqual(getGraphemeSegments('क्ष ज्ञ श्र'), ['क्ष', ' ', 'ज्ञ', ' ', 'श्र']);
+      assert.deepEqual(getGraphemeBoundaries('क्ष ज्ञ'), [0, 3, 4, 7]);
+      assert.equal(nearestGraphemeBoundary('क्ष ज्ञ', 2), 3);
+  });
+
+  it('reports unsupported text instead of silently accepting missing glyphs', async () => {
+      await withFontAssetFetch(async () => {
+        const metrics = await loadEditorTextMetrics('Mukta', 'regular', 'Noto Sans', 'नमस्ते🙂');
+        assert.ok(metrics.missingCharacters('नमस्ते🙂').includes('🙂'));
     });
   });
 });

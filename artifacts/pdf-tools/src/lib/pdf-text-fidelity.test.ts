@@ -98,9 +98,6 @@ describe('Edit PDF fidelity acceptance', () => {
         ['Noto Sans', 'Ọlá, ẹ, ń, ɔ'],
         ['Noto Sans', 'Καλημέρα · Привіт'],
         ['Carlito', 'Mārtiņš · Ķemeri · Šiauliai'],
-        ['Noto Sans Hebrew', 'English 123 שלום'],
-        ['Noto Sans Georgian', 'გამარჯობა'],
-        ['Noto Sans Armenian', 'Բարեւ աշխարհ'],
       ];
       const document = await PDFDocument.create();
       const glyphChecks: Awaited<ReturnType<typeof captureEditorGlyphCheck>>[] = [];
@@ -181,7 +178,7 @@ describe('Edit PDF fidelity acceptance', () => {
 
       for (const { family } of FONT_REGISTRY) {
         const slug = family.toLowerCase().replaceAll(' ', '-');
-        const fontAsset = family === 'Heebo' ? 'heebo-variable.ttf' : `${slug}-regular.ttf`;
+        const fontAsset = `${slug}-regular.ttf`;
         const fontBytes = readFileSync(fileURLToPath(new URL(fontAsset, fontAssetDirectory)));
         const originalFont = await document.embedFont(fontBytes, { subset: false });
         const editedFont = await embedEditorFont(document, family, 'regular');
