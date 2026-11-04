@@ -262,6 +262,8 @@ export function looksLikeLegacyDevanagariText(text: string) {
   if (letters.length < 8 || letters.some((character) => /[\u0900-\u097f]/u.test(character))) return false;
   const latinLetters = letters.filter((character) => /[A-Za-z]/u.test(character));
   if (latinLetters.length / letters.length < 0.9) return false;
+  const vowels = latinLetters.filter((character) => /[aeiouy]/iu.test(character));
+  if (vowels.length / latinLetters.length >= 0.3) return false;
   const words: string[] = Array.from(text.matchAll(/[A-Za-z]+/gu), ([word]) => word);
   if (words.length < 3) return false;
   const commonEnglishWords = new Set(['a', 'an', 'and', 'are', 'as', 'at', 'be', 'by', 'for', 'from', 'in', 'is', 'it', 'of', 'on', 'or', 'the', 'to', 'was', 'were', 'with']);

@@ -1,7 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { PDFDocument } from "pdf-lib";
 import * as pdfjsLib from "pdfjs-dist";
-import { cdp, page } from "vitest/browser";
+import { cdp, page, userEvent } from "vitest/browser";
 import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -713,6 +713,8 @@ it("shows Europass sample entries and the demo photo when the checkbox is turned
       checkbox?.click();
       await waitForProfilePhoto(host);
     });
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent?.trim() === "Expand all")?.click());
     expect(checkbox?.getAttribute("aria-checked")).toBe("true");
     expect(host.textContent).toContain("Europass-style CVs usually run 2 pages.");
     expect(host.textContent).not.toContain("Most job applications expect one.");
@@ -803,7 +805,7 @@ it("shows Europass sample entries and the demo photo when the checkbox is turned
     expect(saved.sections.find((item) => item.type === "digitalSkills")?.entries[0])
       .toMatchObject({ title: "My spreadsheet skills", sample: false });
 
-    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Close Driving licence section"]')?.click());
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Hide Driving licence section"]')?.click());
     await act(async () => checkbox?.click());
     await act(async () => checkbox?.click());
     expect(host.querySelector('[aria-label="Driving licence section"]')).toBeNull();
@@ -1255,6 +1257,7 @@ it("paginates the downloaded sample resume to the same page count as the preview
   globalThis.IS_REACT_ACT_ENVIRONMENT = true;
   try {
     await act(async () => root.render(createElement(ResumeBuilder)));
+    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
     await new Promise((resolve) => window.setTimeout(resolve, 700));
     const previewResume = validateResumeImport(JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null"));
     const previewPageCount = Number(host.querySelector(".rb-page-count")?.textContent?.match(/\d+/)?.[0]);
@@ -1800,3 +1803,231 @@ it("preserves typography across resume resets", () => {
   });
   expect(restoredDefaults.typography.font).toBe(DEFAULT_TYPOGRAPHY.font);
 });
+
+it("uses independent, persistent disclosures for sections and ID-backed entries", async () => {
+  const disclosureKey = "resume-builder-disclosure-state-v1";
+  window.localStorage.removeItem(STORAGE_KEY);
+  window.sessionStorage.removeItem(disclosureKey);
+  const host = document.createElement("div");
+  const style = document.createElement("style");
+  style.textContent = resumeBuilderCss;
+  document.head.append(style);
+  document.body.append(host);
+  const root = createRoot(host);
+  const previousActEnvironment = globalThis.IS_REACT_ACT_ENVIRONMENT;
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  const confirm = vi.spyOn(window, "confirm").mockReturnValue(true);
+  try {
+    await act(async () => root.render(createElement(ResumeBuilder)));
+    const contactToggle = host.querySelector<HTMLButtonElement>(".rb-contact > .rb-disclosure-header > .rb-disclosure-toggle");
+    const sectionToggle = (label: string) => host.querySelector<HTMLButtonElement>(
+      `.rb-section[aria-label="${label} section"] > .rb-disclosure-header > .rb-disclosure-toggle`,
+    );
+    const experienceToggle = sectionToggle("Experience");
+    expect(contactToggle?.getAttribute("aria-expanded")).toBe("true");
+    expect(experienceToggle?.getAttribute("aria-expanded")).toBe("false");
+    expect(experienceToggle?.getBoundingClientRect().height).toBeGreaterThanOrEqual(40);
+    expect(host.querySelector<HTMLButtonElement>(".rb-links-disclosure > .rb-disclosure-header > .rb-disclosure-toggle")?.getAttribute("aria-expanded")).toBe("false");
+    expect(Array.from(host.querySelectorAll(".rb-section[aria-label='Experience section'] > .rb-disclosure-header .rb-status-badge")).map((badge) => badge.textContent))
+      .toEqual(["Sample", "1 entries"]);
+    expect(Array.from(host.querySelectorAll(".rb-section[aria-label='Summary section'] > .rb-disclosure-header .rb-status-badge")).map((badge) => badge.textContent))
+      .toEqual(["Sample", "Filled"]);
+    expect(Array.from(host.querySelectorAll(".rb-links-disclosure > .rb-disclosure-header .rb-status-badge")).map((badge) => badge.textContent))
+      .toEqual(["Sample", "2 links"]);
+    const controlsId = experienceToggle?.getAttribute("aria-controls");
+    expect(controlsId).toBeTruthy();
+    expect(document.getElementById(controlsId!)).not.toBeNull();
+
+    const experienceHeader = host.querySelector<HTMLElement>(".rb-section[aria-label='Experience section'] > .rb-disclosure-header");
+    await act(async () => experienceHeader?.click());
+    expect(experienceToggle?.getAttribute("aria-expanded")).toBe("true");
+    await act(async () => experienceToggle?.click());
+    expect(experienceToggle?.getAttribute("aria-expanded")).toBe("false");
+    await act(async () => experienceToggle?.click());
+    expect(experienceToggle?.getAttribute("aria-expanded")).toBe("true");
+    experienceToggle?.focus();
+    await act(async () => userEvent.keyboard("{Space}"));
+    expect(experienceToggle?.getAttribute("aria-expanded")).toBe("false");
+    await act(async () => userEvent.keyboard("{Enter}"));
+    expect(experienceToggle?.getAttribute("aria-expanded")).toBe("true");
+
+    const sectionTitle = host.querySelector<HTMLInputElement>('[aria-label="Experience section"] input[id^="section-title-"]')!;
+    sectionTitle.focus();
+    await act(async () => userEvent.keyboard("{Space}"));
+    await act(async () => userEvent.keyboard("{Enter}"));
+    expect(experienceToggle?.getAttribute("aria-expanded")).toBe("true");
+    const setInputValue = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    await act(async () => {
+      setInputValue?.call(sectionTitle, "Experience");
+      sectionTitle.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Move Experience section down"]')?.click());
+    expect(experienceToggle?.getAttribute("aria-expanded")).toBe("true");
+    await act(async () => experienceToggle?.click());
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Move Experience section up"]')?.click());
+    expect(experienceToggle?.getAttribute("aria-expanded")).toBe("false");
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Hide Experience section"]')?.click());
+    expect(host.querySelector('[aria-label="Experience section"]')).toBeNull();
+    const undo = Array.from(host.querySelectorAll<HTMLButtonElement>("button")).find((button) => button.textContent?.trim() === "Undo");
+    expect(undo).not.toBeUndefined();
+    await act(async () => undo?.click());
+    expect(sectionToggle("Experience")?.getAttribute("aria-expanded")).toBe("false");
+
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Hide Experience section"]')?.click());
+    await act(async () => Array.from(host.querySelectorAll<HTMLSummaryElement>("summary"))
+      .find((summary) => summary.textContent?.trim() === "Add section")?.click());
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>(".rb-menu-items button"))
+      .find((button) => button.textContent?.trim() === "Experience")?.click());
+    expect(sectionToggle("Experience")?.getAttribute("aria-expanded")).toBe("true");
+    const experienceSection = host.querySelector('[aria-label="Experience section"]')!;
+    const entriesBeforeAdd = experienceSection.querySelectorAll(".rb-entry-disclosure").length;
+    await act(async () => Array.from(experienceSection.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent?.trim() === "Add entry")?.click());
+    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 0)));
+    const addedEntry = experienceSection.querySelectorAll<HTMLElement>(".rb-entry-disclosure")[entriesBeforeAdd]!;
+    const addedEntryToggle = addedEntry.querySelector<HTMLButtonElement>(".rb-disclosure-toggle");
+    expect(addedEntryToggle?.getAttribute("aria-expanded")).toBe("true");
+    expect(addedEntryToggle?.textContent?.trim()).toBe("Untitled entry");
+    expect(document.activeElement).toBe(addedEntry.querySelector("input"));
+    await act(async () => addedEntryToggle?.click());
+    await act(async () => addedEntry.querySelector<HTMLButtonElement>('[aria-label="Move entry 2 up"]')?.click());
+    expect(experienceSection.querySelectorAll(".rb-entry-disclosure")[0]).toBe(addedEntry);
+    expect(addedEntryToggle?.getAttribute("aria-expanded")).toBe("false");
+    await act(async () => addedEntry.querySelector<HTMLButtonElement>('[aria-label="Move entry 1 down"]')?.click());
+    expect(experienceSection.querySelectorAll(".rb-entry-disclosure")[1]).toBe(addedEntry);
+    expect(addedEntryToggle?.getAttribute("aria-expanded")).toBe("false");
+    await act(async () => addedEntry.querySelector<HTMLButtonElement>('[aria-label="Remove entry 2"]')?.click());
+    expect(experienceSection.querySelectorAll(".rb-entry-disclosure")).toHaveLength(1);
+
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Collapse Experience"]')?.click());
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Expand Certifications"]')?.click());
+    const certificationEntry = host.querySelector<HTMLButtonElement>(".rb-section[aria-label='Certifications section'] .rb-entry-disclosure > .rb-disclosure-header > .rb-disclosure-toggle");
+    await act(async () => certificationEntry?.click());
+    const linkInput = host.querySelector<HTMLInputElement>(".rb-section[aria-label='Certifications section'] .rb-entry-form label:nth-child(2) input")!;
+    await act(async () => certificationEntry?.click());
+    await act(async () => host.querySelector<HTMLButtonElement>('[aria-label="Collapse Certifications"]')?.click());
+    await act(async () => {
+      setInputValue?.call(linkInput, "javascript:alert(1)");
+      linkInput.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 0)));
+    expect(host.querySelector<HTMLButtonElement>('[aria-label="Collapse Certifications"]')?.getAttribute("aria-expanded")).toBe("true");
+    expect(host.querySelector<HTMLButtonElement>(".rb-section[aria-label='Certifications section'] .rb-entry-disclosure > .rb-disclosure-header > .rb-disclosure-toggle")?.getAttribute("aria-expanded")).toBe("true");
+    expect(host.querySelector(".rb-section[aria-label='Certifications section'] .rb-status-error")?.textContent).toBe("1 issues");
+
+    const savedModel = JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null");
+    expect(Object.keys(savedModel)).not.toContain("disclosureState");
+    const savedUiState = JSON.parse(window.sessionStorage.getItem(disclosureKey) ?? "null");
+    expect(Object.keys(savedUiState).some((key) => key.startsWith("entry:"))).toBe(true);
+
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent?.trim() === "Start blank")?.click());
+    expect(contactToggle?.getAttribute("aria-expanded")).toBe("true");
+    expect(sectionToggle("Summary")?.getAttribute("aria-expanded")).toBe("false");
+    expect(host.querySelector(".rb-contact .rb-status-badge")?.textContent).toBe("Empty");
+    expect(Array.from(host.querySelectorAll(".rb-section[aria-label='Summary section'] > .rb-disclosure-header .rb-status-badge")).map((badge) => badge.textContent))
+      .toEqual(["Empty"]);
+    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY) ?? "null").contact.fullName).toBe("");
+  } finally {
+    confirm.mockRestore();
+    await act(async () => root.unmount());
+    host.remove();
+    style.remove();
+    window.localStorage.removeItem(STORAGE_KEY);
+    window.sessionStorage.removeItem(disclosureKey);
+    globalThis.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+  }
+}, 60_000);
+
+it("shows concise summaries for sample entries and leaves resume outputs unchanged when toggled", async () => {
+  const disclosureKey = "resume-builder-disclosure-state-v1";
+  window.localStorage.removeItem(STORAGE_KEY);
+  window.sessionStorage.removeItem(disclosureKey);
+  const host = document.createElement("div");
+  const style = document.createElement("style");
+  style.textContent = resumeBuilderCss;
+  document.head.append(style);
+  document.body.append(host);
+  const root = createRoot(host);
+  const previousActEnvironment = globalThis.IS_REACT_ACT_ENVIRONMENT;
+  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
+  try {
+    await act(async () => root.render(createElement(ResumeBuilder)));
+    pdfjsLib.GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>("button"))
+      .find((button) => button.textContent?.trim() === "Expand all")?.click());
+    const pdfText = async (bytes: Uint8Array) => {
+      const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(bytes) }).promise;
+      return Promise.all(Array.from({ length: pdf.numPages }, async (_, index) =>
+        (await (await pdf.getPage(index + 1)).getTextContent()).items.flatMap((item) => "str" in item ? [item.str] : []).join(" "),
+      ));
+    };
+    const verifyDisclosureOutputInvariant = async () => {
+      await act(async () => new Promise((resolve) => window.setTimeout(resolve, 600)));
+      const modelJson = window.localStorage.getItem(STORAGE_KEY)!;
+      const before = {
+        modelJson,
+        preview: Array.from(host.querySelectorAll<HTMLElement>(".rb-paper")).map((paper) => paper.textContent),
+        pdfText: await pdfText(await createResumePdf(validateResumeImport(JSON.parse(modelJson)))),
+      };
+      await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>("button"))
+        .find((button) => button.textContent?.trim() === "Expand all")?.click());
+      await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>("button"))
+        .find((button) => button.textContent?.trim() === "Collapse all")?.click());
+      await act(async () => new Promise((resolve) => window.setTimeout(resolve, 600)));
+      const afterJson = window.localStorage.getItem(STORAGE_KEY)!;
+      expect({
+        modelJson: afterJson,
+        preview: Array.from(host.querySelectorAll<HTMLElement>(".rb-paper")).map((paper) => paper.textContent),
+        pdfText: await pdfText(await createResumePdf(validateResumeImport(JSON.parse(afterJson)))),
+      }).toEqual(before);
+    };
+    const summaries = Array.from(host.querySelectorAll<HTMLButtonElement>(".rb-entry-disclosure > .rb-disclosure-header > .rb-disclosure-toggle, .rb-publication-disclosure > .rb-disclosure-header > .rb-disclosure-toggle"))
+      .map((button) => button.textContent?.replace(/\s+/g, " ").trim());
+    expect(summaries).toContain("Operations Assistant · Cedar Grove Cooperative · 2024–Present");
+    expect(summaries).toContain("B.A. Communication · North Coast College · 2020–2024");
+    expect(summaries).toContain("Hard Skills · 4 skills");
+    expect(summaries).toContain("Example Title of a Research Paper · 2025 · Conference paper");
+    await verifyDisclosureOutputInvariant();
+
+    const europeanCheckbox = Array.from(host.querySelectorAll<HTMLButtonElement>('[role="checkbox"]'))
+      .find((checkbox) => checkbox.parentElement?.textContent?.includes("Europass CV"));
+    await act(async () => europeanCheckbox?.click());
+    await act(async () => waitForProfilePhoto(host));
+    await act(async () => Array.from(host.querySelectorAll<HTMLSummaryElement>("summary"))
+      .find((summary) => summary.textContent?.trim() === "Add section")?.click());
+    await act(async () => Array.from(host.querySelectorAll<HTMLButtonElement>(".rb-menu-items button"))
+      .find((button) => button.textContent?.trim() === "Projects")?.click());
+    const europeanSummaries = Array.from(host.querySelectorAll<HTMLButtonElement>(".rb-entry-disclosure > .rb-disclosure-header > .rb-disclosure-toggle"))
+      .map((button) => button.textContent?.replace(/\s+/g, " ").trim());
+    expect(europeanSummaries).toContain("Volunteer Scheduling Guide · Community project · 2023");
+    expect(europeanSummaries).toContain("Spreadsheets and data analysis · Proficient");
+    expect(europeanSummaries).toContain("Regional Operations Summit · 2025");
+    expect(europeanSummaries).toContain("Example Community Scholarship · 2022");
+    expect(europeanSummaries).toContain("Example Operations Association · 2023–Present");
+    expect(host.querySelector(".rb-section-summary")?.textContent).toBe("Mother tongue: English");
+    const languageToggle = host.querySelector<HTMLButtonElement>(".rb-language-disclosure .rb-disclosure-toggle");
+    expect(languageToggle?.textContent?.trim()).toBe("Spanish · B2");
+    const listening = host.querySelector<HTMLButtonElement>('[aria-label="Listening, language 1"]');
+    await act(async () => listening?.click());
+    await act(async () => Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]'))
+      .find((option) => option.textContent?.trim() === "A1")?.click());
+    expect(host.querySelector(".rb-language-disclosure .rb-disclosure-toggle")?.textContent?.trim()).toBe("Spanish · mixed levels");
+    await verifyDisclosureOutputInvariant();
+
+    await act(async () => europeanCheckbox?.click());
+    const formatSelect = host.querySelector<HTMLButtonElement>('[aria-label="Resume format"]');
+    await act(async () => formatSelect?.click());
+    await act(async () => Array.from(document.body.querySelectorAll<HTMLElement>('[role="option"]'))
+      .find((option) => option.textContent?.trim() === "Higher study")?.click());
+    await verifyDisclosureOutputInvariant();
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    style.remove();
+    window.localStorage.removeItem(STORAGE_KEY);
+    window.sessionStorage.removeItem(disclosureKey);
+    globalThis.IS_REACT_ACT_ENVIRONMENT = previousActEnvironment;
+  }
+}, 60_000);

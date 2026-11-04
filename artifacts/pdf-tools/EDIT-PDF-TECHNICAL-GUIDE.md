@@ -58,9 +58,12 @@ page or typing cannot shift the workspace. The desktop page workspace uses the
 available width between a 240–300px Devanagari/pages column and a resizable Text properties panel;
 the panel defaults to a responsive 380–520px width and persists its custom
 width. The Devanagari panel is collapsible and remembers its state; the Pages
-list below it scrolls independently. The on-screen keyboard is placed at the
-end of the page workspace in normal flow so it cannot cover an active text box.
-Narrow layouts keep the properties panel below the page.
+list below it scrolls independently. Its Phonetic guide and reference-only
+keyboard dock are generated from the active phonetic mapping data. The dock
+opens above the download bar, adds matching bottom space to the page workspace,
+and never inserts text; its open state lasts for the browser session. Narrow
+layouts make the dock a scrollable bottom sheet and keep the properties panel
+below the page.
 
 ## How a document moves through the editor
 
@@ -103,7 +106,14 @@ Preeti, Kantipur, Himali, Kruti Dev, DevLys, Chanakya, and Shusha are recognized
 
 Fonts load from `public/fonts/edit/` only when needed; no runtime font-provider request is made. The editor warns when text uses fallback glyphs or an unsupported script. Hebrew, Georgian, and Armenian text opens without crashing, but editing/export is blocked with the affected characters listed because those scripts are not supported yet. For non-ASCII edited lines, HarfBuzz shapes script and direction runs, and glyph outlines are read from the same HarfBuzz font object and font bytes used for shaping. Legitimately blank whitespace and join-control glyphs are skipped; a missing outline for other text is an export failure. Devanagari fonts are loaded only for a Devanagari selection or text requiring that script. Devanagari's invisible extraction layer uses a custom ToUnicode mapping so ligatures, conjuncts, join controls, whitespace, and punctuation copy as the original Unicode text. If an individual edit cannot be exported, the editor identifies the text and offers to download without that edit or cancel; the edit remains available in the editor either way. The shared bidi and run-segmentation pipeline remains in place. Static font families use regular, bold, italic, and bold-italic files where supplied. A small set of historically problematic edit fonts is embedded without subsetting.
 
-The Edit PDF text controls preserve native browser input and IME composition. Devanagari phonetic (ITRANS-style) typing is optional, off by default, and reset to off when a new document is opened; Escape makes the next character literal Latin. The on-screen script keyboard is closed by default, uses locally bundled JSON layout data, and inserts Unicode at the caret or replaces the current selection. Its Devanagari InScript base/Shift letter mappings follow the BIS layout and match the installed XKB `deva` map. The UI presents digits as an explicit Devanagari/Latin toggle rather than a physical number row, and adds separate virama, joiner, non-joiner, navigation, deletion, and conjunct controls. No Windows installation is available in this environment for a live OS-level comparison. Both input methods produce Unicode text that follows the same shaping and PDF extraction path as directly typed text. Keyboard insertion has draft-level undo/redo; Backspace operates on grapheme boundaries.
+The Edit PDF text controls preserve native browser input and IME composition.
+Devanagari phonetic typing is optional, off by default, and reset to off when a
+new document is opened; Escape makes the next character literal Latin. The
+Phonetic guide has searchable Vowels, Consonants, Signs, Conjuncts, Numbers, and
+Examples tabs. A QWERTY layout reference shows converter outputs, sequence
+tooltips, combinations, and a Shift preview. It is not an input device: keys
+cannot insert or replace text. The guide, keyboard keys, combinations, and
+accessible table all use the same mapping data as the phonetic converter.
 
 The supported shaping scope is Latin and Latin Extended (including Vietnamese), Greek, Cyrillic, and Devanagari. Hebrew, Georgian, and Armenian are recognized for clear unsupported-script warnings and export blocking. Arabic joining, full Arabic/Persian/Urdu bidi behavior, CJK, Thai, and other scripts are not included in this phase.
 

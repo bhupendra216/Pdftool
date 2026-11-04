@@ -127,7 +127,8 @@ it('keeps IME and normal typing intact and supports phonetic typing only', async
       expect(beforeInput?.defaultPrevented).toBe(true);
     }
     expect(textarea.value).toBe('नमस्ते');
-    expect(container.textContent).toContain('Phonetic cheat sheet');
+    expect(container.textContent).toContain('Phonetic guide');
+    expect(container.querySelector('[role="tablist"][aria-label="Phonetic guide categories"]')).not.toBeNull();
 
     await act(async () => {
       textarea.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, key: 'Escape' }));
@@ -142,16 +143,18 @@ it('keeps IME and normal typing intact and supports phonetic typing only', async
     });
     expect(textarea.value).toBe('नमस्तेa');
 
-    expect(container.querySelector('button[aria-controls="edit-pdf-script-keyboard"]')).toBeNull();
-    expect(container.querySelector('#edit-pdf-script-keyboard')).toBeNull();
-    expect([...container.querySelectorAll('button')].some((button) => button.textContent?.trim() === 'Keyboard')).toBe(false);
+    const keyboardButton = container.querySelector<HTMLButtonElement>('button[aria-controls="edit-pdf-phonetic-keyboard-dock"]');
+    expect(keyboardButton).not.toBeNull();
+    expect(container.querySelector('[data-phonetic-keyboard-dock]')).not.toBeNull();
+    expect(container.querySelector('[data-phonetic-keyboard-dock]')?.hasAttribute('hidden')).toBe(true);
     expect(container.textContent).toContain("Type Hindi or Nepali: turn on phonetic typing, or use your device's Hindi or Nepali keyboard.");
 
-    const cheatSheet = container.querySelector('summary');
-    expect(cheatSheet?.textContent).toBe('Phonetic cheat sheet');
-    await act(async () => cheatSheet?.click());
-    expect(cheatSheet?.parentElement?.tagName).toBe('DETAILS');
-    expect((cheatSheet?.parentElement as HTMLDetailsElement).open).toBe(true);
+    const guideSearch = container.querySelector<HTMLInputElement>('input[aria-label="Search phonetic guide"]')!;
+    await act(async () => {
+      guideSearch.value = 'kh';
+      guideSearch.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    expect(container.querySelector('[data-phonetic-input="kh"][data-phonetic-output="ख"]')).not.toBeNull();
 
     const examples: Array<[string, string]> = [
       ['namaste', 'नमस्ते'],

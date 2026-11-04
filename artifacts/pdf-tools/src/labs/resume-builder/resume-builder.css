@@ -91,7 +91,7 @@
 .rb-contact-item a { min-width: 0; max-width: 100%; overflow-wrap: anywhere; }
 .rb-paper a { color: inherit; text-decoration: var(--rb-link-decoration); }
 .rb-paper .rb-document-header { margin: 0; }
-.rb-measure-paper { position: fixed; top: 0; left: 0; z-index: -1; visibility: hidden; box-shadow: none; transform: none; }
+.rb-measure-paper { position: fixed; top: 0; left: -10000px; z-index: -1; visibility: hidden; box-shadow: none; transform: none; }
 .rb-contact-separator { flex: 0 0 auto; margin-inline: .4em; color: #111; white-space: pre; }
 .rb-photo-position { position: relative; display: grid; min-width: 120px; gap: 5px; color: hsl(var(--card-foreground)); font-size: .82rem; font-weight: 600; }
 .rb-photo-position-trigger { width: 100%; }
@@ -108,9 +108,42 @@
 .rb-entry-subheading .rb-entry-right { text-align: right; }
 .rb-bullets { padding-left: 20px; margin: 5px 0 0; }
 .rb-bullets li { margin: 2px 0; line-height: 1.35; }
-.rb-section { margin-bottom: 13px; padding: 14px; scroll-margin-top: 16px; box-shadow: none; }
-.rb-section-header { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; }
-.rb-section-header input { min-width: 0; flex: 1 1 180px; font-size: 1rem; font-weight: 700; }
+.rb-disclosure { min-width: 0; border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--card)); color: hsl(var(--card-foreground)); }
+.rb-disclosure-header { display: flex; min-width: 0; flex-wrap: wrap; align-items: center; gap: 6px 10px; padding: 3px 8px; }
+.rb-disclosure-toggle { display: inline-flex; min-width: 0; min-height: 40px; flex: 1 1 180px; align-items: center; gap: 10px; border: 0; border-radius: 3px; background: transparent; color: inherit; padding: 8px; font: inherit; font-weight: 700; line-height: 1.35; text-align: left; cursor: pointer; }
+.rb-disclosure-toggle:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+.rb-disclosure-arrow { width: 0; height: 0; flex: 0 0 auto; border-top: 5px solid transparent; border-bottom: 5px solid transparent; border-left: 6px solid currentColor; }
+.rb-disclosure-toggle[aria-expanded="true"] .rb-disclosure-arrow { transform: rotate(90deg); }
+.rb-disclosure-label { min-width: 0; overflow-wrap: anywhere; }
+.rb-disclosure-controls { display: flex; min-width: 0; flex: 1 1 auto; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 6px; }
+.rb-disclosure-controls > button { min-height: 40px; }
+.rb-disclosure-controls > input { min-width: 110px; min-height: 40px; flex: 1 1 120px; font-size: 1rem; font-weight: 700; }
+.rb-disclosure-body { min-width: 0; border-top: 1px solid hsl(var(--border)); padding: 14px 16px 16px; }
+.rb-disclosure-body[hidden] { display: none; }
+.rb-typography-card > .rb-disclosure-header { min-height: 50px; padding: 5px 8px; }
+.rb-contact { margin-bottom: 12px; }
+.rb-contact > .rb-disclosure-body { padding-top: 14px; }
+.rb-disclosure-actions { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 8px; }
+.rb-disclosure-actions button { min-height: 40px; }
+.rb-badges { display: inline-flex; min-height: 32px; flex-wrap: wrap; align-items: center; gap: 5px; }
+.rb-section-summary { max-width: 100%; color: hsl(var(--muted-foreground)); font-size: .78rem; overflow-wrap: anywhere; }
+.rb-status-badge { display: inline-flex; min-height: 24px; align-items: center; border: 1px solid hsl(var(--border)); border-radius: 999px; background: hsl(var(--muted)); color: hsl(var(--muted-foreground)); padding: 2px 8px; font-size: .73rem; font-weight: 600; line-height: 1.2; white-space: nowrap; }
+.rb-status-error { border-color: hsl(var(--destructive)); background: hsl(var(--destructive) / .08); color: hsl(var(--destructive)); }
+.rb-section { margin-bottom: 13px; padding: 0; scroll-margin-top: 16px; box-shadow: none; }
+.rb-section > .rb-disclosure-header { flex-wrap: nowrap; gap: 4px; padding: 3px 6px; }
+.rb-section > .rb-disclosure-header > .rb-disclosure-toggle { flex: 0 0 40px; justify-content: center; padding: 8px; }
+.rb-section > .rb-disclosure-header > .rb-disclosure-controls { flex: 1 1 0; flex-wrap: nowrap; justify-content: flex-start; gap: 5px; }
+.rb-section > .rb-disclosure-header > .rb-disclosure-controls > input { flex: 1 1 100px; }
+.rb-section > .rb-disclosure-header .rb-badges { gap: 4px; }
+.rb-section > .rb-disclosure-header .rb-status-badge { padding: 2px 6px; }
+.rb-section > .rb-disclosure-body { padding: 12px 14px 14px; }
+.rb-nested-disclosure { border-radius: calc(var(--radius) - 2px); background: hsl(var(--card)); }
+.rb-nested-disclosure + .rb-nested-disclosure { margin-top: 8px; }
+.rb-nested-disclosure .rb-disclosure-header { padding: 3px 6px; }
+.rb-nested-disclosure .rb-disclosure-toggle { flex-basis: 210px; font-size: .9rem; }
+.rb-nested-disclosure .rb-disclosure-body { padding: 10px; }
+.rb-entry-disclosure, .rb-language-disclosure, .rb-publication-disclosure { margin: 10px 0; }
+.rb-entry-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; padding-top: 0; margin-top: 0; }
 .rb-entry-actions { display: flex; flex-wrap: wrap; gap: 6px; grid-column: 1 / -1; }
 .rb-entry-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; border-top: 1px solid hsl(var(--border)); padding-top: 11px; margin-top: 11px; }
 .rb-entry-form label, .rb-contact-grid label, .rb-link-form label { display: grid; min-width: 0; gap: 5px; color: hsl(var(--card-foreground)); font-size: .81rem; font-weight: 600; }
@@ -118,7 +151,7 @@
 .rb-language-editor { display: grid; gap: 12px; margin-top: 12px; }
 .rb-language-mother-editor { display: grid; gap: 8px; }
 .rb-language-mother-item { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px; align-items: center; }
-.rb-language-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; border-top: 1px solid hsl(var(--border)); padding-top: 11px; }
+.rb-language-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; border-top: 0; padding-top: 0; }
 .rb-language-form > label { display: grid; min-width: 0; gap: 5px; color: hsl(var(--card-foreground)); font-size: .81rem; font-weight: 600; }
 .rb-language-levels { display: grid; grid-column: 1 / -1; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
 .rb-language-levels label { display: grid; min-width: 0; gap: 5px; color: hsl(var(--card-foreground)); font-size: .78rem; font-weight: 600; }
@@ -140,7 +173,7 @@
 .rb-publication-help li { margin: 4px 0; }
 .rb-publication-options { display: flex; flex-wrap: wrap; gap: 10px 18px; margin: 9px 0; }
 .rb-publication-options label { display: inline-flex; align-items: center; gap: 7px; color: hsl(var(--card-foreground)); font-size: .82rem; }
-.rb-publication-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; border-top: 1px solid hsl(var(--border)); padding-top: 11px; margin-top: 11px; }
+.rb-publication-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; border-top: 0; padding-top: 0; margin-top: 0; }
 .rb-publication-form > label { display: grid; min-width: 0; gap: 5px; color: hsl(var(--card-foreground)); font-size: .81rem; font-weight: 600; }
 .rb-publication-form > label:nth-child(2), .rb-publication-form > label:nth-child(3), .rb-publication-form > label:nth-child(8), .rb-publication-form > label:nth-child(10), .rb-publication-form .rb-entry-actions { grid-column: 1 / -1; }
 .rb-publication-form textarea { min-height: 100px; resize: vertical; }
@@ -151,6 +184,8 @@
 .rb-typography-card { margin: 0 0 18px; border: 1px solid hsl(var(--border)); border-radius: var(--radius); background: hsl(var(--card)); color: hsl(var(--card-foreground)); }
 .rb-typography-card > summary { cursor: pointer; padding: 13px 16px; font-weight: 700; }
 .rb-typography-card > summary:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 2px; }
+.rb-section.rb-typography-card { margin-bottom: 13px; }
+.rb-contact.rb-typography-card { margin: 0 0 12px; }
 .rb-typography-controls { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 220px), 1fr)); gap: 13px; border-top: 1px solid hsl(var(--border)); padding: 14px 16px 16px; }
 .rb-typography-font, .rb-typography-size { display: grid; align-content: start; gap: 6px; color: hsl(var(--card-foreground)); font-size: .85rem; font-weight: 600; }
 .rb-typography-font > span, .rb-typography-size > span { color: hsl(var(--muted-foreground)); font-size: .78rem; font-weight: 400; line-height: 1.4; }
@@ -164,6 +199,9 @@
 .rb-photo-thumbnail { width: 16mm; height: 20mm; border: .5pt solid #d1d5db; background: #fff; object-fit: cover; }
 .rb-contact-hint { color: hsl(var(--muted-foreground)); font-size: .72rem; font-weight: 400; }
 .rb-links { display: grid; gap: 8px; margin-top: 13px; color: hsl(var(--card-foreground)); }
+.rb-links-disclosure { margin-top: 14px; }
+.rb-links-disclosure > .rb-disclosure-body { padding: 10px; }
+.rb-link-value { overflow-wrap: anywhere; }
 .rb-link-form { display: grid; grid-template-columns: 1fr 1.5fr auto; gap: 7px; align-items: end; }
 .rb-link-item { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; color: hsl(var(--card-foreground)); font-size: .85rem; }
 .rb-link-item span { overflow-wrap: anywhere; }
@@ -186,6 +224,7 @@
 }
 
 @media (max-width: 560px) {
+  body:has(.rb-root) main section a.bg-secondary { white-space: normal; overflow-wrap: anywhere; text-align: center; }
   .rb-shell { padding: 18px 12px 40px; }
   .rb-header { display: block; }
   .rb-privacy { margin-top: 14px; }
@@ -197,6 +236,16 @@
   .rb-link-form { grid-template-columns: minmax(0, 1fr); }
   .rb-entry-heading, .rb-entry-subheading { grid-template-columns: minmax(0, 1fr); }
   .rb-entry-heading .rb-entry-right, .rb-entry-subheading .rb-entry-right { text-align: left; white-space: normal; }
+  .rb-disclosure-header { gap: 5px; padding: 3px 6px; }
+  .rb-disclosure-toggle { flex-basis: 100%; }
+  .rb-disclosure-controls { justify-content: flex-start; }
+  .rb-disclosure-controls > input { flex-basis: 100%; }
+  .rb-section > .rb-disclosure-header { flex-wrap: wrap; }
+  .rb-section > .rb-disclosure-header > .rb-disclosure-toggle { flex-basis: 40px; }
+  .rb-section > .rb-disclosure-header > .rb-disclosure-controls { flex-basis: 100%; flex-wrap: wrap; }
+  .rb-section > .rb-disclosure-body, .rb-contact > .rb-disclosure-body { padding: 10px; }
+  .rb-disclosure-body { padding: 10px; }
+  .rb-nested-disclosure .rb-disclosure-toggle { flex-basis: 100%; }
 }
 
 @media print {

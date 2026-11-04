@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { PDFDocument } from 'pdf-lib';
 import { describe, it } from 'node:test';
-import { assertEditorFontCoverage, detectEditorFont, embedEditorFont, FONT_MENU_GROUP_ORDER, FONT_REGISTRY, getEditorFontCoverageWarning, getSuggestedDevanagariFont, isLegacyDevanagariFontName, loadEditorTextMetrics, normalizePdfFontName, resolveDevanagariEditorFont, resolveEditorFontFamily, splitTextForPdf, type EditorFontFamily, type FontVariant } from './registry';
+import { assertEditorFontCoverage, detectEditorFont, embedEditorFont, FONT_MENU_GROUP_ORDER, FONT_REGISTRY, getEditorFontCoverageWarning, getSuggestedDevanagariFont, isLegacyDevanagariFontName, loadEditorTextMetrics, looksLikeLegacyDevanagariText, normalizePdfFontName, resolveDevanagariEditorFont, resolveEditorFontFamily, splitTextForPdf, type EditorFontFamily, type FontVariant } from './registry';
 import { getGraphemeBoundaries, getGraphemeSegments, nearestGraphemeBoundary } from './text-shaping';
 
 const fontAssetDirectory = new URL('../../../public/fonts/edit/', import.meta.url);
@@ -24,7 +24,7 @@ async function withFontAssetFetch<T>(run: () => Promise<T>) {
 
 describe('Edit PDF font detection', () => {
   it('normalizes subset font names and maps legacy Devanagari family names to real bundled fonts', () => {
-    assert.equal(normalizePdfFontName('ABCDEF+NotoSansDevanagari-Bold'), 'noto sans devanagari');
+    assert.equal(normalizePdfFontName('ABCDEF+NotoSansDevanagari-Bold'), 'notosansdevanagari');
     assert.equal(resolveDevanagariEditorFont('NotoSansDevanagari-Regular-9668').status, 'detected');
     assert.equal(getSuggestedDevanagariFont('Mangal'), 'Noto Sans Devanagari');
     assert.equal(getSuggestedDevanagariFont('Nirmala UI'), 'Noto Sans Devanagari');
@@ -45,6 +45,11 @@ describe('Edit PDF font detection', () => {
     for (const name of ['Preeti', 'Kantipur', 'Himali', 'Kruti Dev', 'DevLys', 'Chanakya', 'Shusha']) {
       assert.equal(isLegacyDevanagariFontName(name), true, name);
     }
+  });
+
+  it('distinguishes English text from legacy-font Latin gibberish', () => {
+    assert.equal(looksLikeLegacyDevanagariText('Damaged line Second intact line Third intact line'), false);
+    assert.equal(looksLikeLegacyDevanagariText('kfnl sfkf no sfof no'), true);
   });
 
   it('orders the font menu and excludes removed script groups', () => {

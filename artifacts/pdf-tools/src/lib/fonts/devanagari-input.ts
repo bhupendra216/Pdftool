@@ -1,58 +1,127 @@
-type Phoneme = { type: 'consonant' | 'vowel' | 'mark'; value: string };
+export type PhoneticCategory = 'vowels' | 'consonants' | 'signs' | 'conjuncts' | 'numbers' | 'examples';
 
-const tokens: Array<[string, Phoneme]> = [
-  ['ksh', { type: 'consonant', value: 'क्ष' }],
-  ['gya', { type: 'consonant', value: 'ज्ञ' }],
-  ['gy', { type: 'consonant', value: 'ज्ञ' }],
-  ['kh', { type: 'consonant', value: 'ख' }],
-  ['gh', { type: 'consonant', value: 'घ' }],
-  ['chh', { type: 'consonant', value: 'छ' }],
-  ['ch', { type: 'consonant', value: 'च' }],
-  ['jh', { type: 'consonant', value: 'झ' }],
-  ['th', { type: 'consonant', value: 'थ' }],
-  ['dh', { type: 'consonant', value: 'ध' }],
-  ['ph', { type: 'consonant', value: 'फ' }],
-  ['bh', { type: 'consonant', value: 'भ' }],
-  ['sh', { type: 'consonant', value: 'श' }],
-  ['aa', { type: 'vowel', value: 'आ' }],
-  ['ii', { type: 'vowel', value: 'ई' }],
-  ['ee', { type: 'vowel', value: 'ई' }],
-  ['uu', { type: 'vowel', value: 'ऊ' }],
-  ['oo', { type: 'vowel', value: 'ऊ' }],
-  ['ai', { type: 'vowel', value: 'ऐ' }],
-  ['au', { type: 'vowel', value: 'औ' }],
-  ['M', { type: 'mark', value: 'ं' }],
-  ['~', { type: 'mark', value: 'ँ' }],
-  ['a', { type: 'vowel', value: 'अ' }],
-  ['i', { type: 'vowel', value: 'इ' }],
-  ['u', { type: 'vowel', value: 'उ' }],
-  ['e', { type: 'vowel', value: 'ए' }],
-  ['o', { type: 'vowel', value: 'ओ' }],
-  ['k', { type: 'consonant', value: 'क' }],
-  ['g', { type: 'consonant', value: 'ग' }],
-  ['c', { type: 'consonant', value: 'क' }],
-  ['j', { type: 'consonant', value: 'ज' }],
-  ['T', { type: 'consonant', value: 'ट' }],
-  ['D', { type: 'consonant', value: 'ड' }],
-  ['N', { type: 'consonant', value: 'ण' }],
-  ['t', { type: 'consonant', value: 'त' }],
-  ['d', { type: 'consonant', value: 'द' }],
-  ['n', { type: 'consonant', value: 'न' }],
-  ['p', { type: 'consonant', value: 'प' }],
-  ['b', { type: 'consonant', value: 'ब' }],
-  ['m', { type: 'consonant', value: 'म' }],
-  ['y', { type: 'consonant', value: 'य' }],
-  ['r', { type: 'consonant', value: 'र' }],
-  ['l', { type: 'consonant', value: 'ल' }],
-  ['v', { type: 'consonant', value: 'व' }],
-  ['w', { type: 'consonant', value: 'व' }],
-  ['s', { type: 'consonant', value: 'स' }],
-  ['h', { type: 'consonant', value: 'ह' }],
-  ['f', { type: 'consonant', value: 'फ़' }],
-  ['q', { type: 'consonant', value: 'क़' }],
-  ['x', { type: 'consonant', value: 'क्ष' }],
-  ['z', { type: 'consonant', value: 'ज़' }],
+export type PhoneticMapping = {
+  input: string;
+  output: string;
+  category: PhoneticCategory;
+  kind?: 'consonant' | 'vowel' | 'mark' | 'example' | 'rule' | 'number';
+  description?: string;
+};
+
+export type PhoneticLayoutData = {
+  id: string;
+  label: string;
+  tokens: readonly PhoneticMapping[];
+  examples: readonly PhoneticMapping[];
+  conjunctExamples: readonly string[];
+  keyRows: readonly string[];
+  combinations: readonly string[];
+};
+
+type Phoneme = { type: 'consonant' | 'vowel' | 'mark'; value: string };
+const VIRAMA = '्';
+
+const layoutTokens: PhoneticMapping[] = [
+  { input: 'ksh', output: 'क्ष', category: 'conjuncts', kind: 'consonant' },
+  { input: 'gya', output: 'ज्ञ', category: 'conjuncts', kind: 'consonant' },
+  { input: 'gy', output: 'ज्ञ', category: 'conjuncts', kind: 'consonant' },
+  { input: 'kh', output: 'ख', category: 'consonants', kind: 'consonant' },
+  { input: 'gh', output: 'घ', category: 'consonants', kind: 'consonant' },
+  { input: 'chh', output: 'छ', category: 'consonants', kind: 'consonant' },
+  { input: 'ch', output: 'च', category: 'consonants', kind: 'consonant' },
+  { input: 'jh', output: 'झ', category: 'consonants', kind: 'consonant' },
+  { input: 'th', output: 'थ', category: 'consonants', kind: 'consonant' },
+  { input: 'dh', output: 'ध', category: 'consonants', kind: 'consonant' },
+  { input: 'ph', output: 'फ', category: 'consonants', kind: 'consonant' },
+  { input: 'bh', output: 'भ', category: 'consonants', kind: 'consonant' },
+  { input: 'sh', output: 'श', category: 'consonants', kind: 'consonant' },
+  { input: 'aa', output: 'आ', category: 'vowels', kind: 'vowel' },
+  { input: 'ii', output: 'ई', category: 'vowels', kind: 'vowel' },
+  { input: 'ee', output: 'ई', category: 'vowels', kind: 'vowel' },
+  { input: 'uu', output: 'ऊ', category: 'vowels', kind: 'vowel' },
+  { input: 'oo', output: 'ऊ', category: 'vowels', kind: 'vowel' },
+  { input: 'ai', output: 'ऐ', category: 'vowels', kind: 'vowel' },
+  { input: 'au', output: 'औ', category: 'vowels', kind: 'vowel' },
+  { input: 'M', output: 'ं', category: 'signs', kind: 'mark', description: 'Anusvara' },
+  { input: '~', output: 'ँ', category: 'signs', kind: 'mark', description: 'Chandrabindu' },
+  { input: 'a', output: 'अ', category: 'vowels', kind: 'vowel' },
+  { input: 'i', output: 'इ', category: 'vowels', kind: 'vowel' },
+  { input: 'u', output: 'उ', category: 'vowels', kind: 'vowel' },
+  { input: 'e', output: 'ए', category: 'vowels', kind: 'vowel' },
+  { input: 'o', output: 'ओ', category: 'vowels', kind: 'vowel' },
+  { input: 'k', output: 'क', category: 'consonants', kind: 'consonant' },
+  { input: 'g', output: 'ग', category: 'consonants', kind: 'consonant' },
+  { input: 'c', output: 'क', category: 'consonants', kind: 'consonant' },
+  { input: 'j', output: 'ज', category: 'consonants', kind: 'consonant' },
+  { input: 'T', output: 'ट', category: 'consonants', kind: 'consonant' },
+  { input: 'D', output: 'ड', category: 'consonants', kind: 'consonant' },
+  { input: 'N', output: 'ण', category: 'consonants', kind: 'consonant' },
+  { input: 't', output: 'त', category: 'consonants', kind: 'consonant' },
+  { input: 'd', output: 'द', category: 'consonants', kind: 'consonant' },
+  { input: 'n', output: 'न', category: 'consonants', kind: 'consonant' },
+  { input: 'p', output: 'प', category: 'consonants', kind: 'consonant' },
+  { input: 'b', output: 'ब', category: 'consonants', kind: 'consonant' },
+  { input: 'm', output: 'म', category: 'consonants', kind: 'consonant' },
+  { input: 'y', output: 'य', category: 'consonants', kind: 'consonant' },
+  { input: 'r', output: 'र', category: 'consonants', kind: 'consonant' },
+  { input: 'l', output: 'ल', category: 'consonants', kind: 'consonant' },
+  { input: 'v', output: 'व', category: 'consonants', kind: 'consonant' },
+  { input: 'w', output: 'व', category: 'consonants', kind: 'consonant' },
+  { input: 's', output: 'स', category: 'consonants', kind: 'consonant' },
+  { input: 'h', output: 'ह', category: 'consonants', kind: 'consonant' },
+  { input: 'f', output: 'फ़', category: 'consonants', kind: 'consonant' },
+  { input: 'q', output: 'क़', category: 'consonants', kind: 'consonant' },
+  { input: 'x', output: 'क्ष', category: 'conjuncts', kind: 'consonant' },
+  { input: 'z', output: 'ज़', category: 'consonants', kind: 'consonant' },
 ];
+
+const explicitByInput = new Map(layoutTokens.map((entry) => [entry.input, entry]));
+const lowercaseMappings = layoutTokens.filter((entry) => /^[a-z]$/u.test(entry.input));
+
+const phoneticExamples: PhoneticMapping[] = [
+  { input: 'nepal', output: 'नेपाल', category: 'examples', kind: 'example' },
+  { input: 'namaste', output: 'नमस्ते', category: 'examples', kind: 'example' },
+  { input: 'kshatriya', output: 'क्षत्रिय', category: 'examples', kind: 'example' },
+  { input: 'gyaan', output: 'ज्ञान', category: 'examples', kind: 'example' },
+];
+
+export const PHONETIC_LAYOUTS: readonly PhoneticLayoutData[] = [{
+  id: 'phonetic',
+  label: 'Phonetic',
+  tokens: [
+    ...layoutTokens,
+    ...lowercaseMappings
+      .filter((entry) => !explicitByInput.has(entry.input.toUpperCase()))
+      .map((entry) => ({
+        ...entry,
+        input: entry.input.toUpperCase(),
+        description: 'Shift layer',
+      })),
+    ...Array.from({ length: 10 }, (_, digit) => ({
+      input: String(digit),
+      output: String.fromCodePoint(0x0966 + digit),
+      category: 'numbers' as const,
+      kind: 'number' as const,
+    })),
+  ],
+  examples: phoneticExamples,
+  conjunctExamples: ['tra', 'shra', 'ksha'],
+  keyRows: ['1234567890', 'qwertyuiop', 'asdfghjkl', 'zxcvbnm'],
+  combinations: [
+    'aa', 'ii', 'uu', 'kh', 'gh', 'chh', 'th', 'dh', 'sh', 'ksh', 'tra', 'gy',
+  ],
+}] as const;
+
+export const DEFAULT_PHONETIC_LAYOUT_ID = PHONETIC_LAYOUTS[0].id;
+
+export function getPhoneticLayout(layoutId = DEFAULT_PHONETIC_LAYOUT_ID) {
+  const layout = PHONETIC_LAYOUTS.find((entry) => entry.id === layoutId);
+  if (!layout) throw new RangeError(`Unknown phonetic layout: ${layoutId}`);
+  return layout;
+}
+
+export const PHONETIC_KEY_ROWS = PHONETIC_LAYOUTS[0].keyRows;
+export const PHONETIC_COMBINATIONS = PHONETIC_LAYOUTS[0].combinations;
 
 const vowelSigns: Record<string, string> = {
   अ: '',
@@ -67,7 +136,57 @@ const vowelSigns: Record<string, string> = {
   औ: 'ौ',
 };
 
-function getPhonemes(input: string): Phoneme[] {
+export function getPhoneticGuideItems(layoutId = DEFAULT_PHONETIC_LAYOUT_ID): Record<PhoneticCategory, readonly PhoneticMapping[]> {
+  const layout = getPhoneticLayout(layoutId);
+  return {
+    vowels: layout.tokens.filter((entry) => entry.category === 'vowels' && entry.description !== 'Shift layer'),
+    consonants: layout.tokens.filter((entry) =>
+      entry.category === 'consonants' && entry.description !== 'Shift layer'),
+    signs: [
+      ...layout.tokens.filter((entry) => entry.category === 'signs'),
+      { input: 'consonant + consonant', output: VIRAMA, category: 'signs', kind: 'rule', description: 'Virama joins consecutive consonants' },
+    ],
+    conjuncts: [
+      ...layout.tokens.filter((entry) => entry.category === 'conjuncts'),
+      ...layout.conjunctExamples.map((input) => ({
+        input,
+        output: transliterateDevanagariWithLayout(input, layout.id),
+        category: 'conjuncts' as const,
+        kind: 'example' as const,
+      })),
+    ],
+    numbers: layout.tokens.filter((entry) => entry.category === 'numbers'),
+    examples: layout.examples,
+  };
+}
+
+export const PHONETIC_GUIDE_ITEMS = getPhoneticGuideItems();
+
+export function getPhoneticKeyMapping(input: string, layoutId = DEFAULT_PHONETIC_LAYOUT_ID) {
+  return getPhoneticLayout(layoutId).tokens.find((entry) => entry.input === input);
+}
+
+export function getPhoneticSequencesForKey(key: string, layoutId = DEFAULT_PHONETIC_LAYOUT_ID) {
+  return getPhoneticLayout(layoutId).tokens
+    .filter((entry) => entry.input.length > 1 && entry.input.startsWith(key))
+    .map((entry) => entry);
+}
+
+export function getPhoneticMapping(input: string, layoutId = DEFAULT_PHONETIC_LAYOUT_ID) {
+  const layout = getPhoneticLayout(layoutId);
+  return layout.tokens.find((entry) => entry.input === input) ??
+    layout.examples.find((entry) => entry.input === input);
+}
+
+function getPhonemes(input: string, layoutId: string): Phoneme[] {
+  const tokens: Array<[string, Phoneme]> = getPhoneticLayout(layoutId).tokens.map((entry) => [
+    entry.input,
+    {
+      type: entry.kind === 'consonant' ? 'consonant'
+        : entry.kind === 'vowel' ? 'vowel' : 'mark',
+      value: entry.output,
+    },
+  ]);
   const phonemes: Phoneme[] = [];
   for (let index = 0; index < input.length;) {
     const token = tokens.find(([key]) => input.startsWith(key, index));
@@ -83,14 +202,19 @@ function getPhonemes(input: string): Phoneme[] {
 }
 
 export function transliterateDevanagari(input: string) {
-  if (/^nepal$/iu.test(input)) return 'नेपाल';
-  if (/^gyaan$/iu.test(input)) return 'ज्ञान';
+  return transliterateDevanagariWithLayout(input, DEFAULT_PHONETIC_LAYOUT_ID);
+}
+
+export function transliterateDevanagariWithLayout(input: string, layoutId: string) {
+  const layout = getPhoneticLayout(layoutId);
+  const specialCase = layout.examples.find((entry) => entry.input.toLowerCase() === input.toLowerCase());
+  if (specialCase) return specialCase.output;
 
   const output: string[] = [];
   let pendingConsonant = false;
-  for (const phoneme of getPhonemes(input)) {
+  for (const phoneme of getPhonemes(input, layoutId)) {
     if (phoneme.type === 'consonant') {
-      if (pendingConsonant) output.push('्');
+      if (pendingConsonant) output.push(VIRAMA);
       output.push(phoneme.value);
       pendingConsonant = true;
     } else if (phoneme.type === 'vowel') {

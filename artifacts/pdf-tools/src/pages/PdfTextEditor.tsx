@@ -14,6 +14,7 @@ import { assertEditorFontCoverage, captureEditorGlyphCheck, detectEditorFont, ed
 import { drawShapedTextOutlines } from '../lib/fonts/draw-shaped-text';
 import { containsDevanagariText, getGraphemeBoundaries, getGraphemeSegments, getShapedCaretStops, getUnsupportedScriptCharacters, UnrenderableGlyphError } from '../lib/fonts/text-shaping';
 import { transliterateDevanagari } from '../lib/fonts/devanagari-input';
+import { PhoneticGuide, PhoneticKeyboardDock } from './PhoneticGuide';
 import { drawPdfTextForExtraction } from '../lib/pdf-text-actual-text';
 import { countUnreadableTextPlaceholders, getUnreadableTextContext, replaceImpossibleDevanagariSigns, sanitizeEditorText, sanitizeExtractedPdfText, sanitizeTextForRendering, UNREADABLE_TEXT_PLACEHOLDER } from '../lib/pdf-text-sanitize';
 import { getToolPath } from '../../../api-server/src/lib/content';
@@ -722,6 +723,15 @@ function PdfTextEditor() {
   const [fontFallbackNotice, setFontFallbackNotice] = useState<string | null>(null);
   const [phoneticMode, setPhoneticMode] = useState(false);
   const [literalNext, setLiteralNext] = useState(false);
+  const [phoneticKeyboardOpen, setPhoneticKeyboardOpen] = useState(() => {
+    try {
+      return typeof window !== 'undefined' && window.sessionStorage.getItem('edit-pdf-phonetic-keyboard-open') === 'true';
+    } catch (reason) {
+      console.warn('[edit-pdf] could not restore phonetic keyboard dock state', reason);
+      return false;
+    }
+  });
+  const [phoneticShiftLayer, setPhoneticShiftLayer] = useState(false);
   const [documentHasDevanagariText, setDocumentHasDevanagariText] = useState(false);
   const [phoneticPanelWasShown, setPhoneticPanelWasShown] = useState(false);
   const [phoneticPanelCollapsed, setPhoneticPanelCollapsed] = useState(() => {
@@ -821,9 +831,10 @@ function PdfTextEditor() {
     void loadEditorTextMetrics(draft.fontFamily, editorFontVariant(draft.bold, draft.italic), draft.fallbackFamily, draft.text)
       .then((metrics) => {
         if (cancelled) return;
-        const missing = [...new Set(metrics.missingFromPrimary(draft.text))];
-        const unavailable = metrics.missingCharacters(draft.text);
-        const unsupported = getUnsupportedScriptCharacters(draft.text)
+        const readableText = sanitizeTextForRendering(draft.text);
+        const missing = [...new Set(metrics.missingFromPrimary(readableText))];
+        const unavailable = metrics.missingCharacters(readableText);
+        const unsupported = getUnsupportedScriptCharacters(readableText)
           .flatMap(({ characters }) => characters);
         const affected = [...new Set([...(unavailable.length ? unavailable : missing), ...unsupported])];
         setFontCoverageWarning(getEditorFontCoverageWarning(draft.fontFamily, affected, unavailable.length === 0));
@@ -841,6 +852,26 @@ function PdfTextEditor() {
       console.warn('[edit-pdf] could not save Devanagari panel state', reason);
     }
   }, [phoneticPanelCollapsed]);
+
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem('edit-pdf-phonetic-keyboard-open', String(phoneticKeyboardOpen));
+    } catch (reason) {
+      console.warn('[edit-pdf] could not save phonetic keyboard dock state', reason);
+    }
+  }, [phoneticKeyboardOpen]);
+
+  useEffect(() => {
+    const closeDockOnEscape = (event: KeyboardEvent) => {
+      if (event.key !== 'Escape' || !phoneticKeyboardOpen) return;
+      const focused = document.activeElement;
+      if (activeTextInputRef.current?.contains(focused)) return;
+      event.preventDefault();
+      setPhoneticKeyboardOpen(false);
+    };
+    document.addEventListener('keydown', closeDockOnEscape);
+    return () => document.removeEventListener('keydown', closeDockOnEscape);
+  }, [phoneticKeyboardOpen]);
 
   useEffect(() => {
     if (!draft || draft.manualWidth || (!draft.isAdded && draft.text === draft.originalText)) return;
@@ -1479,7 +1510,7 @@ function PdfTextEditor() {
       phoneticBufferRef.current = null;
       return;
     }
-    if (!phoneticMode || !data || !/^[A-Za-z~]$/u.test(data)) {
+    if (!phoneticMode || !data || !/^[A-Za-z0-9~]$/u.test(data)) {
       phoneticBufferRef.current = null;
       return;
     }
@@ -1575,7 +1606,7 @@ function PdfTextEditor() {
       phoneticBufferRef.current = null;
       return;
     }
-    if (event.key !== ' ' && event.key.length === 1 && /^[A-Za-z~]$/u.test(event.key)) return;
+    if (event.key !== ' ' && event.key.length === 1 && /^[A-Za-z0-9~]$/u.test(event.key)) return;
     phoneticBufferRef.current = null;
     const text = event.currentTarget instanceof HTMLTextAreaElement
       ? event.currentTarget.value
@@ -2165,6 +2196,29 @@ function PdfTextEditor() {
     : '';
   const draftUnreadableCount = draft ? countUnreadableTextPlaceholders(draft.text) : 0;
   const showPhoneticControls = documentHasDevanagariText || phoneticPanelWasShown;
+  useEffect(() => {
+    if (!phoneticKeyboardOpen || !showPhoneticControls) return;
+    const activeEditor = activeTextInputRef.current;
+    const dock = document.getElementById('edit-pdf-phonetic-keyboard-dock');
+    if (!activeEditor || !dock) return;
+    const editorRect = activeEditor.getBoundingClientRect();
+    const dockRect = dock.getBoundingClientRect();
+    if (editorRect.top >= dockRect.bottom || editorRect.bottom <= dockRect.top) return;
+    let scrollable = activeEditor.parentElement;
+    while (scrollable && scrollable !== document.body) {
+      const style = window.getComputedStyle(scrollable);
+      if (scrollable.scrollHeight > scrollable.clientHeight && /(auto|scroll)/u.test(style.overflowY)) {
+        const visibleBottom = Math.min(scrollable.getBoundingClientRect().bottom, dockRect.top);
+        const amount = editorRect.bottom - visibleBottom + 12;
+        if (amount > 0) {
+          scrollable.scrollTop += amount;
+          return;
+        }
+      }
+      scrollable = scrollable.parentElement;
+    }
+    window.scrollBy({ top: editorRect.bottom - dockRect.top + 12, behavior: 'smooth' });
+  }, [phoneticKeyboardOpen, showPhoneticControls]);
   const originalFontUnavailable = draft && containsDevanagariText(draft.text) &&
     draft.fontDetectionStatus === 'fallback' && isDevanagariEditorFont(draft.fontFamily)
     ? draft.originalFontFamilyName || draft.fontName
@@ -2230,24 +2284,14 @@ function PdfTextEditor() {
             {literalNext ? 'Type one literal Latin character next' : phoneticMode ? 'Phonetic mode on · Esc, then a letter, types it literally' : 'Normal typing · characters are inserted as typed'}
           </span>
         </div>
-        <details className="mt-2 min-w-0 rounded-md border border-border px-2 py-1.5 text-xs">
-          <summary
-            className="cursor-pointer break-words font-medium text-foreground"
-            onPointerDown={keepPanelInteraction}
-            onMouseDown={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-            }}
-            onClick={(event) => {
-              event.preventDefault();
-              const details = event.currentTarget.parentElement as HTMLDetailsElement | null;
-              if (details) details.open = !details.open;
-            }}
-          >Phonetic cheat sheet</summary>
-          <p className="mt-2 break-words text-muted-foreground">
-            namaste → नमस्ते · nepal → नेपाल · kshatriya → क्षत्रिय · gyaan → ज्ञान · aa → आ · ii → ई · M → ं · ~ → ँ
-          </p>
-        </details>
+        <PhoneticGuide
+          keyboardOpen={phoneticKeyboardOpen}
+          onPanelMouseDown={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+          }}
+          onShowKeyboard={() => setPhoneticKeyboardOpen((open) => !open)}
+        />
       </>}
     </div>
   );
@@ -2302,7 +2346,6 @@ function PdfTextEditor() {
       </div>}
       {fontCoverageWarning && !devanagariFallback && <p role="status" className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-foreground">{fontCoverageWarning}</p>}
       {fontFallbackNotice && <p role="status" className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-foreground">{fontFallbackNotice}</p>}
-      {renderPhoneticControls('mb-3 min-[900px]:hidden')}
       {draftUnreadableCount > 0 && <p role="status" className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-2 text-xs text-foreground">
         {draftUnreadableCount} {draftUnreadableCount === 1 ? 'character' : 'characters'} in this paragraph could not be read from the PDF. Check the highlighted spots.
       </p>}
@@ -2572,6 +2615,9 @@ function PdfTextEditor() {
               maxHeight: `calc(100vh - ${phoneticTopOffset + 16}px)`,
             } as CSSProperties}
           >
+            {showPhoneticControls && <div className="mb-3 min-w-0 shrink-0 min-[900px]:hidden">
+              {renderPhoneticControls('mb-3')}
+            </div>}
             {showPhoneticControls && <div className="hidden min-w-0 shrink-0 min-[1200px]:block">
               {renderPhoneticControls('mb-3')}
             </div>}
@@ -2583,7 +2629,10 @@ function PdfTextEditor() {
               </button>)}
             </div>
           </aside>}
-          <main ref={workspaceMainRef} className={`min-w-0 space-y-4 min-[900px]:col-start-1 ${showPhoneticControls ? 'min-[1200px]:col-start-2' : 'min-[1200px]:col-start-1'}`}>
+          <main
+            ref={workspaceMainRef}
+            className={`min-w-0 space-y-4 min-[900px]:col-start-1 ${showPhoneticControls ? 'min-[1200px]:col-start-2' : 'min-[1200px]:col-start-1'} ${phoneticKeyboardOpen && showPhoneticControls ? 'phonetic-keyboard-dock-open' : ''}`}
+          >
             {showPhoneticControls && <div className="hidden min-[900px]:block min-[1200px]:hidden">{renderPhoneticControls('mb-3')}</div>}
             <div className="flex items-center gap-2 rounded-xl border border-border p-2">
               <Button variant="outline" size="sm" onClick={() => setPageScale((scale) => Math.max(0.5, scale - 0.1))}>−</Button>
@@ -2708,9 +2757,15 @@ function PdfTextEditor() {
             })}
           </main>
           {renderFormatPanel(`hidden min-[900px]:sticky min-[900px]:top-4 min-[900px]:col-start-2 min-[900px]:block min-[900px]:h-fit ${showPhoneticControls ? 'min-[1200px]:col-start-3' : 'min-[1200px]:col-start-2'}`, true)}
-          {renderFormatPanel('fixed inset-x-2 bottom-20 z-40 max-h-[45vh] overflow-y-auto min-[900px]:hidden')}
+          {renderFormatPanel(`fixed inset-x-2 bottom-20 z-40 max-h-[45vh] overflow-y-auto min-[900px]:hidden ${phoneticKeyboardOpen && showPhoneticControls ? 'phonetic-edit-panel-dock-open' : ''}`)}
         </div>
       )}
+      {showPhoneticControls && <PhoneticKeyboardDock
+        open={phoneticKeyboardOpen}
+        onClose={() => setPhoneticKeyboardOpen(false)}
+        shiftLayer={phoneticShiftLayer}
+        onShiftLayerChange={setPhoneticShiftLayer}
+      />}
       <div className="mt-4 flex justify-end">
         {file && <Button variant="outline" size="sm" onClick={() => setShowDebugTextBoxes((value) => !value)}>{showDebugTextBoxes ? 'Hide debug boxes' : 'Show debug boxes'}</Button>}
       </div>

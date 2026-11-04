@@ -114,8 +114,155 @@ const PUBLICATION_HELP = [
 const PUBLICATION_LINK_HELP = "Paste a link to your certificate or award letter from Google Drive, Dropbox, OneDrive or your own site. Make sure sharing is set to ‘Anyone with the link can view’, or reviewers won’t be able to open it. This tool never uploads your files. Don’t link to documents that show your ID number, address or grades unless the application asks for them.";
 const SHARE_LINK_HINT = "Check that sharing is set to ‘Anyone with the link can view’.";
 const POINTS_PER_CSS_PIXEL = 1.333;
+const DISCLOSURE_STORAGE_KEY = "resume-builder-disclosure-state-v1";
 let resumeHeaderMeasureContext: CanvasRenderingContext2D | null | undefined;
 
+type DisclosureState = Record<string, boolean>;
+
+function readDisclosureState(): DisclosureState {
+  try {
+    const saved: unknown = JSON.parse(window.sessionStorage.getItem(DISCLOSURE_STORAGE_KEY) ?? "null");
+    if (isRecordValue(saved) && Object.values(saved).every((value) => typeof value === "boolean")) {
+      return saved as DisclosureState;
+    }
+  } catch {
+    // The editor remains usable when session storage is unavailable.
+  }
+  return { contact: true };
+}
+
+function buildDisclosureDefaults(resume: ResumeDocument): DisclosureState {
+  const state: DisclosureState = { contact: true };
+  for (const section of resume.sections) state[`section:${section.id}`] = false;
+  for (const link of resume.contact.links) state[`link:${link.id}`] = false;
+  for (const section of resume.sections) {
+    for (const entry of section.entries) state[`entry:${entry.id}`] = false;
+    for (const publication of section.publications) state[`publication:${publication.id}`] = false;
+    for (const language of section.others ?? []) state[`language:${language.id}`] = false;
+  }
+  return state;
+}
+
+function Disclosure({
+  id,
+  open,
+  onToggle,
+  label,
+  controls,
+  children,
+  className = "",
+  ariaLabel,
+  showLabel = true,
+}: {
+  id: string;
+  open: boolean;
+  onToggle: () => void;
+  label: string;
+  controls?: ReactNode;
+  children: ReactNode;
+  className?: string;
+  ariaLabel?: string;
+  showLabel?: boolean;
+}) {
+  const bodyId = `${id}-panel`;
+  return (
+    <div className={`rb-disclosure ${className}`} aria-label={ariaLabel}>
+      <div
+        className="rb-disclosure-header"
+        onClick={(event) => {
+          const target = event.target;
+          if (target instanceof Element && target.closest(".rb-disclosure-toggle, .rb-disclosure-controls")) return;
+          onToggle();
+        }}
+      >
+        <button
+          className="rb-disclosure-toggle"
+          type="button"
+          aria-expanded={open}
+          aria-controls={bodyId}
+          aria-label={`${open ? "Collapse" : "Expand"} ${label}`}
+          onClick={onToggle}
+        >
+          <span className="rb-disclosure-arrow" aria-hidden="true" />
+          {showLabel && <span className="rb-disclosure-label">{label}</span>}
+        </button>
+        {controls && <div className="rb-disclosure-controls">{controls}</div>}
+      </div>
+      <div id={bodyId} className="rb-disclosure-body" hidden={!open}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function joinSummary(parts: Array<string | undefined | null>): string {
+  const summary = parts.map((part) => part?.trim() ?? "").filter(Boolean).join(" · ");
+  return summary || "Untitled entry";
+}
+
+function getEntrySummary(section: ResumeSection, entry: ResumeEntry): string {
+  if (section.type === "skills") {
+    const skills = entry.description.split(/[,;\n]/).map((skill) => skill.trim()).filter(Boolean);
+    if (!entry.title.trim() && skills.length === 0) return "Untitled entry";
+    return joinSummary([entry.title, `${skills.length} skills`]);
+  }
+  if (section.type === "digitalSkills") return joinSummary([entry.title, entry.description]);
+  if (section.type === "conferences" || section.type === "grants" || section.type === "memberships") {
+    return joinSummary([entry.title, entry.dates]);
+  }
+  return joinSummary([entry.title, entry.organization, entry.dates]);
+}
+
+function getPublicationSummary(publication: ResumePublication): string {
+  return joinSummary([publication.title, publication.year, publication.type]);
+}
+
+function getLanguageSummary(language: ResumeLanguage): string {
+  const level = equalLanguageLevel(language);
+  const hasDifferentLevels = new Set(LANGUAGE_LEVEL_FIELDS.map((field) => language[field])).size > 1;
+  return joinSummary([language.name, level ?? (hasDifferentLevels ? "mixed levels" : "")]);
+}
+
+function getLinkSummary(label: string, url: string): string {
+  let host = "";
+  try {
+    host = new URL(url).host;
+  } catch {
+    host = url;
+  }
+  return joinSummary([label, host]);
+}
+
+function sectionEntryCount(section: ResumeSection): number {
+  if (section.type === "languages") return (section.motherTongues ?? []).length + (section.others ?? []).length;
+  if (section.type === "publications") return section.publications.length;
+  if (section.type === "summary" || section.type === "drivingLicence") return 0;
+  return section.entries.length;
+}
+
+function sectionHasSampleData(section: ResumeSection): boolean {
+  return section.summarySample || Boolean(section.drivingLicenceSample) || Boolean(section.languagesSample) ||
+    section.entries.some((entry) => entry.sample) || section.publications.some((publication) => publication.sample) ||
+    (section.others ?? []).some((language) => language.sample);
+}
+
+function sectionIssueEntries(section: ResumeSection): Set<string> {
+  const issues = new Set<string>();
+  for (const publication of section.publications) {
+    if (publication.link && normalizePublicationLink(publication.link) === null) issues.add(publication.id);
+  }
+  for (const entry of section.entries) {
+    if ((section.type === "awards" || section.type === "certifications" || section.type === "conferences") &&
+      entry.link && normalizeResumeItemLink(entry.link) === null) issues.add(entry.id);
+  }
+  return issues;
+}
+
+function sectionIsFilled(section: ResumeSection): boolean {
+  if (section.type === "summary") return Boolean(section.summary.trim());
+  if (section.type === "drivingLicence") return Boolean(section.drivingLicence?.trim());
+  return sectionEntryCount(section) > 0;
+}
 function measureHeaderText(font: string, fontSize: number) {
   resumeHeaderMeasureContext ??= document.createElement("canvas").getContext("2d");
   if (resumeHeaderMeasureContext) resumeHeaderMeasureContext.font = `${fontSize}px ${font}`;
@@ -688,6 +835,7 @@ export function createResumeBlocks(
 
 export function ResumeBuilder() {
   const [resume, setResume] = useState<ResumeDocument>(() => createSampleResume());
+  const [disclosureState, setDisclosureState] = useState<DisclosureState>(readDisclosureState);
   const [storageNotice, setStorageNotice] = useState("");
   const [liveMessage, setLiveMessage] = useState("");
   const [linkError, setLinkError] = useState("");
@@ -704,6 +852,7 @@ export function ResumeBuilder() {
   const undoTimer = useRef<number | null>(null);
   const addSectionRef = useRef<HTMLDetailsElement>(null);
   const sectionRefs = useRef(new Map<string, HTMLElement>());
+  const entryFieldRefs = useRef(new Map<string, HTMLInputElement>());
   const importInputRef = useRef<HTMLInputElement>(null);
   const photoInputRef = useRef<HTMLInputElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
@@ -726,8 +875,65 @@ export function ResumeBuilder() {
     }
   }, [resume]);
 
+  useEffect(() => {
+    try {
+      window.sessionStorage.setItem(DISCLOSURE_STORAGE_KEY, JSON.stringify(disclosureState));
+    } catch {
+      setLiveMessage("Disclosure preferences could not be saved in this browser session.");
+    }
+  }, [disclosureState]);
+
+  const invalidSections = useMemo(() => resume.sections.map((section) => ({
+    section,
+    entries: sectionIssueEntries(section),
+  })).filter(({ entries }) => entries.size > 0), [resume]);
+
+  useEffect(() => {
+    setDisclosureState((current) => {
+      let next = current;
+      for (const { section, entries } of invalidSections) {
+        const sectionKey = `section:${section.id}`;
+        if (!next[sectionKey]) next = { ...next, [sectionKey]: true };
+        for (const entryId of entries) {
+          const entryKey = `${section.type === "publications" ? "publication" : "entry"}:${entryId}`;
+          if (!next[entryKey]) next = { ...next, [entryKey]: true };
+        }
+      }
+      return next;
+    });
+  }, [invalidSections]);
+
   const sampleCount = useMemo(() => sampleItemCount(resume), [resume]);
   const hiddenSections = resume.sections.filter((item) => !item.visible);
+
+  function setDisclosureOpen(key: string, open: boolean) {
+    setDisclosureState((current) => current[key] === open ? current : { ...current, [key]: open });
+  }
+
+  function disclosureIsOpen(key: string, defaultOpen = false): boolean {
+    return disclosureState[key] ?? defaultOpen;
+  }
+
+  function resetDisclosureState(nextResume: ResumeDocument) {
+    setDisclosureState(buildDisclosureDefaults(nextResume));
+  }
+
+  function expandAll() {
+    const state = buildDisclosureDefaults(resume);
+    state.contact = true;
+    for (const key of Object.keys(state)) state[key] = true;
+    setDisclosureState(state);
+  }
+
+  function collapseAll() {
+    const state = buildDisclosureDefaults(resume);
+    state.contact = disclosureIsOpen("contact", true);
+    setDisclosureState(state);
+  }
+
+  function focusEntryField(id: string) {
+    requestAnimationFrame(() => entryFieldRefs.current.get(id)?.focus());
+  }
 
   function updateResume(updater: (current: ResumeDocument) => ResumeDocument) {
     setResume(updater);
@@ -838,6 +1044,9 @@ export function ResumeBuilder() {
         ? { ...item, europeanSampleSeeded: true, others: [...(item.others ?? []), language], languagesSample: false }
         : item),
     }));
+    setDisclosureOpen(`section:${sectionId}`, true);
+    setDisclosureOpen(`language:${language.id}`, true);
+    focusEntryField(language.id);
     setLiveMessage("Language added.");
   }
 
@@ -849,6 +1058,21 @@ export function ResumeBuilder() {
         : item),
     }));
     setLiveMessage("Language removed.");
+  }
+
+  function moveLanguage(sectionId: string, languageId: string, direction: -1 | 1) {
+    updateResume((current) => ({
+      ...current,
+      sections: current.sections.map((item) => {
+        if (item.type !== "languages" || item.id !== sectionId) return item;
+        const languages = [...(item.others ?? [])];
+        const index = languages.findIndex((language) => language.id === languageId);
+        const target = index + direction;
+        if (index < 0 || target < 0 || target >= languages.length) return item;
+        [languages[index], languages[target]] = [languages[target], languages[index]];
+        return { ...item, europeanSampleSeeded: true, others: languages };
+      }),
+    }));
   }
 
   function updateMotherTongue(sectionId: string, index: number, value: string) {
@@ -889,6 +1113,9 @@ export function ResumeBuilder() {
         item.id === sectionId ? { ...item, europeanSampleSeeded: true, publications: [...item.publications, publication] } : item,
       ),
     }));
+    setDisclosureOpen(`section:${sectionId}`, true);
+    setDisclosureOpen(`publication:${publication.id}`, true);
+    focusEntryField(publication.id);
     setLiveMessage("Publication added.");
   }
 
@@ -939,6 +1166,7 @@ export function ResumeBuilder() {
   function toggleSection(section: ResumeSection) {
     if (!section.visible) {
       updateSection(section.id, { visible: true });
+      setDisclosureOpen(`section:${section.id}`, true);
       setUndoState(null);
       setLiveMessage(`${section.title} section restored.`);
       requestAnimationFrame(() => sectionRefs.current.get(section.id)?.focus());
@@ -971,6 +1199,7 @@ export function ResumeBuilder() {
     const section = resume.sections.find((item) => item.type === type);
     if (!section) return;
     updateSection(section.id, { visible: true });
+    setDisclosureOpen(`section:${section.id}`, true);
     if (type === "custom" && !section.title.trim()) updateSection(section.id, { title: "Custom section" });
     setLiveMessage(`${LABELS[type]} section added.`);
     if (addSectionRef.current) addSectionRef.current.open = false;
@@ -985,6 +1214,9 @@ export function ResumeBuilder() {
         item.id === sectionId ? { ...item, europeanSampleSeeded: true, entries: [...item.entries, nextEntry] } : item,
       ),
     }));
+    setDisclosureOpen(`section:${sectionId}`, true);
+    setDisclosureOpen(`entry:${nextEntry.id}`, true);
+    focusEntryField(nextEntry.id);
     setLiveMessage("Entry added.");
   }
 
@@ -1028,10 +1260,14 @@ export function ResumeBuilder() {
       setLinkError("You can add up to 10 links.");
       return;
     }
+    const link = { id: crypto.randomUUID(), label, url, sample: false };
     updateResume((current) => ({
       ...current,
-      contact: { ...current.contact, links: [...current.contact.links, { id: crypto.randomUUID(), label, url, sample: false }] },
+      contact: { ...current.contact, links: [...current.contact.links, link] },
     }));
+    setDisclosureOpen("links", true);
+    setDisclosureOpen(`link:${link.id}`, true);
+    requestAnimationFrame(() => document.getElementById("rb-link-label")?.focus());
     setLinkError("");
     if (labelInput) labelInput.value = "";
     if (urlInput) urlInput.value = "";
@@ -1043,6 +1279,17 @@ export function ResumeBuilder() {
       contact: { ...current.contact, links: current.contact.links.filter((item) => item.id !== id) },
     }));
     setLiveMessage("Link removed.");
+  }
+
+  function moveLink(linkId: string, direction: -1 | 1) {
+    updateResume((current) => {
+      const links = [...current.contact.links];
+      const index = links.findIndex((link) => link.id === linkId);
+      const target = index + direction;
+      if (index < 0 || target < 0 || target >= links.length) return current;
+      [links[index], links[target]] = [links[target], links[index]];
+      return { ...current, contact: { ...current.contact, links } };
+    });
   }
 
   function changeMode(mode: ResumeMode) {
@@ -1113,13 +1360,17 @@ export function ResumeBuilder() {
 
   function resetToSample() {
     if (!window.confirm("Replace your current resume with the fictional sample?")) return;
-    setResume(preserveTypography(createSampleResume(), resume.typography));
+    const sample = preserveTypography(createSampleResume(), resume.typography);
+    setResume(sample);
+    resetDisclosureState(sample);
     setLiveMessage("Fictional sample resume restored.");
   }
 
   function startBlank() {
     if (sampleCount > 0 && !window.confirm("Start with a blank resume and remove the sample data?")) return;
-    setResume(preserveTypography(createBlankResume(), resume.typography));
+    const blank = preserveTypography(createBlankResume(), resume.typography);
+    setResume(blank);
+    resetDisclosureState(blank);
     setLiveMessage("Started a blank resume.");
   }
 
@@ -1158,6 +1409,7 @@ export function ResumeBuilder() {
       await discardUndecodableImportedPhoto(parsed);
       const imported = validateResumeImport(parsed);
       setResume(imported);
+      resetDisclosureState(imported);
       setImportError("");
       setLiveMessage("Resume imported.");
     } catch (error) {
@@ -1447,9 +1699,19 @@ export function ResumeBuilder() {
 
         <div className="rb-layout" data-mobile-view={mobileView}>
           <section className="rb-edit-pane" aria-label="Resume editor">
-            <Card className="rb-contact" aria-labelledby="rb-contact-title">
-              <CardHeader><CardTitle id="rb-contact-title">Contact information</CardTitle></CardHeader>
-              <CardContent>
+            <Disclosure
+              id="rb-contact-disclosure"
+              className="rb-contact rb-typography-card"
+              open={disclosureIsOpen("contact", true)}
+              onToggle={() => setDisclosureOpen("contact", !disclosureIsOpen("contact", true))}
+              label="Contact information"
+              controls={
+                <span className="rb-badges">
+                  {(resume.contact.sampleFields.length > 0 || resume.contact.links.some((link) => link.sample)) && <span className="rb-status-badge">Sample</span>}
+                  <span className="rb-status-badge">{resume.contact.fullName || resume.contact.email || resume.contact.phone || resume.contact.location ? "Filled" : "Empty"}</span>
+                </span>
+              }
+            >
               <div className="rb-contact-grid">
                 <label>Full name<Input autoComplete="name" maxLength={200} value={resume.contact.fullName} onChange={(event) => updateContact("fullName", event.target.value)} /></label>
                 <label>Email<Input type="email" autoComplete="email" maxLength={320} value={resume.contact.email} onChange={(event) => updateContact("email", event.target.value)} /></label>
@@ -1495,42 +1757,101 @@ export function ResumeBuilder() {
                   </div>
                 </>}
               </div>
-              <div className="rb-links">
-                <strong>Links</strong>
-                {resume.contact.links.map((link) => (
-                  <div className="rb-link-item" key={link.id}>
-                    <span>{link.label}: {link.url}</span>
-                    <Button variant="outline" size="sm" type="button" aria-label={`Remove ${link.label} link`} onClick={() => removeLink(link.id)}>Remove</Button>
+              <Disclosure
+                id="rb-links-disclosure"
+                className="rb-links-disclosure"
+                open={disclosureIsOpen("links")}
+                onToggle={() => setDisclosureOpen("links", !disclosureIsOpen("links"))}
+                label="Links"
+                controls={
+                  <span className="rb-badges">
+                    {resume.contact.links.some((link) => link.sample) && <span className="rb-status-badge">Sample</span>}
+                    <span className="rb-status-badge">{resume.contact.links.length} links</span>
+                  </span>
+                }
+              >
+                <div className="rb-links">
+                  {resume.contact.links.map((link, linkIndex) => (
+                    <Disclosure
+                      id={`rb-link-${link.id}`}
+                      key={link.id}
+                      className="rb-nested-disclosure"
+                      open={disclosureIsOpen(`link:${link.id}`)}
+                      onToggle={() => setDisclosureOpen(`link:${link.id}`, !disclosureIsOpen(`link:${link.id}`))}
+                      label={getLinkSummary(link.label, link.url)}
+                      controls={
+                        <>
+                          {link.sample && <span className="rb-status-badge">Sample</span>}
+                          <Button variant="outline" size="sm" type="button" aria-label={`Move ${link.label} link up`} disabled={linkIndex === 0} onClick={() => moveLink(link.id, -1)}>Move up</Button>
+                          <Button variant="outline" size="sm" type="button" aria-label={`Move ${link.label} link down`} disabled={linkIndex === resume.contact.links.length - 1} onClick={() => moveLink(link.id, 1)}>Move down</Button>
+                          <Button variant="outline" size="sm" type="button" aria-label={`Remove ${link.label} link`} onClick={() => removeLink(link.id)}>Remove</Button>
+                        </>
+                      }
+                    >
+                        <span className="rb-link-value">{link.label}: {link.url}</span>
+                    </Disclosure>
+                  ))}
+                  <div className="rb-link-form">
+                    <label>Link label<Input id="rb-link-label" maxLength={100} placeholder="Portfolio" /></label>
+                    <label>Link URL<Input id="rb-link-url" maxLength={2000} placeholder="https://example.com" /></label>
+                    <Button variant="outline" type="button" onClick={addLink}>Add link</Button>
                   </div>
-                ))}
-                <div className="rb-link-form">
-                  <label>Link label<Input id="rb-link-label" maxLength={100} placeholder="Portfolio" /></label>
-                  <label>Link URL<Input id="rb-link-url" maxLength={2000} placeholder="https://example.com" /></label>
-                  <Button variant="outline" type="button" onClick={addLink}>Add link</Button>
+                  {linkError && <Alert variant="destructive"><AlertDescription>{linkError}</AlertDescription></Alert>}
                 </div>
-                {linkError && <Alert variant="destructive"><AlertDescription>{linkError}</AlertDescription></Alert>}
-              </div>
-              </CardContent>
-            </Card>
+              </Disclosure>
+            </Disclosure>
+
+            <div className="rb-disclosure-actions" aria-label="Section disclosure controls">
+              <Button variant="link" type="button" onClick={expandAll}>Expand all</Button>
+              <Button variant="link" type="button" onClick={collapseAll}>Collapse all</Button>
+            </div>
 
             {sortedSections.filter((item) => item.visible).length === 0 && (
               <div className="rb-empty">No sections are visible. Add a section to begin your resume.</div>
             )}
             {sortedSections.filter((item) => item.visible).map((item, sectionIndex, visibleSections) => (
-              <Card
-                className="rb-section"
+              <Disclosure
+                className="rb-section rb-typography-card"
                 key={item.id}
-                tabIndex={-1}
-                aria-label={`${item.title} section`}
-                ref={(node) => { if (node) sectionRefs.current.set(item.id, node); }}
+                id={`rb-section-${item.id}`}
+                ariaLabel={`${item.title} section`}
+                showLabel={false}
+                open={disclosureIsOpen(`section:${item.id}`)}
+                onToggle={() => setDisclosureOpen(`section:${item.id}`, !disclosureIsOpen(`section:${item.id}`))}
+                label={item.type === "drivingLicence" && item.drivingLicence?.trim()
+                  ? joinSummary([item.title, item.drivingLicence])
+                  : item.title}
+                controls={
+                  <>
+                    <label className="sr-only" htmlFor={`section-title-${item.id}`}>Section name</label>
+                    <Input
+                      ref={(node) => {
+                        if (node) sectionRefs.current.set(item.id, node);
+                        else sectionRefs.current.delete(item.id);
+                      }}
+                      id={`section-title-${item.id}`}
+                      maxLength={100}
+                      value={item.title}
+                      onChange={(event) => updateSection(item.id, { title: event.target.value })}
+                    />
+                    {item.type === "languages" && (item.motherTongues ?? []).some((name) => name.trim()) && (
+                      <span className="rb-section-summary">
+                        Mother tongue: {(item.motherTongues ?? []).map((name) => name.trim()).filter(Boolean).join(", ")}
+                      </span>
+                    )}
+                    <span className="rb-badges">
+                      {sectionIssueEntries(item).size > 0 && <span className="rb-status-badge rb-status-error">{sectionIssueEntries(item).size} issues</span>}
+                      {sectionHasSampleData(item) && <span className="rb-status-badge">Sample</span>}
+                      {item.type === "summary" || item.type === "drivingLicence"
+                        ? <span className="rb-status-badge">{sectionIsFilled(item) ? "Filled" : "Empty"}</span>
+                        : <span className="rb-status-badge">{sectionEntryCount(item)} entries</span>}
+                    </span>
+                    <Button variant="outline" size="sm" type="button" aria-label={`Move ${item.title} section up`} disabled={sectionIndex === 0} onClick={() => moveSection(item.id, -1)}>Move up</Button>
+                    <Button variant="outline" size="sm" type="button" aria-label={`Move ${item.title} section down`} disabled={sectionIndex === visibleSections.length - 1} onClick={() => moveSection(item.id, 1)}>Move down</Button>
+                    <Button variant="outline" size="sm" type="button" aria-label={`Hide ${item.title} section`} onClick={() => toggleSection(item)}>Hide section</Button>
+                  </>
+                }
               >
-                <div className="rb-section-header">
-                  <label className="sr-only" htmlFor={`section-title-${item.id}`}>Section name</label>
-                  <Input id={`section-title-${item.id}`} maxLength={100} value={item.title} onChange={(event) => updateSection(item.id, { title: event.target.value })} />
-                  <Button variant="outline" size="sm" type="button" aria-label={`Move ${item.title} section up`} disabled={sectionIndex === 0} onClick={() => moveSection(item.id, -1)}>Move up</Button>
-                  <Button variant="outline" size="sm" type="button" aria-label={`Move ${item.title} section down`} disabled={sectionIndex === visibleSections.length - 1} onClick={() => moveSection(item.id, 1)}>Move down</Button>
-                  <Button variant="outline" size="sm" type="button" aria-label={`Close ${item.title} section`} onClick={() => toggleSection(item)}>Close</Button>
-                </div>
                 {item.type === "languages" ? (
                   <div className="rb-language-editor">
                     <div className="rb-language-mother-editor">
@@ -1544,8 +1865,27 @@ export function ResumeBuilder() {
                       {(item.motherTongues ?? []).length < 10 && <Button variant="outline" type="button" onClick={() => addMotherTongue(item.id)}>Add mother tongue</Button>}
                     </div>
                     {(item.others ?? []).map((language, languageIndex) => (
-                      <div className="rb-language-form" key={language.id}>
-                        <label>Language<Input maxLength={100} value={language.name} onChange={(event) => updateLanguage(item.id, language.id, { name: event.target.value })} /></label>
+                      <Disclosure
+                        id={`rb-language-${language.id}`}
+                        key={language.id}
+                        className="rb-nested-disclosure rb-language-disclosure"
+                        open={disclosureIsOpen(`language:${language.id}`)}
+                        onToggle={() => setDisclosureOpen(`language:${language.id}`, !disclosureIsOpen(`language:${language.id}`))}
+                        label={getLanguageSummary(language)}
+                        controls={
+                          <>
+                            {language.sample && <span className="rb-status-badge">Sample</span>}
+                            <Button variant="outline" size="sm" type="button" aria-label={`Move language ${languageIndex + 1} up`} disabled={languageIndex === 0} onClick={() => moveLanguage(item.id, language.id, -1)}>Move up</Button>
+                            <Button variant="outline" size="sm" type="button" aria-label={`Move language ${languageIndex + 1} down`} disabled={languageIndex === (item.others ?? []).length - 1} onClick={() => moveLanguage(item.id, language.id, 1)}>Move down</Button>
+                            <Button variant="outline" size="sm" type="button" aria-label={`Remove language ${languageIndex + 1}`} onClick={() => removeLanguage(item.id, language.id)}>Remove</Button>
+                          </>
+                        }
+                      >
+                      <div className="rb-language-form">
+                        <label>Language<Input ref={(node) => {
+                          if (node) entryFieldRefs.current.set(language.id, node);
+                          else entryFieldRefs.current.delete(language.id);
+                        }} maxLength={100} value={language.name} onChange={(event) => updateLanguage(item.id, language.id, { name: event.target.value })} /></label>
                         <label className="rb-language-same-level">Same level for all five
                           <Select value={equalLanguageLevel(language) ?? "choose-level"} onValueChange={(value) => {
                             if (value === "choose-level") return;
@@ -1576,10 +1916,8 @@ export function ResumeBuilder() {
                           })}
                         </div>
                         <label>Certificate (optional)<Input maxLength={200} value={language.certificate} onChange={(event) => updateLanguage(item.id, language.id, { certificate: event.target.value })} /></label>
-                        <div className="rb-entry-actions">
-                          <Button variant="outline" size="sm" type="button" aria-label={`Remove language ${languageIndex + 1}`} onClick={() => removeLanguage(item.id, language.id)}>Remove language</Button>
-                        </div>
                       </div>
+                      </Disclosure>
                     ))}
                     {(item.others ?? []).length < 50 && <Button variant="outline" type="button" onClick={() => addLanguage(item.id)}>Add language</Button>}
                   </div>
@@ -1611,8 +1949,27 @@ export function ResumeBuilder() {
                       <label><Checkbox checked={item.publicationOptions.shortenAuthors} onCheckedChange={(checked) => updateSection(item.id, { publicationOptions: { ...item.publicationOptions, shortenAuthors: checked === true } })} /> Shorten long author lists</label>
                     </div>
                     {item.publications.map((publication, publicationIndex) => (
-                      <div className="rb-publication-form" key={publication.id}>
-                        <label>Title<Input maxLength={500} value={publication.title} onChange={(event) => updatePublication(item.id, publication.id, { title: event.target.value })} /></label>
+                      <Disclosure
+                        id={`rb-publication-${publication.id}`}
+                        key={publication.id}
+                        className="rb-nested-disclosure rb-publication-disclosure"
+                        open={disclosureIsOpen(`publication:${publication.id}`)}
+                        onToggle={() => setDisclosureOpen(`publication:${publication.id}`, !disclosureIsOpen(`publication:${publication.id}`))}
+                        label={getPublicationSummary(publication)}
+                        controls={
+                          <>
+                            {publication.sample && <span className="rb-status-badge">Sample</span>}
+                            <Button variant="outline" size="sm" type="button" aria-label={`Move publication ${publicationIndex + 1} up`} disabled={publicationIndex === 0} onClick={() => movePublication(item.id, publication.id, -1)}>Move up</Button>
+                            <Button variant="outline" size="sm" type="button" aria-label={`Move publication ${publicationIndex + 1} down`} disabled={publicationIndex === item.publications.length - 1} onClick={() => movePublication(item.id, publication.id, 1)}>Move down</Button>
+                            <Button variant="outline" size="sm" type="button" aria-label={`Remove publication ${publicationIndex + 1}`} onClick={() => removePublication(item.id, publication.id)}>Remove</Button>
+                          </>
+                        }
+                      >
+                      <div className="rb-publication-form">
+                        <label>Title<Input ref={(node) => {
+                          if (node) entryFieldRefs.current.set(publication.id, node);
+                          else entryFieldRefs.current.delete(publication.id);
+                        }} maxLength={500} value={publication.title} onChange={(event) => updatePublication(item.id, publication.id, { title: event.target.value })} /></label>
                         <label>Authors (one author per line)<Textarea maxLength={30_000} value={publication.authors.join("\n")} onChange={(event) => {
                           const authors = event.target.value.split(/\r?\n/).filter((author) => author.trim().length > 0);
                           updatePublication(item.id, publication.id, {
@@ -1655,12 +2012,8 @@ export function ResumeBuilder() {
                           <p className="rb-publication-error" role="alert">Enter a valid http or https link or DOI (up to 2048 characters).</p>
                         )}
                         <label>Your role (optional)<Input maxLength={10_000} value={publication.role} onChange={(event) => updatePublication(item.id, publication.id, { role: event.target.value })} /></label>
-                        <div className="rb-entry-actions">
-                          <Button variant="outline" size="sm" type="button" aria-label={`Move publication ${publicationIndex + 1} up`} disabled={publicationIndex === 0} onClick={() => movePublication(item.id, publication.id, -1)}>Move up</Button>
-                          <Button variant="outline" size="sm" type="button" aria-label={`Move publication ${publicationIndex + 1} down`} disabled={publicationIndex === item.publications.length - 1} onClick={() => movePublication(item.id, publication.id, 1)}>Move down</Button>
-                          <Button variant="outline" size="sm" type="button" aria-label={`Remove publication ${publicationIndex + 1}`} onClick={() => removePublication(item.id, publication.id)}>Remove entry</Button>
-                        </div>
                       </div>
+                      </Disclosure>
                     ))}
                     <Button variant="outline" type="button" onClick={() => addPublication(item.id)}>Add entry</Button>
                   </>
@@ -1680,8 +2033,28 @@ export function ResumeBuilder() {
                   <>
                     <p className="rb-guidance">{item.type === "skills" || item.type === "digitalSkills" ? "Use subsections to group your abilities." : "Add concise details; lines starting with - or • appear as bullets."}</p>
                     {item.entries.map((entry, entryIndex) => (
-                  <div className="rb-entry-form" key={entry.id}>
-                    <label>{item.type === "skills" || item.type === "digitalSkills" ? "Skill subsection" : "Title"}<Input maxLength={300} value={entry.title} onChange={(event) => updateEntry(item.id, entry.id, "title", event.target.value)} /></label>
+                  <Disclosure
+                    id={`rb-entry-${entry.id}`}
+                    key={entry.id}
+                    className="rb-nested-disclosure rb-entry-disclosure"
+                    open={disclosureIsOpen(`entry:${entry.id}`)}
+                    onToggle={() => setDisclosureOpen(`entry:${entry.id}`, !disclosureIsOpen(`entry:${entry.id}`))}
+                    label={getEntrySummary(item, entry)}
+                    controls={
+                      <>
+                        {entry.sample && <span className="rb-status-badge">Sample</span>}
+                        {entry.link && normalizeResumeItemLink(entry.link) === null && <span className="rb-status-badge rb-status-error">1 issue</span>}
+                        <Button variant="outline" size="sm" type="button" aria-label={`Move entry ${entryIndex + 1} up`} disabled={entryIndex === 0} onClick={() => moveEntry(item.id, entry.id, -1)}>Move up</Button>
+                        <Button variant="outline" size="sm" type="button" aria-label={`Move entry ${entryIndex + 1} down`} disabled={entryIndex === item.entries.length - 1} onClick={() => moveEntry(item.id, entry.id, 1)}>Move down</Button>
+                        <Button variant="outline" size="sm" type="button" aria-label={`Remove entry ${entryIndex + 1}`} onClick={() => removeEntry(item.id, entry.id)}>Remove</Button>
+                      </>
+                    }
+                  >
+                  <div className="rb-entry-form">
+                    <label>{item.type === "skills" || item.type === "digitalSkills" ? "Skill subsection" : "Title"}<Input ref={(node) => {
+                      if (node) entryFieldRefs.current.set(entry.id, node);
+                      else entryFieldRefs.current.delete(entry.id);
+                    }} maxLength={300} value={entry.title} onChange={(event) => updateEntry(item.id, entry.id, "title", event.target.value)} /></label>
                     {(item.type === "awards" || item.type === "certifications" || item.type === "conferences") && (
                       <>
                         <label>Link (optional)<Input value={entry.link} onChange={(event) => updateEntry(item.id, entry.id, "link", event.target.value)} /></label>
@@ -1700,17 +2073,13 @@ export function ResumeBuilder() {
                     {item.type !== "skills" && item.type !== "digitalSkills" && item.type !== "grants" && item.type !== "memberships" && <label>Location<Input maxLength={200} value={entry.location} onChange={(event) => updateEntry(item.id, entry.id, "location", event.target.value)} /></label>}
                     {item.type !== "skills" && item.type !== "digitalSkills" && <label>Dates<Input maxLength={100} value={entry.dates} onChange={(event) => updateEntry(item.id, entry.id, "dates", event.target.value)} /></label>}
                     <label>Description<Textarea maxLength={10_000} value={entry.description} onChange={(event) => updateEntry(item.id, entry.id, "description", event.target.value)} /></label>
-                    <div className="rb-entry-actions">
-                      <Button variant="outline" size="sm" type="button" aria-label={`Move entry ${entryIndex + 1} up`} disabled={entryIndex === 0} onClick={() => moveEntry(item.id, entry.id, -1)}>Move up</Button>
-                      <Button variant="outline" size="sm" type="button" aria-label={`Move entry ${entryIndex + 1} down`} disabled={entryIndex === item.entries.length - 1} onClick={() => moveEntry(item.id, entry.id, 1)}>Move down</Button>
-                      <Button variant="outline" size="sm" type="button" aria-label={`Remove entry ${entryIndex + 1}`} onClick={() => removeEntry(item.id, entry.id)}>Remove entry</Button>
-                    </div>
                   </div>
+                  </Disclosure>
                 ))}
                     <Button variant="outline" type="button" onClick={() => addEntry(item.id)}>Add entry</Button>
                   </>
                 )}
-              </Card>
+              </Disclosure>
             ))}
 
             <details className="rb-add-menu" ref={addSectionRef}>

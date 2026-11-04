@@ -12,8 +12,9 @@ async function waitForText(container: HTMLElement, text: string) {
   throw new Error(`Timed out waiting for "${text}".`);
 }
 
-it('keeps the phonetic panel and page workspace in sync without an on-screen keyboard', async () => {
+it('keeps the phonetic panel and page workspace in sync with a reference-only keyboard dock', async () => {
   window.localStorage.removeItem('edit-pdf-devanagari-panel-collapsed');
+  window.sessionStorage.removeItem('edit-pdf-phonetic-keyboard-open');
   const response = await fetch(fixtureUrl);
   const file = new File([await response.arrayBuffer()], 'dogs-devanagari-clean.pdf', { type: 'application/pdf' });
   const container = document.createElement('div');
@@ -56,9 +57,31 @@ it('keeps the phonetic panel and page workspace in sync without an on-screen key
     await act(async () => firstLine.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })));
     expect(container.querySelector<HTMLButtonElement>('button[aria-label="Align center"]')?.getAttribute('aria-pressed')).toBe('true');
 
-    expect(container.querySelector('button[aria-controls="edit-pdf-script-keyboard"]')).toBeNull();
-    expect(container.querySelector('#edit-pdf-script-keyboard')).toBeNull();
-    expect([...container.querySelectorAll('button')].some((button) => button.textContent?.trim() === 'Keyboard')).toBe(false);
+    const showKeyboard = container.querySelector<HTMLButtonElement>(
+      'button[aria-controls="edit-pdf-phonetic-keyboard-dock"]',
+    )!;
+    const editText = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Text"]')!;
+    const pageCanvas = container.querySelector<HTMLElement>('[data-pdf-page-canvas]')!;
+    const pageLeftBefore = pageCanvas.getBoundingClientRect().left;
+    editText.focus();
+    await act(async () => {
+      showKeyboard.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
+      showKeyboard.click();
+    });
+    await act(async () => new Promise((resolve) => window.setTimeout(resolve, 600)));
+    const dock = container.querySelector<HTMLElement>('[data-phonetic-keyboard-dock]')!;
+    expect(showKeyboard.getAttribute('aria-expanded')).toBe('true');
+    expect(dock.hasAttribute('hidden')).toBe(false);
+    expect(document.activeElement).toBe(editText);
+    expect(pageCanvas.getBoundingClientRect().left).toBe(pageLeftBefore);
+    const editRect = editText.getBoundingClientRect();
+    const dockRect = dock.getBoundingClientRect();
+    expect(
+      editRect.bottom <= dockRect.top || editRect.top >= dockRect.bottom,
+      `edit box ${JSON.stringify(editRect.toJSON())} overlaps dock ${JSON.stringify(dockRect.toJSON())}`,
+    ).toBe(true);
+    expect(dock.querySelectorAll('.phonetic-key').length).toBeGreaterThan(0);
+    expect(dock.querySelectorAll('button[aria-label*="types"]')).toHaveLength(0);
 
     const pagesList = visiblePanel.closest('aside')?.querySelector<HTMLElement>(':scope > div:last-child');
     const pagesHeightBeforeCollapse = pagesList?.clientHeight ?? 0;

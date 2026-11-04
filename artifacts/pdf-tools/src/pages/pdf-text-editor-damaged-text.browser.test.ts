@@ -11,14 +11,22 @@ async function waitForText(container: HTMLElement, text: string) {
     if (container.textContent?.includes(text)) return;
     await new Promise((resolve) => window.setTimeout(resolve, 50));
   }
-  throw new Error(`Timed out waiting for "${text}".`);
+  throw new Error(`Timed out waiting for "${text}". Current text: ${container.textContent?.slice(-1000)}`);
+}
+
+async function openParagraphEditor(container: HTMLElement, paragraph: HTMLButtonElement) {
+  await act(async () => paragraph.click());
+  const editButton = [...container.querySelectorAll<HTMLButtonElement>('button')]
+    .find((button) => button.textContent?.trim() === 'Edit selected text');
+  expect(editButton).toBeDefined();
+  await act(async () => editButton!.click());
 }
 
 async function createDamagedTextPdf() {
   const document = await PDFDocument.create();
   const page = document.addPage([612, 792]);
   const font = await document.embedFont(StandardFonts.Helvetica);
-  page.drawText('First damaged line', { x: 72, y: 700, size: 18, font });
+  page.drawText('Damaged Z line', { x: 72, y: 700, size: 18, font });
   page.drawText('Second intact line', { x: 72, y: 676, size: 18, font });
   page.drawText('Third intact line', { x: 72, y: 652, size: 18, font });
   await document.flush();
@@ -38,7 +46,7 @@ async function createDamagedTextPdf() {
     `${printableAscii.length} beginbfchar`,
     ...printableAscii.map((code) =>
       `<${code.toString(16).padStart(2, '0').toUpperCase()}> <${
-        code === 105 ? '0000' : code.toString(16).padStart(4, '0').toUpperCase()
+        code === 90 ? '0000' : code.toString(16).padStart(4, '0').toUpperCase()
       }>`),
     'endbfchar',
     'endcmap',
@@ -104,14 +112,10 @@ it('marks damaged extraction and exports only changed lines while preserving unt
     await waitForText(container, 'Editor ready');
 
     const firstLine = [...container.querySelectorAll<HTMLButtonElement>('button[aria-label^="Select text"]')]
-      .find((button) => button.getAttribute('aria-label')?.includes('F▯rst'))!;
-    expect(firstLine, [...container.querySelectorAll<HTMLButtonElement>('button[aria-label^="Select text"]')]
-      .map((button) => button.getAttribute('aria-label')).join('\n')).toBeDefined();
-    await act(async () => {
-      firstLine.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-      await new Promise((resolve) => window.setTimeout(resolve, 100));
-    });
-    await waitForText(container, 'characters in this paragraph could not be read from the PDF');
+      .find((button) => button.getAttribute('aria-label')?.includes('Damaged ▯ line'))!;
+    expect(firstLine).toBeDefined();
+    await openParagraphEditor(container, firstLine);
+    await waitForText(container, 'in this paragraph could not be read from the PDF');
     expect(container.querySelector('[data-unreadable-placeholder="true"]')?.textContent).toBe('▯');
     expect(container.textContent).toContain('Retype whole paragraph');
     expect(container.textContent).toContain('Edit anyway');
@@ -123,11 +127,11 @@ it('marks damaged extraction and exports only changed lines while preserving unt
     const pageElement = container.querySelector<HTMLElement>('[data-pdf-page-canvas]')!;
     const sourceCanvas = pageElement.querySelectorAll<HTMLCanvasElement>('canvas')[0]!;
     const sourcePixels = readCanvasPixels(sourceCanvas);
-    const viewport = (await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise)
+    const pdfViewport = (await pdfjsLib.getDocument({ data: new Uint8Array(await file.arrayBuffer()) }).promise)
       .getPage(1);
-    const sourcePage = await viewport;
-    const pdfViewport = sourcePage.getViewport({ scale: sourceCanvas.width / 612 });
-    const intactLineY = Math.round(pdfViewport.convertToViewportPoint(72, 676)[1]);
+    const sourcePage = await pdfViewport;
+    const viewport = sourcePage.getViewport({ scale: sourceCanvas.width / 612 });
+    const intactLineY = Math.round(viewport.convertToViewportPoint(72, 676)[1]);
 
     const nextLines = ['Changed line', originalLines[1], originalLines[2], 'Added line'];
     await act(async () => {
@@ -205,10 +209,7 @@ it('removes unsafe characters from typed text before exporting its hidden text l
 
     const paragraph = [...container.querySelectorAll<HTMLButtonElement>('button[aria-label^="Select text"]')]
       .find((button) => button.getAttribute('aria-label')?.includes('Plain original line'))!;
-    await act(async () => {
-      paragraph.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-      await new Promise((resolve) => window.setTimeout(resolve, 100));
-    });
+    await openParagraphEditor(container, paragraph);
     const editor = container.querySelector<HTMLElement>('[aria-label="Editable PDF text"]')!;
     await act(async () => {
       editor.innerText = `Sanitized line\u0000\uFFFD\uE000`;
@@ -265,7 +266,7 @@ it('retypes a damaged paragraph over the original lines as a whole paragraph', a
     await waitForText(container, 'Editor ready');
 
     const firstLine = [...container.querySelectorAll<HTMLButtonElement>('button[aria-label^="Select text"]')]
-      .find((button) => button.getAttribute('aria-label')?.includes('F▯rst'))!;
+      .find((button) => button.getAttribute('aria-label')?.includes('Damaged ▯ line'))!;
     const intactLineButtons = [...container.querySelectorAll<HTMLButtonElement>('button[aria-label^="Select text"]')]
       .filter((button) => /Second|Third/u.test(button.getAttribute('aria-label') ?? ''));
     expect(intactLineButtons.length).toBeGreaterThan(0);
@@ -280,10 +281,7 @@ it('retypes a damaged paragraph over the original lines as a whole paragraph', a
         height: rect.height,
       };
     });
-    await act(async () => {
-      firstLine.dispatchEvent(new MouseEvent('dblclick', { bubbles: true }));
-      await new Promise((resolve) => window.setTimeout(resolve, 100));
-    });
+    await openParagraphEditor(container, firstLine);
     const retypeButton = [...container.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent?.trim() === 'Retype whole paragraph')!;
     await act(async () => retypeButton.click());
