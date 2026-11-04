@@ -9,6 +9,31 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = new URL('pdfjs-dist/build/pdf.worker.mi
 
 const editedText = 'त्येस्का लागि के के गर्नुपर्छ मलाई त थाहा नै भएन .';
 
+async function containsPdfData(payload: unknown): Promise<boolean> {
+  if (typeof payload === 'string') return /%PDF-|JVBERi0/.test(payload);
+  if (payload instanceof URL) return containsPdfData(payload.href);
+  if (payload instanceof Request) {
+    if (await containsPdfData(payload.url)) return true;
+    const request = payload.clone();
+    return request.body ? containsPdfData(await request.arrayBuffer()) : false;
+  }
+  if (payload instanceof Blob) return containsPdfData(await payload.arrayBuffer());
+  if (payload instanceof ArrayBuffer) return containsPdfData(new Uint8Array(payload));
+  if (ArrayBuffer.isView(payload)) {
+    const bytes = new Uint8Array(payload.buffer, payload.byteOffset, payload.byteLength);
+    const header = new TextDecoder().decode(bytes.subarray(0, Math.min(bytes.length, 1024)));
+    return header.includes('%PDF-');
+  }
+  if (payload instanceof FormData) {
+    for (const [, value] of payload.entries()) {
+      if (await containsPdfData(value)) return true;
+    }
+    return false;
+  }
+  if (payload instanceof URLSearchParams) return containsPdfData(payload.toString());
+  return false;
+}
+
 async function waitForText(container: HTMLElement, text: string) {
   for (let attempt = 0; attempt < 300; attempt += 1) {
     if (container.textContent?.includes(text)) return;
@@ -32,8 +57,19 @@ function getDarkPixels(canvas: HTMLCanvasElement, bounds: { left: number; top: n
   return darkPixels;
 }
 
-it('edits the first fixture paragraph, exports visible Devanagari ink, and preserves exact hidden text', async () => {
+it('keeps PDF bytes local while opening, editing, and exporting Devanagari text', async () => {
   const savedBlobs: Blob[] = [];
+  const pdfTransfers: string[] = [];
+  const pendingPayloadChecks: Promise<void>[] = [];
+  let phase = 'open';
+  const inspectPayload = (transport: string, payload: unknown) => {
+    const requestPhase = phase;
+    const check = containsPdfData(payload).then((containsPdf) => {
+      if (containsPdf) pdfTransfers.push(`${requestPhase}:${transport}`);
+    });
+    pendingPayloadChecks.push(check);
+    return check;
+  };
   const createObjectURL = vi.spyOn(URL, 'createObjectURL').mockImplementation((object) => {
     if (object instanceof Blob) savedBlobs.push(object);
     return 'blob:edit-pdf-test';
@@ -42,6 +78,44 @@ it('edits the first fixture paragraph, exports visible Devanagari ink, and prese
   const response = await fetch(fixtureUrl);
   expect(response.ok).toBe(true);
   const file = new File([await response.arrayBuffer()], 'dogs-devanagari-clean.pdf', { type: 'application/pdf' });
+  const nativeFetch = window.fetch.bind(window);
+  const fetchSpy = vi.spyOn(window, 'fetch').mockImplementation(async (input, init) => {
+    await inspectPayload('fetch', input);
+    await inspectPayload('fetch', init?.body);
+    return nativeFetch(input, init);
+  });
+  const xhrUrls = new WeakMap<XMLHttpRequest, string>();
+  const nativeXhrOpen = XMLHttpRequest.prototype.open;
+  const xhrOpenSpy = vi.spyOn(XMLHttpRequest.prototype, 'open').mockImplementation(function (
+    this: XMLHttpRequest,
+    ...args: Parameters<XMLHttpRequest['open']>
+  ) {
+    xhrUrls.set(this, String(args[1]));
+    return Reflect.apply(nativeXhrOpen, this, args);
+  });
+  const nativeXhrSend = XMLHttpRequest.prototype.send;
+  const xhrSendSpy = vi.spyOn(XMLHttpRequest.prototype, 'send').mockImplementation(function (
+    this: XMLHttpRequest,
+    body: Parameters<XMLHttpRequest['send']>[0],
+  ) {
+    void inspectPayload('XMLHttpRequest', xhrUrls.get(this));
+    void inspectPayload('XMLHttpRequest', body);
+    return nativeXhrSend.call(this, body);
+  });
+  const nativeSendBeacon = navigator.sendBeacon.bind(navigator);
+  const sendBeaconSpy = vi.spyOn(navigator, 'sendBeacon').mockImplementation((url, data) => {
+    void inspectPayload('sendBeacon', url);
+    void inspectPayload('sendBeacon', data);
+    return nativeSendBeacon(url, data);
+  });
+  const nativeWebSocketSend = WebSocket.prototype.send;
+  const webSocketSendSpy = vi.spyOn(WebSocket.prototype, 'send').mockImplementation(function (
+    this: WebSocket,
+    data: Parameters<WebSocket['send']>[0],
+  ) {
+    void inspectPayload('WebSocket', data);
+    return nativeWebSocketSend.call(this, data);
+  });
   const container = document.createElement('div');
   document.body.append(container);
   const root = createRoot(container);
@@ -61,6 +135,7 @@ it('edits the first fixture paragraph, exports visible Devanagari ink, and prese
 
     const firstParagraph = container.querySelector<HTMLButtonElement>('button[aria-label^="Select text"]');
     expect(firstParagraph).not.toBeNull();
+    phase = 'edit';
     await act(async () => firstParagraph!.dispatchEvent(new MouseEvent('dblclick', { bubbles: true })));
     await waitForText(container, 'Font family');
     const textArea = container.querySelector<HTMLTextAreaElement>('textarea[aria-label="Text"]');
@@ -84,8 +159,11 @@ it('edits the first fixture paragraph, exports visible Devanagari ink, and prese
     const download = [...container.querySelectorAll<HTMLButtonElement>('button')]
       .find((button) => button.textContent?.includes('Download PDF'));
     expect(download).toBeDefined();
+    phase = 'export';
     await act(async () => download!.click());
     await waitForText(container, 'Edited PDF downloaded in your browser.');
+    await Promise.all(pendingPayloadChecks);
+    expect(pdfTransfers).toEqual([]);
     expect(savedBlobs).toHaveLength(1);
 
     const savedBlob = savedBlobs[0];
@@ -120,5 +198,10 @@ it('edits the first fixture paragraph, exports visible Devanagari ink, and prese
     container.remove();
     createObjectURL.mockRestore();
     anchorClick.mockRestore();
+    fetchSpy.mockRestore();
+    xhrOpenSpy.mockRestore();
+    xhrSendSpy.mockRestore();
+    sendBeaconSpy.mockRestore();
+    webSocketSendSpy.mockRestore();
   }
 }, 60_000);

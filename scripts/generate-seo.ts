@@ -12,6 +12,11 @@ import {
   type ToolRecord,
 } from '../artifacts/api-server/src/lib/content.ts';
 import { getToolSeoContent } from '../artifacts/pdf-tools/src/lib/toolSeoContent.ts';
+import {
+  EDIT_PDF_APPLICATION_DESCRIPTION,
+  EDIT_PDF_META_DESCRIPTION,
+  EDIT_PDF_SEO_TITLE,
+} from '../artifacts/pdf-tools/src/data/toolSeoContent.ts';
 import { resolveToolOgImage, toolsSEO } from '../artifacts/pdf-tools/src/data/seoConfig.js';
 import { clientToolContent } from '../artifacts/pdf-tools/src/data/clientToolContent';
 import { aiJobsFaqs } from '../artifacts/pdf-tools/src/data/aiJobsFaqs.ts';
@@ -332,8 +337,13 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
   const toolOgImage = resolveToolOgImage(tool.slug, `${siteUrl}/logo.png`);
   const ogImageUrl = resolveAbsoluteImageUrl(toolOgImage);
   const isResumeBuilder = tool.slug === 'resume-builder';
-  const pageTitle = isResumeBuilder ? resumeBuilderSeo.title : tool.seoTitle;
-  const metaDescription = isResumeBuilder
+  const isEditPdf = tool.slug === 'edit-pdf';
+  const pageTitle = isEditPdf
+    ? EDIT_PDF_SEO_TITLE
+    : isResumeBuilder ? resumeBuilderSeo.title : tool.seoTitle;
+  const metaDescription = isEditPdf
+    ? EDIT_PDF_META_DESCRIPTION
+    : isResumeBuilder
     ? resumeBuilderSeo.description
     : ['edit-pdf', 'transform-pdf'].includes(tool.slug)
     ? tool.seoDescription
@@ -342,7 +352,8 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
     throw new Error(`Resume Builder meta description exceeds 160 characters (${metaDescription.length}).`);
   }
 
-  const steps = content.howToSteps
+  const howToSteps = isEditPdf && seoEntry ? seoEntry.howItWorks : content.howToSteps;
+  const steps = howToSteps
     .map((step) => `<li><h3>${escapeHtml(step.title)}</h3><p>${escapeHtml(step.description)}</p></li>`)
     .join('');
 
@@ -350,14 +361,45 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
     .map((w: any) => `<div><h3>${escapeHtml(w.title)}</h3><p>${escapeHtml(w.description)}</p></div>`)
     .join('');
 
-  const contentFaqs = isResumeBuilder && seoEntry ? seoEntry.faq : content.faqs;
-  const howToHeading = isResumeBuilder && seoEntry?.howToHeading
+  const contentFaqs = (isResumeBuilder || isEditPdf) && seoEntry ? seoEntry.faq : content.faqs;
+  const howToHeading = isEditPdf
+    ? seoEntry?.howToHeading ?? 'How it works'
+    : isResumeBuilder && seoEntry?.howToHeading
     ? seoEntry.howToHeading
     : `How to use ${tool.name}`;
   const pageIntro = isResumeBuilder ? resumeBuilderSeo.intro : tool.shortDescription;
   const layouts = isResumeBuilder ? seoEntry?.layouts : undefined;
 
   const toolUrl = toolPageUrl(tool.slug);
+  const editPdfLanguageSection = isEditPdf && seoEntry?.languageSection
+    ? `<section><h2>${escapeHtml(seoEntry.languageSection.heading)}</h2>
+        <p>${escapeHtml(seoEntry.languageSection.intro)}</p>
+        <p lang="hi">${escapeHtml(seoEntry.languageSection.hindiLine)}</p>
+        <p lang="ne">${escapeHtml(seoEntry.languageSection.nepaliLine)}</p>
+        <h3>${escapeHtml(seoEntry.languageSection.fontsLabel)}</h3>
+        <ul>${seoEntry.languageSection.fonts.map((font) => `<li>${escapeHtml(font)}</li>`).join('')}</ul>
+        <p>${escapeHtml(seoEntry.languageSection.typing)}</p>
+        <p>${escapeHtml(seoEntry.languageSection.limits)}</p>
+      </section>`
+    : '';
+  const editPdfRelatedTools = isEditPdf && seoEntry?.relatedTools
+    ? `<section><h2>Related tools</h2><ul>${seoEntry.relatedTools.map((item) => {
+      const relatedTool = tools.find((entry) => entry.slug === item.slug && entry.status === 'available');
+      if (!relatedTool) {
+        throw new Error(`Related tool "${item.slug}" is not available in the tool registry for "${tool.slug}".`);
+      }
+      return `<li><a href="${getToolPath(item.slug)}">${escapeHtml(item.name)}</a> — ${escapeHtml(item.reason)}</li>`;
+    }).join('')}</ul></section>`
+    : '';
+  const editPdfSeoBody = isEditPdf
+    ? `${editPdfLanguageSection}
+        <section><h2>How it works</h2><ol>${steps}</ol></section>
+        <section><h2>Why use this tool</h2>${whyUseHtml}</section>
+        <section><h2>Frequently asked questions</h2><ul>${contentFaqs.map((faq) => `<li><h3>${escapeHtml(faq.question)}</h3><p>${escapeHtml(faq.answer)}</p></li>`).join('')}</ul></section>
+        ${editPdfRelatedTools}
+        ${renderToolInternalLinks(tool)}
+        <p><a href="/tools">Browse all PDF tools</a></p>`
+    : '';
 
   return `<!DOCTYPE html>
 <html lang="en">
@@ -405,15 +447,17 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
           {
             '@type': 'SoftwareApplication',
             name: tool.name,
-            description: metaDescription,
             operatingSystem: 'Web',
             applicationCategory: 'Utility',
             url: toolUrl,
-            offers: {
-              '@type': 'Offer',
-              price: 0,
-              priceCurrency: 'USD',
-            },
+            description: isEditPdf ? EDIT_PDF_APPLICATION_DESCRIPTION : metaDescription,
+            ...(isEditPdf ? {} : {
+              offers: {
+                '@type': 'Offer',
+                price: 0,
+                priceCurrency: 'USD',
+              },
+            }),
           },
           {
             '@type': 'FAQPage',
@@ -448,8 +492,10 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
           <p>PDFKira</p>
           <h1>${escapeHtml(tool.name)}</h1>
           <p>${escapeHtml(pageIntro)}</p>
+          ${isEditPdf && seoEntry?.pageSubheading ? `<p>${escapeHtml(seoEntry.pageSubheading)}</p>` : ''}
         </header>
 
+        ${isEditPdf ? editPdfSeoBody : `
         <section><h2>About ${escapeHtml(tool.name)}</h2><p>${escapeHtml(content.uniqueIntro)}</p></section>
         <section><h2>${escapeHtml(howToHeading)}</h2><ol>${steps}</ol></section>
         ${content.useCases.length ? `<section><h2>Common use cases</h2>${content.useCases.map((item) => `<article><h3>${escapeHtml(item.title)}</h3><p>${escapeHtml(item.description)}</p>${item.example ? `<p><strong>Example:</strong> ${escapeHtml(item.example)}</p>` : ''}</article>`).join('')}</section>` : ''}
@@ -468,7 +514,7 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
         ${content.proTips?.length ? `<section><h2>Pro tips</h2><ul>${content.proTips.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>` : ''}
         ${content.commonMistakes?.length ? `<section><h2>Common mistakes to avoid</h2><ul>${content.commonMistakes.map((item) => `<li>${escapeHtml(item)}</li>`).join('')}</ul></section>` : ''}
 
-        <p><a href="/tools">Browse all PDF tools</a></p>
+        <p><a href="/tools">Browse all PDF tools</a></p>`}
       </main>
     </div>
 
@@ -1181,6 +1227,100 @@ function verifyGeneratedSeo(
       throw new Error(`Invalid JSON-LD on tool route: ${tool.slug}`);
     }
     const faqPage = structuredData['@graph']?.find((entry: any) => entry['@type'] === 'FAQPage');
+    if (tool.slug === 'edit-pdf') {
+      const expectedContent = getToolSeoContent('edit-pdf');
+      const application = structuredData['@graph']?.find((entry: any) => entry['@type'] === 'SoftwareApplication');
+      const pageMain = html.match(/<main>([\s\S]*?)<\/main>/i)?.[1] ?? '';
+      const renderedTitle = (html.match(/<title>([\s\S]*?)<\/title>/i)?.[1] ?? '').replace(/&amp;/g, '&');
+      const renderedDescription = html.match(/<meta name="description" content="([^"]*)"/i)?.[1] ?? '';
+      const faqSection = pageMain.match(/<section><h2>Frequently asked questions<\/h2><ul>([\s\S]*?)<\/ul><\/section>/i)?.[1] ?? '';
+      const expectedFaqEntities = expectedContent?.faq.map((faq) => ({
+        '@type': 'Question',
+        name: faq.question,
+        acceptedAnswer: { '@type': 'Answer', text: faq.answer },
+      })) ?? [];
+      if (
+        renderedTitle !== EDIT_PDF_SEO_TITLE ||
+        renderedTitle.length !== 60 ||
+        renderedDescription !== EDIT_PDF_META_DESCRIPTION ||
+        renderedDescription.length >= 155 ||
+        tools.some((entry) => entry.slug !== 'edit-pdf' && entry.seoTitle === renderedTitle) ||
+        tools.some((entry) => entry.slug !== 'edit-pdf' && entry.seoDescription === renderedDescription) ||
+        blogPosts.some((post) => post.title === renderedTitle || post.excerpt === renderedDescription)
+      ) {
+        throw new Error('Edit PDF title or description is incorrect, too long, or duplicated.');
+      }
+
+      if (
+        !expectedContent ||
+        (html.match(/<h1\b/gi) || []).length !== 1 ||
+        !pageMain.includes(`<p lang="hi">${escapeHtml(expectedContent.languageSection?.hindiLine ?? '')}</p>`) ||
+        !pageMain.includes(`<p lang="ne">${escapeHtml(expectedContent.languageSection?.nepaliLine ?? '')}</p>`) ||
+        !pageMain.includes('Choose a Devanagari font') ||
+        !pageMain.includes('Turn on phonetic typing') ||
+        !faqPage ||
+        structuredData['@graph'].filter((entry: any) => entry['@type'] === 'FAQPage').length !== 1 ||
+        JSON.stringify(faqPage.mainEntity) !== JSON.stringify(expectedFaqEntities) ||
+        expectedContent.faq.some((faq) =>
+          !faqSection.includes(`<h3>${escapeHtml(faq.question)}</h3><p>${escapeHtml(faq.answer)}</p>`),
+        ) ||
+        (html.match(/<script type="application\/ld\+json"/gi) || []).length !== 1
+      ) {
+        throw new Error('Edit PDF rendered headings, language lines, FAQ, and JSON-LD do not match.');
+      }
+
+      if (
+        !application ||
+        application.description !== EDIT_PDF_APPLICATION_DESCRIPTION ||
+        'inLanguage' in application ||
+        'offers' in application ||
+        'aggregateRating' in application ||
+        'review' in application
+      ) {
+        throw new Error('Edit PDF SoftwareApplication structured data contains unsupported claims.');
+      }
+
+      const visibleText = pageMain.replace(/<[^>]*>/g, ' ').replace(/&amp;/g, '&');
+      if (visibleText.includes('edit-pdf')) {
+        throw new Error('Edit PDF visible page text contains the tool slug.');
+      }
+
+      const sitemapRoutes = new Set(sitemapItems.map((item) => new URL(item.loc).pathname.replace(/\/+$/, '') || '/'));
+      for (const [, href] of pageMain.matchAll(/<a\b[^>]*href="([^"]+)"/gi)) {
+        if (!href.startsWith('/')) throw new Error(`Edit PDF contains a non-relative internal link: ${href}`);
+        const target = new URL(href, siteUrl);
+        const normalizedPath = target.pathname.replace(/\/+$/, '') || '/';
+        if (target.origin !== siteUrl || !sitemapRoutes.has(normalizedPath)) {
+          throw new Error(`Edit PDF links to an unregistered route: ${href}`);
+        }
+      }
+      if (!pageMain.includes(`href="${getToolPath('ocr-pdf')}"`)) {
+        throw new Error('Edit PDF does not link to the registered OCR PDF tool.');
+      }
+
+      const editBlogSlug = '2026-11-04-how-to-edit-hindi-and-nepali-text-in-a-pdf';
+      const editBlogUrl = `${siteUrl}/blog/${editBlogSlug}`;
+      if (!sitemap.includes(`<loc>${siteUrl}${getToolPath('edit-pdf')}</loc>`) || !sitemap.includes(`<loc>${editBlogUrl}</loc>`)) {
+        throw new Error('The Edit PDF or Hindi/Nepali guide URL is missing from the sitemap.');
+      }
+      const editBlogHtmlPath = path.join(outDir, 'blog', editBlogSlug, 'index.html');
+      const editBlogHtml = fs.readFileSync(editBlogHtmlPath, 'utf-8');
+      const articleBody = editBlogHtml.match(/<div class="article-content">([\s\S]*?)<\/div>/i)?.[1] ?? '';
+      const articleLinks = [...articleBody.matchAll(/<a\b[^>]*href="([^"]+)"/gi)].map(([, href]) => href);
+      if (
+        editBlogHtml.match(/<link\s+rel="canonical"\s+href="([^"]+)"/i)?.[1] !== editBlogUrl ||
+        !articleBody ||
+        /(?:^|\s)(?:title|description|publishedAt):/i.test(articleBody.replace(/<[^>]*>/g, ' ')) ||
+        /screenshot|<img\b/i.test(articleBody) ||
+        articleLinks.length < 3 ||
+        articleLinks.length > 8 ||
+        articleLinks.some((href) => !href.startsWith('/') || !sitemapRoutes.has(new URL(href, siteUrl).pathname.replace(/\/+$/, '') || '/'))
+      ) {
+        throw new Error('The Hindi/Nepali guide has invalid metadata, article markup, or internal links.');
+      }
+      continue;
+    }
+
     if (tool.slug === PDF_TO_MARKDOWN_CONTENT.slug) {
       const breadcrumb = structuredData['@graph']?.find((entry: any) => entry['@type'] === 'BreadcrumbList');
       if (
@@ -1196,7 +1336,7 @@ function verifyGeneratedSeo(
       }
       continue;
     }
-    const maxFaqCount = tool.slug === 'resume-builder' ? 10 : 6;
+    const maxFaqCount = tool.slug === 'resume-builder' ? 10 : tool.slug === 'edit-pdf' ? 9 : 6;
     if (!faqPage || faqPage.mainEntity.length < 4 || faqPage.mainEntity.length > maxFaqCount) {
       throw new Error(`Tool route must have 4-${maxFaqCount} structured FAQ entries: ${tool.slug}`);
     }

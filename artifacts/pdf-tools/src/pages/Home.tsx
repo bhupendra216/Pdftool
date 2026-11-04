@@ -49,9 +49,21 @@ export function Home() {
     ).slice(0, 6);
   }, [searchQuery, visibleTools]);
 
-  const trendingTools = ["sign-pdf", "ocr-pdf", "edit-pdf", "merge-pdf"]
-    .map((slug) => toolBySlug.get(slug))
-    .filter((tool): tool is NonNullable<typeof tool> => Boolean(tool));
+  const trendingTools = [
+    { slug: "sign-pdf" },
+    { slug: "ocr-pdf" },
+    { slug: "edit-pdf" },
+    {
+      slug: "resume-builder",
+      description: "Build a resume or Europass-style CV and download a PDF with real, selectable text, all in your browser.",
+      badgeLabel: "New",
+    },
+  ]
+    .map(({ slug, ...display }) => {
+      const tool = toolBySlug.get(slug) ?? toolCatalog.find((entry) => entry.slug === slug);
+      return tool ? { tool, ...display } : null;
+    })
+    .filter((entry): entry is NonNullable<typeof entry> => Boolean(entry));
   const latestPosts = Array.isArray(posts) ? posts.slice(0, 3) : [];
 
   return (
@@ -117,7 +129,9 @@ export function Home() {
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">{[1, 2, 3, 4].map((item) => <Skeleton key={item} className="h-52 rounded-2xl" />)}</div>
           ) : (
             <div className="grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
-              {trendingTools.map((tool) => <ToolCard key={tool.slug} tool={tool} />)}
+              {trendingTools.map(({ tool, ...display }) => (
+                <ToolCard key={tool.slug} tool={tool} {...display} />
+              ))}
             </div>
           )}
         </div>

@@ -3,23 +3,28 @@ import { SITE_URL } from '@/lib/site-config';
 import EditPdfMvp from './edit-pdf-mvp';
 import ToolSeoSection from '@/components/Content/ToolSeoSection';
 import { getToolSeoContent } from '@/lib/toolSeoContent';
+import {
+  EDIT_PDF_APPLICATION_DESCRIPTION,
+  EDIT_PDF_META_DESCRIPTION,
+  EDIT_PDF_SEO_TITLE,
+} from '../data/toolSeoContent';
 
 export default function EditPdfPage() {
-  const title = 'Edit PDF Online Free, Private in Your Browser | PDFKira';
-  const description = 'Edit PDF text online: add, replace, or delete text, then download your edited PDF. Runs in your browser, so your file never leaves your device.';
+  const title = EDIT_PDF_SEO_TITLE;
+  const description = EDIT_PDF_META_DESCRIPTION;
 
   useSEOAdvanced({
     title,
-    description,
+    description: EDIT_PDF_APPLICATION_DESCRIPTION,
     canonical: `${SITE_URL}/tools/edit-pdf`,
     jsonLd: {
       '@context': 'https://schema.org',
       '@type': 'SoftwareApplication',
-      name: 'PDFKira Edit PDF Tool',
+      name: 'Edit PDF',
       applicationCategory: 'Utility',
       operatingSystem: 'Web',
-      offers: { '@type': 'Offer', price: 0, priceCurrency: 'USD' },
       description,
+      url: `${SITE_URL}/tools/edit-pdf`,
     },
   });
 

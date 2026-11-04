@@ -1,7 +1,80 @@
 import type { ToolSeoContent } from '@/components/Content/ToolSeoSection';
 import { resumeBuilderSeo } from '../../../api-server/src/lib/content';
 
+export const EDIT_PDF_SEO_TITLE = 'Edit PDF Online Free: Hindi, Nepali & English Text | PDFKira';
+export const EDIT_PDF_META_DESCRIPTION = 'Edit text in PDF files online, including Hindi and Nepali (Devanagari). Runs in your browser, so your file never leaves your device.';
+export const EDIT_PDF_APPLICATION_DESCRIPTION = 'Edit English, Hindi, and Nepali (Devanagari) text in PDF files online. Runs in your browser, so your file never leaves your device.';
+
 export const TOOL_SEO_CONTENT: Record<string, ToolSeoContent> = {
+  'edit-pdf': {
+    slug: 'edit-pdf',
+    pageSubheading: 'Works with English, Hindi and Nepali (Devanagari) text.',
+    languageSection: {
+      heading: 'Hindi and Nepali PDF editing',
+      intro: 'Edit PDFs that contain real, selectable Devanagari text. You can add or edit text using the editor’s supported Devanagari fonts.',
+      // These short Hindi and Nepali lines need review by native speakers.
+      hindiLine: 'हिंदी और नेपाली PDF में टेक्स्ट एडिट करें',
+      nepaliLine: 'नेपाली र हिन्दी PDF मा पाठ सम्पादन गर्नुहोस्',
+      fontsLabel: 'Devanagari fonts',
+      fonts: ['Noto Sans Devanagari', 'Noto Serif Devanagari', 'Mukta'],
+      typing: 'Type with your device keyboard or turn on phonetic typing. For example, “namaste” becomes “नमस्ते” and “nepal” becomes “नेपाल”.',
+      limits: 'Scanned PDFs need OCR first; PDFs using legacy fonts such as Preeti or Kantipur may not be readable as Unicode; some PDFs have damaged text that must be retyped.',
+    },
+    howToHeading: 'How it works',
+    howItWorks: [
+      { title: 'Choose a PDF', description: 'Open the PDF you want to edit.' },
+      { title: 'Choose the edit operation', description: 'Select text to edit or use Add Text to place a text box on the page.' },
+      { title: 'Review and download', description: 'Check the edited pages and download a separate PDF copy.' },
+      { title: 'Choose a Devanagari font', description: 'For Hindi or Nepali text, choose Noto Sans Devanagari, Noto Serif Devanagari, or Mukta.' },
+      { title: 'Turn on phonetic typing', description: 'Enable phonetic typing to enter Devanagari using Latin-letter keystrokes, such as “namaste” for “नमस्ते”.' },
+    ],
+    whyUse: [
+      { title: 'Work with selectable Devanagari text', description: 'Add or edit Hindi and Nepali text in PDFs that contain real, selectable Devanagari characters.' },
+      { title: 'Choose a Devanagari font', description: 'Use Noto Sans Devanagari, Noto Serif Devanagari, or Mukta for text you add or edit.' },
+      { title: 'Type your way', description: 'Enter text with your device keyboard or use the editor’s phonetic typing option.' },
+    ],
+    relatedTools: [
+      { slug: 'ocr-pdf', name: 'OCR PDF', reason: 'Use OCR on scanned pages before editing selectable text.' },
+    ],
+    faq: [
+      {
+        question: 'Is Edit PDF free?',
+        answer: 'Yes. Edit PDF is free to use and does not require signup.',
+      },
+      {
+        question: 'Does Edit PDF upload my file to a server?',
+        answer: 'No. Edit PDF works in your browser, and your file is not uploaded.',
+      },
+      {
+        question: 'What edits does Edit PDF support?',
+        answer: 'Select and replace or delete text, add text, and download a new PDF. Text edits are overlays; deleting text flattens the pages so the old text is not extractable, but this is not a secure redaction tool.',
+      },
+      {
+        question: 'Can Edit PDF edit Hindi and Nepali text?',
+        answer: 'Edit PDF can add or edit Hindi and Nepali text when a PDF contains real, selectable Devanagari text. Scanned pages and damaged text may need extra steps.',
+      },
+      {
+        question: 'Which fonts can I use in Edit PDF for Hindi and Nepali text?',
+        answer: 'Edit PDF includes Noto Sans Devanagari, Noto Serif Devanagari, and Mukta for Devanagari text.',
+      },
+      {
+        question: 'How can I type Hindi or Nepali text in Edit PDF?',
+        answer: 'Use your device keyboard or turn on phonetic typing in Edit PDF. For example, “namaste” becomes “नमस्ते” and “nepal” becomes “नेपाल”.',
+      },
+      {
+        question: 'Can Edit PDF edit scanned Hindi or Nepali PDFs?',
+        answer: 'A scanned page is an image, so its text is not selectable in Edit PDF. Run OCR first with the OCR PDF tool, and check that tool’s language options for your document before editing.',
+      },
+      {
+        question: 'Can Edit PDF read Preeti or Kantipur fonts?',
+        answer: 'PDFs using legacy fonts such as Preeti or Kantipur may not be readable as Unicode text in Edit PDF. If the text appears damaged, it may need to be retyped.',
+      },
+      {
+        question: 'Can Edit PDF securely redact text?',
+        answer: 'No. Edit PDF is not a secure redaction tool. Do not rely on it to permanently remove sensitive information from a document.',
+      },
+    ],
+  },
   'resume-builder': {
     slug: 'resume-builder',
     howToHeading: 'How to build a resume online',

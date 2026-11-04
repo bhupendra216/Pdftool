@@ -7,6 +7,17 @@ import { tools as apiServerTools } from '../../../../api-server/src/lib/content'
 
 export interface ToolSeoContent {
   slug: string;
+  pageSubheading?: string;
+  languageSection?: {
+    heading: string;
+    intro: string;
+    hindiLine: string;
+    nepaliLine: string;
+    fontsLabel: string;
+    fonts: string[];
+    typing: string;
+    limits: string;
+  };
   howToHeading?: string;
   layouts?: { title: string; description: string };
   howItWorks: { title: string; description: string }[];
@@ -39,6 +50,31 @@ export function ToolSeoSection({ content }: { content?: ToolSeoContent }) {
 
   return (
     <div>
+      {content.pageSubheading && (
+        <p className="container mx-auto max-w-5xl px-4 pt-12 text-center text-lg font-semibold text-foreground md:px-6 md:text-xl">
+          {content.pageSubheading}
+        </p>
+      )}
+
+      {content.languageSection && (
+        <section className="border-t border-border/70 bg-card/60 py-16">
+          <div className="container mx-auto max-w-5xl space-y-5 px-4 md:px-6">
+            <h2 className="text-3xl font-bold tracking-tight text-foreground">{content.languageSection.heading}</h2>
+            <p className="leading-relaxed text-muted-foreground">{content.languageSection.intro}</p>
+            <p lang="hi" className="text-lg text-foreground">{content.languageSection.hindiLine}</p>
+            <p lang="ne" className="text-lg text-foreground">{content.languageSection.nepaliLine}</p>
+            <div>
+              <h3 className="mb-2 text-lg font-semibold text-foreground">{content.languageSection.fontsLabel}</h3>
+              <ul className="list-disc space-y-1 pl-6 text-muted-foreground">
+                {content.languageSection.fonts.map((font) => <li key={font}>{font}</li>)}
+              </ul>
+            </div>
+            <p className="leading-relaxed text-muted-foreground">{content.languageSection.typing}</p>
+            <p className="leading-relaxed text-muted-foreground">{content.languageSection.limits}</p>
+          </div>
+        </section>
+      )}
+
       {content.howToSteps ? (
         <section className="border-t border-border/70 bg-card/60 py-16">
           <div className="container mx-auto max-w-5xl px-4 md:px-6">
@@ -203,15 +239,25 @@ export function ToolSeoSection({ content }: { content?: ToolSeoContent }) {
       <section className="border-t border-border/70 py-8">
         <div className="container mx-auto max-w-5xl px-4 md:px-6">
           <div className="flex flex-wrap items-center justify-center gap-4 text-sm text-muted-foreground">
-            <Badge className="rounded-full px-3 py-1 text-xs">Secure processing</Badge>
-            <span>·</span>
-            <Badge className="rounded-full px-3 py-1 text-xs">Fast</Badge>
-            <span>·</span>
-            <Badge className="rounded-full px-3 py-1 text-xs">Free</Badge>
-            <span>·</span>
-            <Badge className="rounded-full px-3 py-1 text-xs">No registration</Badge>
+            {content.slug === 'edit-pdf' ? (
+              <>
+                <Badge className="rounded-full px-3 py-1 text-xs">Free</Badge>
+                <span>·</span>
+                <Badge className="rounded-full px-3 py-1 text-xs">No registration</Badge>
+              </>
+            ) : (
+              <>
+              <Badge className="rounded-full px-3 py-1 text-xs">Secure processing</Badge>
+              <span>·</span>
+              <Badge className="rounded-full px-3 py-1 text-xs">Fast</Badge>
+              <span>·</span>
+              <Badge className="rounded-full px-3 py-1 text-xs">Free</Badge>
+              <span>·</span>
+              <Badge className="rounded-full px-3 py-1 text-xs">No registration</Badge>
+              </>
+            )}
+            </div>
           </div>
-        </div>
       </section>
     </div>
   );

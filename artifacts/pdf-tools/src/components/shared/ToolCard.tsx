@@ -5,9 +5,22 @@ import { Icon } from "@/components/ui/icon";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 
-export function ToolCard({ tool, featured = false, className = "" }: { tool: Tool; featured?: boolean; className?: string }) {
+export function ToolCard({
+  tool,
+  featured = false,
+  className = "",
+  description,
+  badgeLabel,
+}: {
+  tool: Tool;
+  featured?: boolean;
+  className?: string;
+  description?: string;
+  badgeLabel?: string;
+}) {
   const isAvailable = tool.status === "available";
   const clientToolPath = isAvailable ? getToolPath(tool.slug) : "#";
+  const popularBadgeLabel = badgeLabel ?? (tool.popular ? "Popular" : undefined);
 
   return (
     <Link href={clientToolPath} className={!isAvailable ? "cursor-not-allowed" : ""}>
@@ -20,8 +33,8 @@ export function ToolCard({ tool, featured = false, className = "" }: { tool: Too
             {featured && isAvailable && (
               <Badge variant="secondary" className="bg-primary/10 text-primary hover:bg-primary/20 border-none font-medium">Featured</Badge>
             )}
-            {tool.popular && isAvailable && !featured && (
-              <Badge variant="secondary" className="bg-accent/10 text-accent hover:bg-accent/20 border-none font-medium">Popular</Badge>
+            {popularBadgeLabel && isAvailable && !featured && (
+              <Badge variant="secondary" className="bg-accent/10 text-accent hover:bg-accent/20 border-none font-medium">{popularBadgeLabel}</Badge>
             )}
             {!isAvailable && (
               <Badge variant="outline" className="text-muted-foreground bg-muted">Coming Soon</Badge>
@@ -31,7 +44,7 @@ export function ToolCard({ tool, featured = false, className = "" }: { tool: Too
             {tool.name}
           </h3>
           <p className="text-sm text-muted-foreground leading-relaxed line-clamp-2">
-            {tool.shortDescription}
+            {description ?? tool.shortDescription}
           </p>
         </CardContent>
       </Card>

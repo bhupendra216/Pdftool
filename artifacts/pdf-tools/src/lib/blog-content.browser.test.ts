@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { blogPosts, resolveBlogToolLinks } from "../../../api-server/src/lib/content";
+import {
+  blogPosts,
+  getToolPath,
+  resolveBlogToolLinks,
+  tools,
+} from "../../../api-server/src/lib/content";
 import { hasDistinctBlogDescription, prepareBlogPostBody } from "./blog-content";
+import hindiNepaliGuideMarkdown from "../../content/posts/2026-11-04-how-to-edit-hindi-and-nepali-text-in-a-pdf.md?raw";
 
 describe("blog catalog content", () => {
   it("keeps every post body and its metadata free of repeated or leaked content", () => {
@@ -60,5 +66,37 @@ Review the page sequence before saving.`;
     expect(hasDistinctBlogDescription("  A Post ", " a post  ")).toBe(false);
     expect(hasDistinctBlogDescription("A Post", "A useful summary")).toBe(true);
     expect(hasDistinctBlogDescription("A Post", "  ")).toBe(false);
+  });
+
+  it("publishes the Hindi and Nepali editing guide with unique metadata and registered relative links", () => {
+    const guide = blogPosts.find(
+      (post) => post.slug === "2026-11-04-how-to-edit-hindi-and-nepali-text-in-a-pdf",
+    );
+    expect(guide).toBeDefined();
+    if (!guide) throw new Error("Missing Hindi and Nepali editing guide.");
+
+    expect(guide.title).toBe("How to Edit Hindi and Nepali Text in a PDF");
+    expect(guide.excerpt).toContain("selectable Hindi and Nepali Devanagari text");
+    expect(blogPosts.filter((post) => post.title === guide.title)).toHaveLength(1);
+    expect(blogPosts.filter((post) => post.excerpt === guide.excerpt)).toHaveLength(1);
+    expect(prepareBlogPostBody(hindiNepaliGuideMarkdown, guide.title).trimEnd()).toBe(
+      resolveBlogToolLinks(guide.content.trim()),
+    );
+
+    const resolvedContent = resolveBlogToolLinks(guide.content);
+    const links = [...resolvedContent.matchAll(/\]\(([^)]+)\)/g)].map(([, target]) => target);
+    expect(links.length).toBeGreaterThanOrEqual(3);
+    expect(links.length).toBeLessThanOrEqual(8);
+    for (const target of links) {
+      expect(target).toMatch(/^\//);
+      if (target.startsWith("/tools/")) {
+        expect(getToolPath(target.slice("/tools/".length))).toBe(target);
+      } else {
+        expect(target).toBe("/tools");
+      }
+    }
+    expect(tools.some((tool) => tool.slug === "edit-pdf" && tool.status === "available")).toBe(true);
+    expect(resolvedContent).not.toContain("publishedAt:");
+    expect(resolvedContent.toLowerCase()).not.toContain("screenshot");
   });
 });
