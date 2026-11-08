@@ -4,7 +4,7 @@ export const siteName = 'PDFKira';
 export const siteUrl = 'https://pdfkira.com';
 export const defaultTitle = 'PDFKira – Free Online PDF Tools';
 export const defaultDescription = 'Free online PDF tools for merging, splitting, compressing, and converting. Privacy-first, no signup required.';
-export const defaultOGImage = 'https://pdfkira.com/logo.png';
+export const defaultOGImage = 'https://pdfkira.com/og/logo.webp';
 export const twitterHandle = '@pdfkira';
 
 export function resolveToolOgImage(slug, fallback = defaultOGImage) {
@@ -13,7 +13,7 @@ export function resolveToolOgImage(slug, fallback = defaultOGImage) {
   if (explicit) {
     return explicit.startsWith('http') ? explicit : `${siteUrl}${explicit.startsWith('/') ? explicit : `/${explicit}`}`;
   }
-  return `${siteUrl}/logo.png?tool=${encodeURIComponent(slug)}`;
+  return `${siteUrl}/og/logo.webp?tool=${encodeURIComponent(slug)}`;
 }
 
 export const homepageSEO = {

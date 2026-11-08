@@ -1,6 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
-import * as pdfjsLib from 'pdfjs-dist';
-import '@/lib/client-pdf';
+import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
+
+let pdfJsModulePromise: Promise<typeof import('pdfjs-dist')> | null = null;
+
+async function loadPdfJs() {
+  if (!pdfJsModulePromise) {
+    pdfJsModulePromise = import('pdfjs-dist').then((pdfjs) => {
+      pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+      return pdfjs;
+    });
+  }
+  return pdfJsModulePromise;
+}
 
 interface PDFPreviewProps {
   file: File | null;
@@ -25,7 +36,8 @@ export function PDFPreview({ file, pageNumber = 1, scale = 1.2, className, label
       setError(null);
       try {
         const arrayBuffer = await file.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+        const pdfjs = await loadPdfJs();
+        const pdf = await pdfjs.getDocument({ data: arrayBuffer }).promise;
         if (cancelled) return;
         onDocumentLoaded?.(pdf.numPages);
         const p = Math.min(Math.max(1, pageNumber), pdf.numPages);

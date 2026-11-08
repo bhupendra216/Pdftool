@@ -61,7 +61,7 @@ const SEO_FALLBACK_RUNTIME = `
         if (!root || !fallback) return;
         var observer = new MutationObserver(function () {
           if (root.childNodes.length > 0) {
-            fallback.style.display = 'none';
+            fallback.remove();
             observer.disconnect();
           }
         });
@@ -107,7 +107,7 @@ function getAssetPaths(outDir: string): { jsPath: string; cssPath: string } {
   return { jsPath, cssPath };
 }
 
-function resolveAbsoluteImageUrl(image: string | undefined, fallback = `${siteUrl}/logo.png`) {
+function resolveAbsoluteImageUrl(image: string | undefined, fallback = `${siteUrl}/og/logo.webp`) {
   if (!image) return fallback;
   if (image.startsWith('http')) return image;
   return `${siteUrl}${image.startsWith('/') ? image : `/${image}`}`;
@@ -239,7 +239,7 @@ function renderCategoryPageHtml(category: typeof toolCategories[number], assets:
 function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath: string }) {
   if (tool.slug === PDF_TO_MARKDOWN_CONTENT.slug) {
     const canonical = toolPageUrl(tool.slug);
-    const ogImageUrl = resolveAbsoluteImageUrl(resolveToolOgImage(tool.slug, `${siteUrl}/logo.png`));
+    const ogImageUrl = resolveAbsoluteImageUrl(resolveToolOgImage(tool.slug, `${siteUrl}/og/logo.webp`));
     const structuredData = {
       '@context': 'https://schema.org',
       '@graph': [
@@ -334,7 +334,7 @@ function renderToolPageHtml(tool: ToolRecord, assets: { jsPath: string; cssPath:
 
   const seoEntry = getToolSeoContent(tool.slug);
   const content = getToolContentRequirements(tool);
-  const toolOgImage = resolveToolOgImage(tool.slug, `${siteUrl}/logo.png`);
+  const toolOgImage = resolveToolOgImage(tool.slug, `${siteUrl}/og/logo.webp`);
   const ogImageUrl = resolveAbsoluteImageUrl(toolOgImage);
   const isResumeBuilder = tool.slug === 'resume-builder';
   const isEditPdf = tool.slug === 'edit-pdf';
@@ -600,12 +600,12 @@ function renderClientToolPageHtml(tool: (typeof clientToolContent)[number], asse
     <meta property="og:description" content="${escapeHtml(tool.description)}" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="${canonical}" />
-    <meta property="og:image" content="${siteUrl}/logo.png" />
+    <meta property="og:image" content="${siteUrl}/og/logo.webp" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${escapeHtml(tool.title)}" />
     <meta name="twitter:description" content="${escapeHtml(tool.description)}" />
     <meta name="twitter:url" content="${canonical}" />
-    <meta name="twitter:image" content="${siteUrl}/logo.png" />
+    <meta name="twitter:image" content="${siteUrl}/og/logo.webp" />
     <meta name="twitter:site" content="@pdfkira" />
     <meta name="twitter:creator" content="@pdfkira" />
     <link rel="stylesheet" href="${assets.cssPath}" />
@@ -666,7 +666,7 @@ function renderToolsIndexHtml(assets: { jsPath: string; cssPath: string }) {
     <meta property="og:description" content="${description}" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="${siteUrl}/tools" />
-    <meta property="og:image" content="${siteUrl}/logo.png" />
+    <meta property="og:image" content="${siteUrl}/og/logo.webp" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@pdfkira" />
     <meta name="twitter:creator" content="@pdfkira" />
@@ -740,7 +740,7 @@ function renderComparisonPageHtml(assets: { jsPath: string; cssPath: string }) {
     <meta property="og:description" content="${description}" />
     <meta property="og:type" content="article" />
     <meta property="og:url" content="${canonical}" />
-    <meta property="og:image" content="${siteUrl}/logo.png" />
+    <meta property="og:image" content="${siteUrl}/og/logo.webp" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:site" content="@pdfkira" />
     <meta name="twitter:creator" content="@pdfkira" />
@@ -806,12 +806,12 @@ function renderEditorialPageHtml(
     <meta property="og:description" content="${escapeHtml(page.description)}" />
     <meta property="og:type" content="website" />
     <meta property="og:url" content="${canonical}" />
-    <meta property="og:image" content="${siteUrl}/logo.png" />
+    <meta property="og:image" content="${siteUrl}/og/logo.webp" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="${escapeHtml(title)}" />
     <meta name="twitter:description" content="${escapeHtml(page.description)}" />
     <meta name="twitter:url" content="${canonical}" />
-    <meta name="twitter:image" content="${siteUrl}/logo.png" />
+    <meta name="twitter:image" content="${siteUrl}/og/logo.webp" />
 ${jsonLd ? `    ${jsonLd}\n` : ''}    <link rel="stylesheet" href="${assets.cssPath}" />
     <style>${SEO_FALLBACK_STYLE}</style>
   </head>
@@ -967,7 +967,7 @@ function getStaticPages() {
           '@type': 'WebPage',
           '@id': canonical,
         },
-        image: resolveAbsoluteImageUrl(post.coverImage, `${siteUrl}/logo.png`),
+        image: resolveAbsoluteImageUrl(post.coverImage, `${siteUrl}/og/logo.webp`),
       },
     };
   });
@@ -1035,7 +1035,7 @@ function patchHomepageHtml(outDir: string) {
         '@type': 'Organization',
         name: 'PDFKira',
         url: siteUrl,
-        logo: `${siteUrl}/logo.png`,
+        logo: `${siteUrl}/og/logo.webp`,
         contactPoint: { '@type': 'ContactPoint', contactType: 'customer support', email: 'support@pdfkira.com' },
       },
       {

@@ -2,12 +2,23 @@ import { Router } from "express";
 import multer from "multer";
 import { PDFDocument } from "pdf-lib";
 import { loadPdf, preservePdfMetadata, isPdfFile } from "./pdf-utils";
-import { applyImageWatermarkToPdf, applyPageNumbersToPdf, applyWatermarkToPdf } from "./pdf-annotations";
+import {
+  applyImageWatermarkToPdf,
+  applyPageNumbersToPdf,
+  applyWatermarkToPdf,
+  type WatermarkPosition,
+} from "./pdf-annotations";
 import { getSingleUploadedFile } from "./upload-shape";
-import { assertSamePdfPageCount, getPdfPageCount } from "../lib/pdf-validation";
+import { assertSamePdfPageCount, getPdfPageCount, PdfValidationError } from "../lib/pdf-validation";
 
 const upload = multer({ storage: multer.memoryStorage() });
 const router = Router();
+const watermarkPositions = new Set([
+  "top-left", "top-center", "top-right",
+  "center-left", "center", "center-right",
+  "bottom-left", "bottom-center", "bottom-right",
+]);
+const isWatermarkPosition = (value: string): value is WatermarkPosition => watermarkPositions.has(value);
 
 router.post("/watermark-pdf", upload.fields([{ name: "files", maxCount: 1 }, { name: "logo", maxCount: 1 }, { name: "file", maxCount: 1 }]), async (req, res) => {
   const fieldFiles = (req.files as Record<string, Express.Multer.File[] | undefined> | undefined) || {};
@@ -15,9 +26,24 @@ router.post("/watermark-pdf", upload.fields([{ name: "files", maxCount: 1 }, { n
   const logoFile = fieldFiles.logo?.[0];
   const text = typeof req.body.text === "string" ? req.body.text.trim() : "";
   const position = typeof req.body.position === "string" ? req.body.position.trim() : "bottom-right";
+  const rotation = Number(req.body.rotation ?? -30);
+  const fontSize = Number(req.body.fontSize ?? 24);
+  const opacity = Number(req.body.opacity ?? 0.12);
 
   if (!isPdfFile(file)) {
     res.status(400).json({ error: "No PDF file uploaded" });
+    return;
+  }
+  if (!logoFile?.buffer?.length && !text) {
+    res.status(400).json({ error: "Enter the watermark text." });
+    return;
+  }
+  if (text.length > 100) {
+    res.status(400).json({ error: "Watermark text must be 100 characters or fewer." });
+    return;
+  }
+  if (!isWatermarkPosition(position)) {
+    res.status(400).json({ error: "Choose a valid watermark position." });
     return;
   }
 
@@ -34,9 +60,9 @@ router.post("/watermark-pdf", upload.fields([{ name: "files", maxCount: 1 }, { n
     copiedPages.forEach((page) => outPdf.addPage(page));
 
     if (logoFile?.buffer?.length) {
-      await applyImageWatermarkToPdf(outPdf, logoFile.buffer, position as any, 0.35);
-    } else if (text) {
-      await applyWatermarkToPdf(outPdf, text, position as any);
+      await applyImageWatermarkToPdf(outPdf, logoFile.buffer, position, 0.35);
+    } else {
+      await applyWatermarkToPdf(outPdf, text, position, fontSize, undefined, opacity, rotation);
     }
 
     const outBytes = await outPdf.save();
@@ -47,9 +73,19 @@ router.post("/watermark-pdf", upload.fields([{ name: "files", maxCount: 1 }, { n
     res.send(outputBuffer);
   } catch (error) {
     console.error("PDF watermark failed", error);
-    const isPageMismatch = error instanceof Error && error.message.includes("page count");
-    res.status(isPageMismatch ? 500 : 400).json({
-      error: isPageMismatch ? "PDF watermarking changed the page count. No output was returned." : "The uploaded PDF could not be watermarked.",
+    const message = error instanceof Error ? error.message : "";
+    const isPageMismatch = message.includes("page count");
+    const isWatermarkValidationError = error instanceof Error && error.name === "WatermarkValidationError";
+    const isPdfInputError = error instanceof PdfValidationError;
+    const status = isWatermarkValidationError || isPdfInputError ? 400 : 500;
+    res.status(isPageMismatch ? 500 : status).json({
+      error: isPageMismatch
+        ? "PDF watermarking changed the page count. No output was returned."
+        : isWatermarkValidationError
+          ? message
+          : isPdfInputError
+            ? "The uploaded PDF could not be watermarked."
+            : "Could not apply the watermark. Please try again.",
     });
   }
 });

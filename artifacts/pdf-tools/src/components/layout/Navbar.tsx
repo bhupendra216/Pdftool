@@ -36,7 +36,7 @@ export function Navbar() {
           href="/"
           className="flex items-center gap-3 transition-opacity hover:opacity-80 focus:outline-none focus-visible:outline-none focus-visible:ring-0"
         >
-          <BrandMark logoClassName="h-14 w-14" wordmarkClassName="text-lg" showWordmark />
+          <BrandMark logoClassName="h-10 w-10" wordmarkClassName="text-lg" showWordmark />
         </Link>
 
         {/* Desktop Navigation */}
@@ -61,8 +61,8 @@ export function Navbar() {
         {/* Mobile Navigation */}
         <Sheet open={isOpen} onOpenChange={setIsOpen}>
           <SheetTrigger asChild className="md:hidden">
-            <Button variant="ghost" size="icon">
-              <Menu className="w-6 h-6" />
+            <Button variant="ghost" size="icon" aria-label="Open menu">
+              <Menu className="w-6 h-6" aria-hidden="true" />
             </Button>
           </SheetTrigger>
 

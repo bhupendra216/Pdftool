@@ -1,6 +1,7 @@
 import express, { Router } from "express";
 import multer from "multer";
 import { execFile } from "node:child_process";
+import { randomBytes } from "node:crypto";
 import { mkdtemp, rm, writeFile, readFile, readdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -8,8 +9,9 @@ import { PDFDocument } from "pdf-lib";
 import sharp from "sharp";
 import { AlignmentType, Document, Packer, Paragraph, TextRun } from "docx";
 import { getSingleUploadedFile, getUploadedFiles } from "./upload-shape";
-import { GhostscriptError, runGhostscript } from "../lib/ghostscript";
-import { assertSamePdfPageCount, getPdfInfo } from "../lib/pdf-validation";
+import { runGhostscript } from "../lib/ghostscript";
+import { runSafeCommand, SafeCommandError } from "../lib/safe-command";
+import { getPdfInfo } from "../lib/pdf-validation";
 import {
   convertWordToPdf,
   InvalidWordDocumentError,
@@ -52,6 +54,61 @@ const JPG_TO_PDF_MAX_PIXELS = 40_000_000;
 const WORD_OUTPUT_EXTS = new Set(["docx", "doc"]);
 
 class JpgToPdfInputError extends Error {}
+
+class PdfPasswordValidationError extends Error {
+  readonly statusCode = 400;
+}
+
+function normalizePdfPassword(password: string, enforceMinimumLength = false) {
+  // qpdf applies the R6 SASLprep profile when it consumes this NFC UTF-8 password.
+  const normalized = password.normalize("NFC");
+  if (enforceMinimumLength && [...normalized].length < 6) {
+    throw new PdfPasswordValidationError("Password must be at least 6 characters.");
+  }
+  if (Buffer.byteLength(normalized, "utf8") > 127) {
+    throw new PdfPasswordValidationError("Password must be 127 UTF-8 bytes or fewer.");
+  }
+  return normalized;
+}
+
+function incorrectPdfPasswordError() {
+  const error = new Error("Incorrect password.");
+  Object.assign(error, { statusCode: 400 });
+  return error;
+}
+
+async function isQpdfEncrypted(inputFile: string) {
+  try {
+    await runSafeCommand("qpdf", ["--is-encrypted", inputFile], { timeoutMs: 30_000 });
+    return true;
+  } catch (error) {
+    if (error instanceof SafeCommandError && error.reason === "exit" && error.exitCode === 2) {
+      return false;
+    }
+    throw error;
+  }
+}
+
+async function getQpdfPageCount(inputFile: string, passwordFile?: string) {
+  const args = [
+    ...(passwordFile ? [`--password-file=${passwordFile}`] : []),
+    "--show-npages",
+    inputFile,
+  ];
+  try {
+    const result = await runSafeCommand("qpdf", args, { timeoutMs: 30_000 });
+    const pageCount = Number(result.stdout.trim());
+    if (!Number.isInteger(pageCount) || pageCount < 1) {
+      throw new Error("The uploaded file is not a valid PDF.");
+    }
+    return pageCount;
+  } catch (error) {
+    if (error instanceof SafeCommandError && error.passwordDiagnostic) {
+      throw incorrectPdfPasswordError();
+    }
+    throw error;
+  }
+}
 
 function parseBoolean(value: unknown, defaultValue = false): boolean {
   if (typeof value === "boolean") return value;
@@ -675,42 +732,63 @@ export async function convertPdfToJpg(file: Express.Multer.File) {
 
 async function protectPdf(file: Express.Multer.File, password: string) {
   if (!password) {
-    throw new Error("Password is required to protect the PDF.");
+    throw new PdfPasswordValidationError("Password is required to protect the PDF.");
   }
-  const inputInfo = await getPdfInfo(file.buffer);
-  if (inputInfo.encrypted) {
-    const error = new Error("This PDF is already password-protected. Unlock it first.");
-    Object.assign(error, { statusCode: 400 });
-    throw error;
-  }
+  const normalizedPassword = normalizePdfPassword(password, true);
 
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "protect-pdf-"));
   const inputFile = path.join(tempDir, "input.pdf");
   const outputFile = path.join(tempDir, "protected.pdf");
+  const jobFile = path.join(tempDir, "qpdf-job.json");
+  const passwordFile = path.join(tempDir, "password.txt");
 
   try {
     await writeFile(inputFile, file.buffer);
-    await runGhostscript([
-      "-q",
-      "-dNOPAUSE",
-      "-dBATCH",
-      "-sDEVICE=pdfwrite",
-      `-sOutputFile=${outputFile}`,
-      `-sOwnerPassword=${password}`,
-      `-sUserPassword=${password}`,
-      "-dEncryptionR=3",
-      "-dKeyLength=128",
-      "-dPermitPrinting=true",
-      "-dPermitModify=false",
-      "-dPermitExtract=false",
-      "-dPermitAnnotate=false",
+    if (await isQpdfEncrypted(inputFile)) {
+      const error = new Error("This PDF is already password-protected. Unlock it first.");
+      Object.assign(error, { statusCode: 400 });
+      throw error;
+    }
+    const inputPageCount = await getQpdfPageCount(inputFile);
+
+    const job = {
       inputFile,
-    ], { expectedOutputPath: outputFile });
+      outputFile,
+      encrypt: {
+        userPassword: normalizedPassword,
+        ownerPassword: randomBytes(32).toString("base64url"),
+        "256bit": {
+          print: "full",
+          extract: "y",
+        },
+      },
+    };
+    await writeFile(jobFile, JSON.stringify(job), { mode: 0o600 });
+    await writeFile(passwordFile, Buffer.from(normalizedPassword, "utf8"), { mode: 0o600 });
+    await runSafeCommand("qpdf", [`--job-json-file=${jobFile}`], {
+      timeoutMs: 120_000,
+      expectedOutputPath: outputFile,
+    });
+
+    const encryptionInfo = await runSafeCommand("qpdf", [
+      `--password-file=${passwordFile}`,
+      "--show-encryption",
+      outputFile,
+    ], {
+      timeoutMs: 30_000,
+    });
+    if (!/\bR\s*=\s*6\b/.test(`${encryptionInfo.stdout}\n${encryptionInfo.stderr}`)) {
+      throw new Error("PDF protection did not produce AES-256 encryption.");
+    }
+
     const buffer = await readFile(outputFile);
-    await assertSamePdfPageCount(file.buffer, buffer);
-    const outputInfo = await getPdfInfo(buffer);
-    if (!outputInfo.encrypted) {
+    const outputEncrypted = await isQpdfEncrypted(outputFile);
+    if (!outputEncrypted) {
       throw new Error("PDF protection did not produce an encrypted file.");
+    }
+    const outputPageCount = await getQpdfPageCount(outputFile, passwordFile);
+    if (inputPageCount !== outputPageCount) {
+      throw new Error("PDF protection changed the page count. No output was returned.");
     }
     return { buffer, filename: "protected.pdf" };
   } finally {
@@ -719,37 +797,36 @@ async function protectPdf(file: Express.Multer.File, password: string) {
 }
 
 async function unlockPdf(file: Express.Multer.File, password: string) {
-  const inputInfo = await getPdfInfo(file.buffer);
-  if (!inputInfo.encrypted) {
-    return { buffer: file.buffer, filename: "unlocked.pdf", notProtected: true };
-  }
-  if (!password) {
-    throw new Error("Password is required to unlock the file.");
-  }
-
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "unlock-pdf-"));
   const inputFile = path.join(tempDir, "input.pdf");
   const outputFile = path.join(tempDir, "unlocked.pdf");
+  const passwordFile = path.join(tempDir, "password.txt");
 
   try {
     await writeFile(inputFile, file.buffer);
-    await runGhostscript([
-      "-q",
-      "-dNOPAUSE",
-      "-dBATCH",
-      "-sDEVICE=pdfwrite",
-      `-sPDFPassword=${password}`,
-      `-sOutputFile=${outputFile}`,
-      inputFile,
-    ], { expectedOutputPath: outputFile });
+    if (!(await isQpdfEncrypted(inputFile))) {
+      await getQpdfPageCount(inputFile);
+      return { buffer: file.buffer, filename: "unlocked.pdf", notProtected: true };
+    }
+    if (!password) {
+      throw new PdfPasswordValidationError("Password is required to unlock the file.");
+    }
+    const normalizedPassword = normalizePdfPassword(password);
+    await writeFile(passwordFile, Buffer.from(normalizedPassword, "utf8"), { mode: 0o600 });
+    const inputPageCount = await getQpdfPageCount(inputFile, passwordFile);
+    await runSafeCommand("qpdf", [`--password-file=${passwordFile}`, "--decrypt", inputFile, outputFile], {
+      timeoutMs: 120_000,
+      expectedOutputPath: outputFile,
+    });
     const buffer = await readFile(outputFile);
-    await assertSamePdfPageCount(file.buffer, buffer);
+    const outputPageCount = await getQpdfPageCount(outputFile);
+    if (inputPageCount !== outputPageCount) {
+      throw new Error("PDF unlocking changed the page count. No output was returned.");
+    }
     return { buffer, filename: "unlocked.pdf", notProtected: false };
   } catch (error) {
-    if (error instanceof GhostscriptError && error.reason === "password") {
-      const passwordError = new Error("Incorrect password.");
-      Object.assign(passwordError, { statusCode: 400 });
-      throw passwordError;
+    if (error instanceof SafeCommandError && error.passwordDiagnostic) {
+      throw incorrectPdfPasswordError();
     }
     throw error;
   } finally {

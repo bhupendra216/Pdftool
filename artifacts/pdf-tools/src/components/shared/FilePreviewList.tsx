@@ -130,7 +130,7 @@ export function FilePreviewList({ files, onRemove, onReorder, status }: FileList
               )}
 
               <div className="shrink-0 rounded-xl bg-primary/10 p-0 overflow-hidden transition-colors group-hover:bg-primary group-hover:text-primary-foreground">
-                <img src="/logo.png" alt="PDFKira" className="w-10 h-10 object-cover rounded-lg" />
+                <img src="/logo.webp" alt="PDFKira" width={80} height={64} className="w-10 h-10 object-cover rounded-lg" />
               </div>
 
               <div className="flex-1 min-w-0">

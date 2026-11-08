@@ -1,17 +1,13 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { lazy, Suspense, useState, useEffect, useMemo, useRef } from "react";
 import { useParams, Link } from "wouter";
-import { PDFDocument } from "pdf-lib";
-import { GlobalWorkerOptions, getDocument } from "pdfjs-dist";
-import * as pdfjsLib from "pdfjs-dist";
-const OPS = (pdfjsLib as any).OPS as any;
+import pdfWorkerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 import { useGetTool, useGetBlogPost, useListTools, useListFaqs, useOcrImageToText } from "@workspace/api-client-react";
 import { useSEOAdvanced } from "@/hooks/use-seo";
 import { SITE_URL } from "@/lib/site-config";
 import { formatBytes } from "@/lib/utils";
 import { UploadArea } from "@/components/shared/UploadArea";
-import DownloadPdfPage from '@/pages/download-pdf';
-import SearchFreePdfsPage from '@/pages/search-free-pdfs';
-import JSZip from "jszip";
+const DownloadPdfPage = lazy(() => import("@/pages/download-pdf"));
+const SearchFreePdfsPage = lazy(() => import("@/pages/search-free-pdfs"));
 import { FilePreviewList } from "@/components/shared/FilePreviewList";
 import { createImageBatchZip } from "@/lib/image-batch-zip";
 import { FaqSection } from "@/components/shared/FaqSection";
@@ -32,25 +28,29 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ArrowLeft, ChevronRight, Settings2, Download, AlertCircle, MoveUp, MoveDown, RotateCcw, RotateCw, Trash2, GripVertical, Check, FileMinus, FilePlus, ShieldCheck, Zap, Sparkles, Layers3 } from "lucide-react";
 import { BrandMark } from "@/components/brand/BrandMark";
-import { QrCodeGeneratorTool } from "@/components/shared/QrCodeGeneratorTool";
-import { SignPdfTool } from "@/components/shared/SignPdfTool";
+const QrCodeGeneratorTool = lazy(() => import("@/components/shared/QrCodeGeneratorTool").then((module) => ({ default: module.QrCodeGeneratorTool })));
+const SignPdfTool = lazy(() => import("@/components/shared/SignPdfTool").then((module) => ({ default: module.SignPdfTool })));
 import NotFoundPage from "@/pages/not-found";
 import { removePagesById } from "@/lib/page-state";
 import { parsePageRanges } from "@workspace/pdf-pages";
 import { Checkbox } from "@/components/ui/checkbox";
-import {
-  createMarkdownDownload,
-  extractMarkdownFromPdf as extractPdfToMarkdown,
-  markdownForDisplay,
-  sanitizeMarkdownBaseName,
-  withPageMarkers,
-  type MarkdownImage,
-} from "@/lib/pdfToMarkdown";
+import { markdownForDisplay, withPageMarkers } from "@/lib/pdf-markdown-display";
+import type { MarkdownImage } from "@/lib/pdfToMarkdown";
 import { MAX_PDF_SIZE_MB } from "@/lib/pdfToMarkdownConfig";
 import { PDF_TO_MARKDOWN_CONTENT } from "../../../api-server/src/lib/pdfToMarkdownContent";
 import { tools as staticToolCatalog } from "../../../api-server/src/lib/content";
 
-GlobalWorkerOptions.workerSrc = new URL("pdfjs-dist/build/pdf.worker.min.mjs", import.meta.url).toString();
+let pdfJsModulePromise: Promise<typeof import("pdfjs-dist")> | null = null;
+
+async function loadPdfJs() {
+  if (!pdfJsModulePromise) {
+    pdfJsModulePromise = import("pdfjs-dist").then((pdfjs) => {
+      pdfjs.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
+      return pdfjs;
+    });
+  }
+  return pdfJsModulePromise;
+}
 
 const TRUST_POINTS = [
   "Secure processing",
@@ -379,6 +379,7 @@ export function ToolDetail(props?: any) {
   const [markdownCopied, setMarkdownCopied] = useState(false);
   const [watermarkText, setWatermarkText] = useState<string>("CONFIDENTIAL");
   const [watermarkPosition, setWatermarkPosition] = useState<string>("bottom-right");
+  const [watermarkRotation, setWatermarkRotation] = useState<number>(-30);
   const [watermarkLogo, setWatermarkLogo] = useState<File | null>(null);
   const [pageNumberStart, setPageNumberStart] = useState<string>("1");
   const [pageNumberPosition, setPageNumberPosition] = useState<string>("bottom-right");
@@ -720,6 +721,7 @@ export function ToolDetail(props?: any) {
     if (tool?.slug !== "pdf-to-markdown" || status !== "success" || markdownPages.length === 0) return;
     let isCurrent = true;
     const createDownload = async () => {
+      const { createMarkdownDownload } = await import("@/lib/pdfToMarkdown");
       const download = await createMarkdownDownload(markdownPages, markdownImages, markdownBaseName, addPageMarkers);
       if (!isCurrent) return;
       setDownloadUrl(URL.createObjectURL(download.blob));
@@ -776,7 +778,8 @@ export function ToolDetail(props?: any) {
 
     try {
       const bytes = await file.arrayBuffer();
-      const pdf = await getDocument({ data: bytes }).promise;
+      const pdfjs = await loadPdfJs();
+      const pdf = await pdfjs.getDocument({ data: bytes }).promise;
       const thumbnails: Array<string | null> = Array.from({ length: pageCount }, () => null);
 
       for (let index = 0; index < pageCount; index += 1) {
@@ -808,6 +811,7 @@ export function ToolDetail(props?: any) {
   const initializePdfPages = async (file: File) => {
     try {
       const bytes = await file.arrayBuffer();
+      const { PDFDocument } = await import("pdf-lib");
       const pdf = await PDFDocument.load(bytes);
       const pageCount = pdf.getPageCount();
 
@@ -895,7 +899,27 @@ export function ToolDetail(props?: any) {
       ? getSelectedPageCount() > 0
       : tool?.slug === "organize-pdf"
       ? pdfPages.length > 0
+      : tool?.slug === "watermark-pdf"
+      ? Boolean(watermarkLogo || watermarkText.trim())
+      : tool?.slug === "protect-pdf"
+      ? [...password.normalize("NFC")].length >= 6 && new TextEncoder().encode(password.normalize("NFC")).length <= 127
+      : tool?.slug === "unlock-pdf"
+      ? password.length > 0 && new TextEncoder().encode(password.normalize("NFC")).length <= 127
       : true);
+  const normalizedPassword = password.normalize("NFC");
+  const passwordCharacterCount = [...normalizedPassword].length;
+  const passwordByteLength = new TextEncoder().encode(normalizedPassword).length;
+  const passwordHasCharacterVariety = [
+    /[a-z]/u.test(password),
+    /[A-Z]/u.test(password),
+    /\d/u.test(password),
+    /[^\p{L}\p{N}]/u.test(password),
+  ].filter(Boolean).length;
+  const passwordStrength = passwordCharacterCount >= 14 && passwordHasCharacterVariety >= 3
+    ? "Strong"
+    : passwordCharacterCount >= 10 && passwordHasCharacterVariety >= 2
+      ? "Moderate"
+      : "Weak";
 
   async function postFormDataForBlob(url: string, formData: FormData, errorPrefix: string): Promise<Blob> {
     const response = await fetch(url, { method: "POST", body: formData });
@@ -990,7 +1014,9 @@ export function ToolDetail(props?: any) {
 
   const convertPdfToJpgOnClient = async (fileToConvert: File): Promise<{ blob: Blob; filename: string }> => {
     const bytes = await fileToConvert.arrayBuffer();
-    const pdf = await pdfjsLib.getDocument({ data: bytes }).promise;
+    const pdfjs = await loadPdfJs();
+    const pdf = await pdfjs.getDocument({ data: bytes }).promise;
+    const { default: JSZip } = await import("jszip");
     const zip = new JSZip();
     const pageCount = pdf.numPages;
 
@@ -1054,7 +1080,7 @@ export function ToolDetail(props?: any) {
     return postFormDataForBlob(apiUrl("/api/unlock-pdf"), formData, "Unlock PDF");
   };
 
-  const watermarkPdfOnServer = async (fileToWatermark: File, text: string, position: string, logoFile: File | null): Promise<Blob> => {
+  const watermarkPdfOnServer = async (fileToWatermark: File, text: string, position: string, logoFile: File | null, rotation: number): Promise<Blob> => {
     const formData = new FormData();
     formData.append("files", fileToWatermark);
     formData.append("text", text);
@@ -1062,6 +1088,8 @@ export function ToolDetail(props?: any) {
     if (logoFile) {
       formData.append("logo", logoFile);
     }
+
+    formData.append("rotation", String(rotation));
 
     return postFormDataForBlob(apiUrl("/api/watermark-pdf"), formData, "Watermark PDF");
   };
@@ -1380,6 +1408,7 @@ export function ToolDetail(props?: any) {
     }
 
     const bytes = await fileToEdit.arrayBuffer();
+    const { PDFDocument } = await import("pdf-lib");
     const pdf = await PDFDocument.load(bytes);
     const pageIndicesToDelete = [...new Set(pagesToDelete)]
       .map((pageNumber) => Number(pageNumber) - 1)
@@ -1640,7 +1669,7 @@ export function ToolDetail(props?: any) {
     } : {}),
   }), [tool?.name, tool?.seoDescription, tool?.shortDescription, tool?.slug, toolUrl]);
 
-  const toolOgImage = tool?.slug ? resolveToolOgImage(tool.slug) : `${SITE_URL}/logo.png`;
+  const toolOgImage = tool?.slug ? resolveToolOgImage(tool.slug) : `${SITE_URL}/og/logo.webp`;
 
   useSEOAdvanced({
     title: tool?.slug === "pdf-to-markdown" ? PDF_TO_MARKDOWN_CONTENT.seoTitle : tool?.seoTitle || "Loading...",
@@ -1706,7 +1735,9 @@ export function ToolDetail(props?: any) {
         </div>
 
         <div className="container mx-auto flex-1 px-4 py-8 md:px-6 md:py-12">
-          <QrCodeGeneratorTool />
+          <Suspense fallback={<div className="min-h-64" />}>
+            <QrCodeGeneratorTool />
+          </Suspense>
         </div>
       </div>
     );
@@ -1741,7 +1772,9 @@ export function ToolDetail(props?: any) {
         </div>
 
         <div className="container mx-auto flex-1 px-4 py-8 md:px-6 md:py-12">
-          <SignPdfTool />
+          <Suspense fallback={<div className="min-h-64" />}>
+            <SignPdfTool />
+          </Suspense>
         </div>
       </div>
     );
@@ -1860,6 +1893,7 @@ export function ToolDetail(props?: any) {
         (async () => {
           try {
             const bytes = await first.arrayBuffer();
+            const { PDFDocument } = await import("pdf-lib");
             const pdf = await PDFDocument.load(bytes);
             const pageCount = pdf.getPageCount();
             setTotalPages(pageCount);
@@ -1882,6 +1916,7 @@ export function ToolDetail(props?: any) {
         (async () => {
           try {
             const bytes = await first.arrayBuffer();
+            const { PDFDocument } = await import("pdf-lib");
             const pdf = await PDFDocument.load(bytes);
             setTotalPages(pdf.getPageCount());
             setPageRangeError(null);
@@ -2038,6 +2073,7 @@ export function ToolDetail(props?: any) {
 
       if (tool.slug === "pdf-to-word") {
         const bytes = await files[0].arrayBuffer();
+        const { PDFDocument } = await import("pdf-lib");
         const pdf = await PDFDocument.load(bytes);
         const pageCount = pdf.getPageCount();
         if (pageCount > 20) {
@@ -2203,7 +2239,8 @@ export function ToolDetail(props?: any) {
         blob = await convertPdfToWordOnServer(files[0]);
         outputName = stripExtension(files[0].name) + ".docx";
       } else if (tool.slug === "pdf-to-markdown") {
-        const result = await extractPdfToMarkdown(files[0], {
+        const markdownModule = await import("@/lib/pdfToMarkdown");
+        const result = await markdownModule.extractMarkdownFromPdf(files[0], {
           onPage: (pageNumber, pageCount) => {
             setProgressStage(`Reading page ${pageNumber} of ${pageCount}`);
             setProgress(Math.round(((pageNumber - 1) / pageCount) * 100));
@@ -2211,7 +2248,7 @@ export function ToolDetail(props?: any) {
           onTextStatus: (textFound) => setMarkdownNoTextWarning(!textFound),
         });
         const images = result.images;
-        const baseName = sanitizeMarkdownBaseName(files[0].name);
+        const baseName = markdownModule.sanitizeMarkdownBaseName(files[0].name);
         setMarkdownPages(result.pages);
         setMarkdownImages(images);
         setMarkdownBaseName(baseName);
@@ -2227,7 +2264,7 @@ export function ToolDetail(props?: any) {
           throw new Error("No text found. This PDF may be scanned or image-only. Run it through the OCR PDF tool first.");
         }
 
-        const download = await createMarkdownDownload(result.pages, images, baseName);
+        const download = await markdownModule.createMarkdownDownload(result.pages, images, baseName);
         blob = download.blob;
         outputName = download.fileName;
         setDownloadShortName(baseName);
@@ -2275,7 +2312,7 @@ export function ToolDetail(props?: any) {
         blob = await unlockPdfOnServer(files[0], password);
         outputName = stripExtension(files[0].name) + "-unlocked.pdf";
       } else if (tool.slug === "watermark-pdf") {
-        blob = await watermarkPdfOnServer(files[0], watermarkText, watermarkPosition, watermarkLogo);
+        blob = await watermarkPdfOnServer(files[0], watermarkText, watermarkPosition, watermarkLogo, watermarkRotation);
         outputName = stripExtension(files[0].name) + "-watermarked.pdf";
       } else if (tool.slug === "add-page-numbers") {
         const startNumber = Number(pageNumberStart || 1);
@@ -2401,7 +2438,9 @@ export function ToolDetail(props?: any) {
           tool?.slug === 'search-free-pdfs' ? (
             <div className="relative overflow-hidden rounded-3xl border border-border/70 bg-card/90 p-6 md:p-10 shadow-sm">
               <div className="max-w-6xl mx-auto">
-                <SearchFreePdfsPage />
+                <Suspense fallback={<div className="min-h-32" />}>
+                  <SearchFreePdfsPage />
+                </Suspense>
 
                 <div className="mt-8">
                   <Badge variant="secondary" className="rounded-full border border-border/60 bg-background/80 px-4 py-1 text-[11px] font-semibold uppercase tracking-[0.2em] text-muted-foreground whitespace-normal max-w-full">
@@ -2460,7 +2499,9 @@ export function ToolDetail(props?: any) {
 
                 <div className="space-y-4 rounded-[28px] border border-border/70 bg-background/90 p-5 shadow-sm backdrop-blur-sm order-1 lg:order-2 min-w-0">
                   {tool?.slug === 'download-pdf' ? (
-                    <DownloadPdfPage />
+                    <Suspense fallback={<div className="min-h-32" />}>
+                      <DownloadPdfPage />
+                    </Suspense>
                   ) : (
                     <UploadArea
                       onFilesSelected={handleFilesSelected}
@@ -2504,7 +2545,7 @@ export function ToolDetail(props?: any) {
                         Smooth drag-and-drop upload
                       </div>
                       <div className="flex items-center gap-2">
-                        <img src="/logo.png" alt="PDFKira" className="h-4 w-4 object-cover rounded-sm" />
+                        <img src="/logo.webp" alt="PDFKira" width={80} height={64} className="h-4 w-4 object-cover rounded-sm" />
                         Friendly preview before processing
                       </div>
                       <div className="flex items-center gap-2">
@@ -2525,9 +2566,13 @@ export function ToolDetail(props?: any) {
               <div className={showCompactUploadLayout ? "animate-in fade-in slide-in-from-bottom-4 duration-500 grid gap-6 xl:grid-cols-[minmax(0,1.15fr)_360px] xl:items-start" : "animate-in fade-in slide-in-from-bottom-4 duration-500"}>
                 <div className={showCompactUploadLayout ? "min-w-0 space-y-6" : ""}>
                   {tool?.slug === 'download-pdf' ? (
-                    <DownloadPdfPage />
+                    <Suspense fallback={<div className="min-h-32" />}>
+                      <DownloadPdfPage />
+                    </Suspense>
                   ) : tool?.slug === 'search-free-pdfs' ? (
-                    <SearchFreePdfsPage />
+                    <Suspense fallback={<div className="min-h-32" />}>
+                      <SearchFreePdfsPage />
+                    </Suspense>
                   ) : (
                     <UploadArea
                       onFilesSelected={handleFilesSelected}
@@ -2688,7 +2733,7 @@ export function ToolDetail(props?: any) {
                           ) : (
                             <div className="rounded-[28px] border border-dashed border-border/70 bg-background/70 p-10 text-center shadow-sm">
                               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 text-primary overflow-hidden">
-                                <img src="/logo.png" alt="PDFKira" className="h-10 w-10 object-cover rounded-lg" />
+                                <img src="/logo.webp" alt="PDFKira" width={80} height={64} className="h-10 w-10 object-cover rounded-lg" />
                               </div>
                               <h3 className="mt-4 text-xl font-semibold text-foreground">Upload a PDF to start rotating</h3>
                               <p className="mt-2 text-sm text-muted-foreground">Use the full-document controls to rotate everything in one step.</p>
@@ -2764,7 +2809,7 @@ export function ToolDetail(props?: any) {
                         <div className="overflow-hidden rounded-2xl border border-border/70 bg-card/70 p-3">
                           {tool.slug === "compress-pdf" ? (
                             <div className="flex h-[260px] flex-col items-center justify-center gap-3 rounded-2xl bg-muted/50 px-4 text-center">
-                              <img src="/logo.png" alt="PDFKira" className="h-12 w-12 object-cover" />
+                              <img src="/logo.webp" alt="PDFKira" width={80} height={64} className="h-12 w-12 object-cover" />
                               <div>
                                 <p className="font-semibold text-foreground">{files[0].name}</p>
                                 <p className="mt-1 text-sm text-muted-foreground">PDF preview will be generated after compression.</p>
@@ -3054,10 +3099,23 @@ export function ToolDetail(props?: any) {
                           type="password"
                           value={password}
                           onChange={(e) => setPassword(e.target.value)}
-                          placeholder={tool.slug === "protect-pdf" ? "Enter a password to protect the PDF" : "Enter the current password"}
+                          minLength={tool.slug === "protect-pdf" ? 6 : undefined}
+                          maxLength={127}
+                          placeholder={tool.slug === "protect-pdf" ? "At least 6 characters" : "Enter the current password"}
                           className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                           aria-label="PDF password"
                         />
+                        {tool.slug === "protect-pdf" ? (
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            {passwordCharacterCount > 0 ? `Strength: ${passwordStrength}. ` : ""}
+                            Use at least 6 characters; longer, unique passwords are safer.
+                            {passwordByteLength > 127 ? " Passwords must be 127 UTF-8 bytes or fewer." : ""}
+                          </p>
+                        ) : (
+                          <p className="mt-2 text-xs text-muted-foreground">
+                            Passwords can contain Unicode characters and must be 127 UTF-8 bytes or fewer.
+                          </p>
+                        )}
                       </div>
                     )}
 
@@ -3069,9 +3127,13 @@ export function ToolDetail(props?: any) {
                             value={watermarkText}
                             onChange={(e) => setWatermarkText(e.target.value)}
                             placeholder="Enter watermark text"
+                            maxLength={100}
                             className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                             aria-label="Watermark text"
                           />
+                          {!watermarkLogo && !watermarkText.trim() && (
+                            <p role="alert" className="mt-2 text-sm text-destructive">Enter the watermark text.</p>
+                          )}
                         </div>
                         <div>
                           <label className="mb-2 block text-sm font-medium text-foreground">Logo</label>
@@ -3090,10 +3152,30 @@ export function ToolDetail(props?: any) {
                             className="w-full rounded-xl border border-border bg-background px-3 py-2 text-sm text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                           >
                             <option value="top-left">Top left</option>
+                            <option value="top-center">Top center</option>
                             <option value="top-right">Top right</option>
+                            <option value="center-left">Center left</option>
+                            <option value="center">Center</option>
+                            <option value="center-right">Center right</option>
                             <option value="bottom-left">Bottom left</option>
+                            <option value="bottom-center">Bottom center</option>
                             <option value="bottom-right">Bottom right</option>
                           </select>
+                        </div>
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-foreground">
+                            Rotation: {watermarkRotation}°
+                          </label>
+                          <input
+                            type="range"
+                            min="-180"
+                            max="180"
+                            step="5"
+                            value={watermarkRotation}
+                            onChange={(e) => setWatermarkRotation(Math.max(-180, Math.min(180, Number(e.target.value))))}
+                            className="w-full"
+                            aria-label="Watermark rotation"
+                          />
                         </div>
                       </div>
                     )}

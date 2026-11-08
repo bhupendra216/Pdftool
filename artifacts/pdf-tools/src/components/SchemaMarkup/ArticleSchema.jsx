@@ -29,7 +29,7 @@ export default function ArticleSchema({
       name: 'PDFKira',
         logo: {
         '@type': 'ImageObject',
-        url: 'https://pdfkira.com/logo.png',
+        url: 'https://pdfkira.com/og/logo.webp',
       },
     },
   };

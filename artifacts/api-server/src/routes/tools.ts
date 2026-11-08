@@ -20,7 +20,9 @@ router.get("/tools", async (_req, res): Promise<void> => {
     popular,
     status: slug === "word-to-pdf" && !wordToPdfAvailable ? "comingSoon" : status,
   }));
-  res.json(ListToolsResponse.parse(data));
+  const response = ListToolsResponse.parse(data);
+  res.setHeader("Cache-Control", "public, max-age=60, stale-while-revalidate=300");
+  res.json(response);
 });
 
 router.get("/tools/:slug", async (req, res): Promise<void> => {

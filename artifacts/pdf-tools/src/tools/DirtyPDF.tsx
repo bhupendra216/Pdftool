@@ -307,7 +307,7 @@ export default function DirtyPDF() {
   const zoomIn = () => setZoom((z) => Math.min(3, +(z + 0.1).toFixed(2)));
 
   return (
-    <div className="max-w-6xl mx-auto p-6">
+    <div className="mx-auto w-full min-w-0 max-w-6xl overflow-x-clip px-4 py-6 sm:px-6">
       <h1 className="text-3xl font-bold mb-4">Make Your PDF Look Old</h1>
       <p className="text-gray-600 mb-6">Apply aged, vintage, and scanned-paper effects to a PDF. Preview and export use the same processing; everything runs locally in your browser.</p>
 
@@ -335,9 +335,9 @@ export default function DirtyPDF() {
         
 
         {/* Side-by-side preview with draggable handle */}
-        <div className="relative border rounded overflow-hidden">
-          <div className="flex" style={{ height: 520 }}>
-            <div style={{ width: `${split}%` }} className="p-4 bg-gray-50 overflow-auto">
+        <div className="relative min-w-0 max-w-full overflow-hidden rounded border">
+          <div className="flex min-w-0" style={{ height: 520 }}>
+            <div style={{ width: `${split}%` }} className="min-w-0 p-3 sm:p-4 bg-gray-50 overflow-auto">
               <div className="flex items-center justify-between mb-2">
                 <div className="text-sm font-medium">Original (Page {pageNumber})</div>
                 <div className="flex items-center gap-2">
@@ -349,9 +349,9 @@ export default function DirtyPDF() {
               <PDFPreview file={file} pageNumber={pageNumber} scale={zoom} label="Original" onDocumentLoaded={(n) => setTotalPages(n)} />
             </div>
 
-            <div ref={handleRef} onMouseDown={() => (draggingRef.current = true)} className="w-2 cursor-ew-resize bg-gray-200" />
+            <div ref={handleRef} onMouseDown={() => (draggingRef.current = true)} className="w-2 shrink-0 cursor-ew-resize bg-gray-200" />
 
-            <div style={{ width: `${100 - split}%` }} className="p-4 bg-gray-50 overflow-auto">
+            <div style={{ width: `${100 - split}%` }} className="min-w-0 p-3 sm:p-4 bg-gray-50 overflow-auto">
               <div className="flex items-center justify-between mb-2">
                 <div className="text-sm font-medium">Preview (Distressed)</div>
                 <div className="flex items-center gap-2">

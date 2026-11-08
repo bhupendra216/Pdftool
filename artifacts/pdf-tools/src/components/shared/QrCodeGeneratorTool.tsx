@@ -215,10 +215,10 @@ export function QrCodeGeneratorTool() {
   };
 
   return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6 py-4 lg:py-8">
-      <div className="grid gap-6 lg:grid-cols-[1.1fr_0.9fr]">
-        <Card className="border-border/70 bg-card/80 shadow-sm">
-          <CardHeader className="space-y-3">
+    <div className="mx-auto flex w-full min-w-0 max-w-6xl flex-col gap-6 overflow-x-clip py-4 lg:py-8">
+      <div className="grid min-w-0 gap-6 lg:grid-cols-[minmax(0,1.1fr)_minmax(0,0.9fr)]">
+        <Card className="min-w-0 max-w-full overflow-hidden border-border/70 bg-card/80 shadow-sm">
+          <CardHeader className="min-w-0 space-y-3">
             <div className="flex items-center gap-2">
               <Badge className="rounded-full bg-primary/10 px-3 py-1 text-primary">
                 <Sparkles className="mr-2 h-4 w-4" />
@@ -274,8 +274,8 @@ export function QrCodeGeneratorTool() {
           </CardContent>
         </Card>
 
-        <Card className="border-border/70 bg-card/80 shadow-sm">
-          <CardHeader>
+        <Card className="min-w-0 max-w-full overflow-hidden border-border/70 bg-card/80 shadow-sm">
+          <CardHeader className="min-w-0">
             <CardTitle className="flex items-center gap-2 text-xl font-semibold">
               <QrCodeIcon className="h-5 w-5 text-primary" />
               Live preview
@@ -286,13 +286,13 @@ export function QrCodeGeneratorTool() {
           </CardHeader>
 
           <CardContent className="space-y-6">
-            <div className="rounded-3xl border border-border/70 bg-background/80 p-4 sm:p-6">
-              <div className="mx-auto flex max-w-[320px] flex-col items-center justify-center gap-4">
+            <div className="min-w-0 max-w-full overflow-hidden rounded-3xl border border-border/70 bg-background/80 p-3 sm:p-6">
+              <div className="mx-auto flex w-full min-w-0 max-w-[320px] flex-col items-center justify-center gap-4">
                 <div className="flex w-full items-center justify-center rounded-2xl bg-white p-4 shadow-inner">
                   {previewUrl ? (
-                    <img src={previewUrl} alt="Generated QR code for the entered URL and project name" className="h-full w-full max-w-[260px] rounded-xl object-contain" />
+                    <img src={previewUrl} alt="Generated QR code for the entered URL and project name" width={260} height={260} className="h-auto w-full max-w-[260px] rounded-xl object-contain" />
                   ) : (
-                    <div className="flex h-[260px] w-[260px] items-center justify-center rounded-2xl border border-dashed border-border/70 bg-muted/40 text-center text-sm text-muted-foreground">
+                    <div className="flex aspect-square w-full max-w-[260px] items-center justify-center rounded-2xl border border-dashed border-border/70 bg-muted/40 p-3 text-center text-sm text-muted-foreground">
                       Enter a valid URL to create your QR code.
                     </div>
                   )}
@@ -300,7 +300,7 @@ export function QrCodeGeneratorTool() {
                 {previewUrl ? (
                   <div className="w-full text-center">
                     <p className="text-sm font-semibold text-foreground">{normalizedProjectName || "QR Code"}</p>
-                    <p className="mt-1 break-all text-xs text-muted-foreground">{normalizedLink}</p>
+                    <p className="mt-1 min-w-0 break-all text-xs text-muted-foreground">{normalizedLink}</p>
                   </div>
                 ) : null}
               </div>
@@ -339,7 +339,7 @@ export function QrCodeGeneratorTool() {
       </div>
 
       <Card className="border-border/70 bg-card/80 shadow-sm">
-        <CardContent className="flex flex-col gap-3 p-6 md:flex-row md:items-center md:justify-between">
+        <CardContent className="flex min-w-0 flex-col gap-3 p-4 md:flex-row md:items-center md:justify-between sm:p-6">
           <div>
             <p className="font-medium text-foreground">Ready for print and digital sharing</p>
             <p className="text-sm text-muted-foreground">Export crisp QR codes with your chosen project name as the file label.</p>

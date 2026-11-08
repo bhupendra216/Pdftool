@@ -15,6 +15,7 @@ RUN apt-get update \
       libreoffice-core \
       libreoffice-writer \
       poppler-utils \
+      qpdf \
       unzip \
       zip \
     && rm -rf /var/lib/apt/lists/* \

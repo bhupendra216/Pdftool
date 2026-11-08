@@ -141,8 +141,8 @@ export const suppliedToolFaqs: Record<string, ToolFaq[]> = {
     { question: "Is unlocking someone's encrypted PDF legal?", answer: "Only unlock files you own or have explicit permission to modify." },
   ],
   'protect-pdf': [
-    { question: "How strong is the password protection?", answer: "Protect PDF applies standard PDF encryption with your chosen password. Use a long, unique password for sensitive documents." },
-    { question: "What can a password-protected PDF still show?", answer: "That depends on the restrictions you set — you can block printing, editing, and copying independently." },
+    { question: "How strong is the password protection?", answer: "Protect PDF uses AES-256 encryption. Use a long, unique password for sensitive documents." },
+    { question: "What can a password-protected PDF still show?", answer: "Printing and copying are allowed by default, while the PDF still requires the password to open." },
     { question: "Can I remove the password later?", answer: "Yes — use Unlock PDF with your own password whenever you need unrestricted access." },
     { question: "Can recipients open it without special software?", answer: "Yes. Any standard PDF viewer (Acrobat, browsers, Preview) will prompt for the password." },
   ],
