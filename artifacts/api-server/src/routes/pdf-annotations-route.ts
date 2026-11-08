@@ -4,6 +4,7 @@ import { PDFDocument } from "pdf-lib";
 import { loadPdf, preservePdfMetadata, isPdfFile } from "./pdf-utils";
 import { applyImageWatermarkToPdf, applyPageNumbersToPdf, applyWatermarkToPdf } from "./pdf-annotations";
 import { getSingleUploadedFile } from "./upload-shape";
+import { assertSamePdfPageCount, getPdfPageCount } from "../lib/pdf-validation";
 
 const upload = multer({ storage: multer.memoryStorage() });
 const router = Router();
@@ -21,7 +22,11 @@ router.post("/watermark-pdf", upload.fields([{ name: "files", maxCount: 1 }, { n
   }
 
   try {
+    const inputPageCount = await getPdfPageCount(file.buffer);
     const srcPdf = await loadPdf(file.buffer);
+    if (srcPdf.getPageCount() !== inputPageCount) {
+      throw new Error("PDF page count could not be verified.");
+    }
     const outPdf = await PDFDocument.create();
     preservePdfMetadata(srcPdf, outPdf);
 
@@ -35,11 +40,17 @@ router.post("/watermark-pdf", upload.fields([{ name: "files", maxCount: 1 }, { n
     }
 
     const outBytes = await outPdf.save();
+    const outputBuffer = Buffer.from(outBytes);
+    await assertSamePdfPageCount(file.buffer, outputBuffer);
     res.setHeader("content-type", "application/pdf");
     res.setHeader("content-disposition", "attachment; filename=watermarked.pdf");
-    res.send(Buffer.from(outBytes));
-  } catch (error: any) {
-    res.status(400).json({ error: String(error?.message || "Failed to watermark PDF") });
+    res.send(outputBuffer);
+  } catch (error) {
+    console.error("PDF watermark failed", error);
+    const isPageMismatch = error instanceof Error && error.message.includes("page count");
+    res.status(isPageMismatch ? 500 : 400).json({
+      error: isPageMismatch ? "PDF watermarking changed the page count. No output was returned." : "The uploaded PDF could not be watermarked.",
+    });
   }
 });
 

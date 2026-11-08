@@ -13,6 +13,7 @@ import DownloadPdfPage from '@/pages/download-pdf';
 import SearchFreePdfsPage from '@/pages/search-free-pdfs';
 import JSZip from "jszip";
 import { FilePreviewList } from "@/components/shared/FilePreviewList";
+import { createImageBatchZip } from "@/lib/image-batch-zip";
 import { FaqSection } from "@/components/shared/FaqSection";
 import ToolSeoSection from '@/components/Content/ToolSeoSection';
 import { TOOL_SEO_CONTENT } from '@/data/toolSeoContent';
@@ -130,17 +131,17 @@ const getUploadConfig = (slug?: string): UploadConfig => {
       };
     case "ocr-image-to-text":
       return {
-        accept: "image/png,image/jpeg,application/pdf,.png,.jpg,.jpeg,.pdf",
-        maxSizeMB: 50,
+        accept: "image/png,image/jpeg,image/webp,image/bmp,image/tiff,application/pdf,.png,.jpg,.jpeg,.webp,.bmp,.tif,.tiff,.pdf",
+        maxSizeMB: 20,
         label: "image or PDF",
         description: "or drop an image or scanned PDF here.",
-        supportedFormats: ["PNG", "JPG", "PDF"],
+        supportedFormats: ["PNG", "JPEG", "WEBP", "BMP", "TIFF", "PDF"],
         highlights: ["Extract text from scans", "Copy or download OCR output", "Works on mobile and desktop"],
       };
     case "jpg-to-pdf":
       return {
         accept: "image/png,image/jpeg,image/jpg,.png,.jpg,.jpeg",
-        maxSizeMB: 50,
+        maxSizeMB: 20,
         label: "image file",
         description: "or drop one or more images here.",
         supportedFormats: ["JPG", "JPEG", "PNG"],
@@ -340,7 +341,13 @@ export function ToolDetail(props?: any) {
   const [imageHeight, setImageHeight] = useState<number | null>(null);
   const [imageFormat, setImageFormat] = useState<string | null>(null);
   const [imageBatchItems, setImageBatchItems] = useState<ImageBatchItem[]>([]);
+  const [imageBatchEntryCount, setImageBatchEntryCount] = useState(0);
   const [outputFormat, setOutputFormat] = useState<string>("png");
+  const [imageConverterFormats, setImageConverterFormats] = useState<Array<{
+    format: string;
+    extension: string;
+    mimeType: string;
+  }>>([]);
   const [svgMode, setSvgMode] = useState<"embed" | "trace">("embed");
   const [resizeWidth, setResizeWidth] = useState<string>("");
   const [resizeHeight, setResizeHeight] = useState<string>("");
@@ -383,6 +390,40 @@ export function ToolDetail(props?: any) {
   const uploadConfig = useMemo(() => getUploadConfig(tool?.slug), [tool?.slug]);
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/+$/, "") || (import.meta.env.DEV ? "http://localhost:3000" : "");
   const apiUrl = (path: string) => `${apiBaseUrl}${path}`;
+  useEffect(() => {
+    if (tool?.slug !== "image-converter") return;
+    let cancelled = false;
+    void fetch(apiUrl("/api/image-converter/formats"))
+      .then(async (response) => {
+        if (!response.ok) throw new Error("Could not load image formats.");
+        return response.json();
+      })
+      .then((result: { formats?: Array<{ format?: unknown; extension?: unknown; mimeType?: unknown }> }) => {
+        const formats = Array.isArray(result.formats)
+          ? result.formats.flatMap((entry) =>
+              typeof entry?.format === "string" &&
+              typeof entry.extension === "string" &&
+              typeof entry.mimeType === "string"
+                ? [{ format: entry.format, extension: entry.extension, mimeType: entry.mimeType }]
+                : [])
+          : [];
+        if (cancelled) return;
+        setImageConverterFormats(formats);
+        setOutputFormat((current) => formats.some(({ format }) => format === current) ? current : formats[0]?.format ?? "png");
+        setErrorMessage(formats.length === 0
+          ? "Image conversion is temporarily unavailable."
+          : null);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setImageConverterFormats([]);
+          setErrorMessage("Image conversion formats are temporarily unavailable.");
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [tool?.slug]);
   const relatedTools = useMemo(() => {
     if (!Array.isArray(catalogTools) || !tool) return [];
 
@@ -396,7 +437,9 @@ export function ToolDetail(props?: any) {
   const supportedFormats = uploadConfig.supportedFormats;
   const highlights = uploadConfig.highlights;
   const trustedPoints = TRUST_POINTS;
-  const SUPPORTED_OUTPUT = ["png", "jpg", "jpeg", "webp", "bmp", "tiff", "gif", "svg"];
+  const SUPPORTED_OUTPUT = imageConverterFormats.map(({ format }) => format);
+  const getImageOutputExtension = (format: string) =>
+    imageConverterFormats.find((entry) => entry.format === format)?.extension ?? format;
   const resizePresetOptions = [
     { value: "instagram-post", label: "Instagram Post 1080×1080", width: 1080, height: 1080 },
     { value: "instagram-story", label: "Instagram Story 1080×1920", width: 1080, height: 1920 },
@@ -586,6 +629,7 @@ export function ToolDetail(props?: any) {
     "organize-pdf": "Save Organized PDF",
     "delete-pages": "Delete Pages",
     "extract-pages": "Extract Pages",
+    "ocr-image-to-text": "Extract text",
   };
 
   const actionLabel = actionLabelBySlug[tool?.slug ?? ""] ?? "Process PDF";
@@ -857,7 +901,16 @@ export function ToolDetail(props?: any) {
     const response = await fetch(url, { method: "POST", body: formData });
     if (!response.ok) {
       const text = await response.text().catch(() => null);
-      throw new Error(text || `${errorPrefix} failed with HTTP ${response.status}`);
+      let message: string | undefined;
+      if (text) {
+        try {
+          const parsed = JSON.parse(text);
+          if (parsed && typeof parsed.error === "string") {
+            message = parsed.error;
+          }
+        } catch {}
+      }
+      throw new Error(message || `${errorPrefix} failed. Please try again.`);
     }
     return await response.blob();
   }
@@ -1036,9 +1089,9 @@ export function ToolDetail(props?: any) {
   // Convert an image locally using canvas to avoid roundtrip to server for common raster formats.
   const convertImageOnClient = async (fileToConvert: File, outFormat: string): Promise<{ blob: Blob; filename: string }> => {
     // For SVG output (vector), fallback to server-side conversion because canvas cannot produce proper SVG.
-    if (outFormat === "svg") {
+    if (outFormat === "svg" || outFormat === "bmp" || outFormat === "gif") {
       const blob = await convertImageOnServer(fileToConvert, outFormat, svgMode);
-      return { blob, filename: `${stripExtension(fileToConvert.name)}.svg` };
+      return { blob, filename: `${stripExtension(fileToConvert.name)}.${getImageOutputExtension(outFormat)}` };
     }
 
     const mime = outFormat === "png" ? "image/png" : outFormat === "webp" ? "image/webp" : "image/jpeg";
@@ -2009,7 +2062,8 @@ export function ToolDetail(props?: any) {
         }
 
         syncImageBatchItems(files);
-        const successfulResults: Array<{ blob: Blob; outputName: string }> = [];
+        setImageBatchEntryCount(0);
+        const successfulResults: Array<{ blob: Blob; outputName: string; fileIndex: number }> = [];
         const failedItems: Array<{ fileName: string; message: string }> = [];
         const totalFiles = files.length;
         const batchSize = 5;
@@ -2027,19 +2081,23 @@ export function ToolDetail(props?: any) {
 
             try {
               let converted: { blob: Blob; filename?: string; outputName?: string };
-              if (outputFormat === "svg") {
+              if (["svg", "bmp", "gif"].includes(outputFormat)) {
                 const blobResult = await convertImageOnServer(currentFile, outputFormat, svgMode);
-                const resolvedName = `${stripExtension(currentFile.name)}.svg`;
+                const resolvedName = `${stripExtension(currentFile.name)}.${getImageOutputExtension(outputFormat)}`;
                 converted = { blob: blobResult, outputName: resolvedName };
               } else {
                 const clientResult = await convertImageOnClient(currentFile, outputFormat);
                 converted = { blob: clientResult.blob, outputName: clientResult.filename };
               }
 
-              successfulResults.push({ blob: converted.blob, outputName: converted.outputName || converted.filename || `${stripExtension(currentFile.name)}.${outputFormat}` });
+              successfulResults.push({
+                blob: converted.blob,
+                outputName: converted.outputName || converted.filename || `${stripExtension(currentFile.name)}.${getImageOutputExtension(outputFormat)}`,
+                fileIndex: currentIndex,
+              });
               setImageBatchItems((prev) => prev.map((item, index) => (index === currentIndex ? { ...item, status: "done", error: null, blob: converted.blob, outputName: converted.outputName || converted.filename } : item)));
             } catch (error: any) {
-              const message = error?.message || "Image conversion failed.";
+              const message = "Could not convert this image. Please try again.";
               failedItems.push({ fileName: currentFile.name, message });
               setImageBatchItems((prev) => prev.map((item, index) => (index === currentIndex ? { ...item, status: "failed", error: message } : item)));
             }
@@ -2055,17 +2113,31 @@ export function ToolDetail(props?: any) {
         }
 
         if (successfulResults.length > 1) {
-          const zip = new JSZip();
-          successfulResults.forEach((result) => zip.file(result.outputName, result.blob));
-          const zipBlob = await zip.generateAsync({ type: "blob" });
-          setDownloadUrl(URL.createObjectURL(zipBlob));
+          const archive = await createImageBatchZip(successfulResults.map(({ outputName, blob }) => ({
+            fileName: outputName,
+            blob,
+          })));
+          if (archive.entryCount !== successfulResults.length) {
+            throw new Error("Could not package every converted image. Please try again.");
+          }
+          setImageBatchEntryCount(archive.entryCount);
+          setImageBatchItems((prev) => {
+            const next = [...prev];
+            successfulResults.forEach((result, index) => {
+              const item = next[result.fileIndex];
+              if (item) next[result.fileIndex] = { ...item, outputName: archive.fileNames[index] };
+            });
+            return next;
+          });
+          setDownloadUrl(URL.createObjectURL(archive.blob));
           setDownloadFileName(`converted-images-${Date.now()}.zip`);
-          setDownloadSizeBytes(zipBlob.size);
+          setDownloadSizeBytes(archive.blob.size);
           setProgress(100);
           setProgressStage("Ready to download");
         } else if (successfulResults.length === 1) {
           const firstResult = successfulResults[0];
           if (firstResult) {
+            setImageBatchEntryCount(1);
             setDownloadUrl(URL.createObjectURL(firstResult.blob));
             setDownloadFileName(firstResult.outputName);
             setDownloadSizeBytes(firstResult.blob.size);
@@ -2077,12 +2149,18 @@ export function ToolDetail(props?: any) {
         if (successfulResults.length > 0) {
           setStatus("success");
         } else {
-          setErrorMessage("All images failed to convert. Review the batch list for details.");
+          const failureSummary = failedItems
+            .map(({ fileName, message }) => `${fileName}: ${message}`)
+            .join(" ");
+          setErrorMessage(`0 of ${totalFiles} converted. ${failureSummary}`);
           setStatus("options");
         }
 
         if (failedItems.length > 0 && successfulResults.length > 0) {
-          setErrorMessage("Some images failed to convert. The rest are ready to download.");
+          const failureSummary = failedItems
+            .map(({ fileName, message }) => `${fileName}: ${message}`)
+            .join(" ");
+          setErrorMessage(`${successfulResults.length} of ${totalFiles} converted. ${failureSummary}`);
         }
 
         if (interval) clearInterval(interval);
@@ -2119,7 +2197,7 @@ export function ToolDetail(props?: any) {
       } else if (tool.slug === "image-converter") {
         blob = await convertImageOnServer(files[0], outputFormat, svgMode);
         const baseName = stripExtension(files[0].name);
-        const ext = outputFormat === "jpeg" ? "jpg" : outputFormat;
+        const ext = getImageOutputExtension(outputFormat);
         outputName = `${baseName}.${ext}`;
       } else if (tool.slug === "pdf-to-word") {
         blob = await convertPdfToWordOnServer(files[0]);
@@ -2246,7 +2324,17 @@ export function ToolDetail(props?: any) {
       setProgressStage(tool.slug === "rotate-pdf" ? "Preparing download" : "Ready to download");
     } catch (error: any) {
       console.error(error);
-      setErrorMessage(error?.message || "Failed to process the file. Please try again.");
+      const errorData = error && typeof error === "object" && "data" in error ? error.data : undefined;
+      const serverMessage =
+        errorData && typeof errorData === "object" && "error" in errorData && typeof errorData.error === "string"
+          ? errorData.error
+          : undefined;
+      setErrorMessage(
+        serverMessage ||
+          (error?.message === "Failed to fetch"
+            ? "The server could not be reached. Please try again."
+            : error?.message || "Failed to process the file. Please try again."),
+      );
       setStatus("options");
     } finally {
       if (interval) clearInterval(interval);
@@ -2273,7 +2361,7 @@ export function ToolDetail(props?: any) {
                 {pageHeading}
                 {isComingSoon && (
                   <span className="text-sm font-medium px-3 py-1 bg-muted text-muted-foreground rounded-full border">
-                    Coming Soon
+                    {tool.slug === "word-to-pdf" ? "Temporarily unavailable" : "Coming Soon"}
                   </span>
                 )}
               </h1>
@@ -2300,9 +2388,13 @@ export function ToolDetail(props?: any) {
             <div className="w-20 h-20 bg-secondary text-primary mx-auto rounded-full flex items-center justify-center mb-6">
               <AlertCircle className="w-10 h-10" />
             </div>
-            <h2 className="text-2xl font-bold mb-4">We're working on this tool</h2>
+            <h2 className="text-2xl font-bold mb-4">
+              {tool.slug === "word-to-pdf" ? "Word to PDF is temporarily unavailable" : "We're working on this tool"}
+            </h2>
             <p className="text-lg text-muted-foreground max-w-lg mx-auto">
-              This feature is currently in development and will be available soon. Check back later!
+              {tool.slug === "word-to-pdf"
+                ? "This conversion service is temporarily offline. Please try again later."
+                : "This feature is currently in development and will be available soon. Check back later!"}
             </p>
           </div>
         ) : status === "idle" ? (
@@ -3448,25 +3540,36 @@ export function ToolDetail(props?: any) {
                         </div>
                       </div>
                       <h3 className="text-2xl font-bold mb-3 text-center">Batch conversion complete</h3>
-                      <p className="text-center text-muted-foreground mb-8">Your images were converted and are ready to download.</p>
+                      <p className="text-center text-muted-foreground mb-3">
+                        {imageBatchEntryCount} of {files.length} files converted.
+                      </p>
+                      {errorMessage && (
+                        <p role="status" className="mb-6 text-center text-sm text-destructive">
+                          {errorMessage}
+                        </p>
+                      )}
                       <div className="mb-8 rounded-2xl border border-border/70 bg-card/80 p-4">
                         <div className="flex items-center justify-between gap-3">
                           <span className="text-sm font-medium text-foreground">Download everything</span>
                           <Button size="sm" className="rounded-full" asChild disabled={!downloadUrl}>
-                            <a href={downloadUrl ?? "#"} download={downloadFileName}>Download All (.zip)</a>
+                            <a href={downloadUrl ?? "#"} download={downloadFileName}>
+                              {downloadFileName.endsWith(".zip") ? "Download All (.zip)" : "Download Image"}
+                            </a>
                           </Button>
                         </div>
                       </div>
                       <div className="space-y-3">
-                        {imageBatchItems.filter((item) => item.status === "done" && item.blob && item.outputName).map((item, index) => (
+                        {imageBatchItems.filter((item) => item.status === "done" || item.status === "failed").map((item, index) => (
                           <div key={`${item.file.name}-${index}`} className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border/70 bg-card/80 p-3">
                             <div className="min-w-0">
                               <p className="truncate text-sm font-medium text-foreground" title={item.file.name}>{item.file.name}</p>
-                              <p className="text-xs text-muted-foreground">{item.outputName}</p>
+                              <p className={`text-xs ${item.status === "failed" ? "text-destructive" : "text-muted-foreground"}`}>
+                                {item.status === "failed" ? item.error : item.outputName}
+                              </p>
                             </div>
-                            <Button variant="outline" size="sm" className="rounded-full" onClick={() => item.blob && item.outputName && triggerFileDownload(item.blob, item.outputName)}>
+                            {item.status === "done" && <Button variant="outline" size="sm" className="rounded-full" onClick={() => item.blob && item.outputName && triggerFileDownload(item.blob, item.outputName)}>
                               Download
-                            </Button>
+                            </Button>}
                           </div>
                         ))}
                       </div>

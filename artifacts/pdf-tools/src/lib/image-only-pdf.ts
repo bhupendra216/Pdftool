@@ -26,6 +26,17 @@ export async function createImageOnlyPdf(pages: RasterPdfPage[]) {
 }
 
 export async function replacePdfPagesWithImages(sourceBytes: Uint8Array, replacements: ReplacementRasterPdfPage[]) {
+  const header = new TextDecoder('ascii').decode(sourceBytes.subarray(0, 5));
+  if (sourceBytes.byteLength === 0 || header !== '%PDF-') {
+    throw new Error('Could not create the edited PDF. Please try again.');
+  }
+  if (import.meta.env.DEV) {
+    console.debug('[edit-pdf] PDF load bytes', {
+      description: 'PDF passed to page replacement',
+      byteLength: sourceBytes.byteLength,
+      header,
+    });
+  }
   const source = await PDFDocument.load(sourceBytes);
   const output = await PDFDocument.create();
   const replacementByPage = new Map(replacements.map((page) => [page.pageNumber, page]));

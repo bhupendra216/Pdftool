@@ -205,6 +205,21 @@ type ExportFailure = {
 
 const clamp = (value: number, min: number, max: number) => Math.min(Math.max(value, min), max);
 const MASK_PADDING_PT = 1.5;
+const PDF_HEADER = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d]);
+
+function assertPdfHeader(bytes: Uint8Array, description: string) {
+  const header = new TextDecoder('ascii').decode(bytes.subarray(0, PDF_HEADER.length));
+  if (bytes.byteLength === 0 || header !== '%PDF-') {
+    throw new Error('Could not create the edited PDF. Please try again.');
+  }
+  if (import.meta.env.DEV) {
+    console.debug('[edit-pdf] PDF load bytes', {
+      description,
+      byteLength: bytes.byteLength,
+      header,
+    });
+  }
+}
 
 function normalizeHex(color: string | null | undefined) {
   if (!color) return '#111111';
@@ -1907,7 +1922,8 @@ function PdfTextEditor() {
       text: string;
     }> = [];
     try {
-      const source = await PDFDocument.load(sourcePdfBytes);
+      assertPdfHeader(sourcePdfBytes, 'pristine source for export');
+      const source = await PDFDocument.load(sourcePdfBytes.slice());
       const output = await PDFDocument.create();
       const fontCache = new Map<string, {
         primary: Awaited<ReturnType<typeof output.embedFont>>;
@@ -2122,6 +2138,7 @@ function PdfTextEditor() {
         setExportWarnings((warnings) => [...warnings, 'Output is unexpectedly large — this PDF may have issues']);
       }
       if (import.meta.env.DEV) {
+        assertPdfHeader(bytes, 'saved PDF in export diagnostics');
         const savedPdf = await PDFDocument.load(bytes);
         const fontCounts = new Map<string, number>();
         for (const [, object] of savedPdf.context.enumerateIndirectObjects()) {
@@ -2134,22 +2151,29 @@ function PdfTextEditor() {
         }
       }
       if (finalEdits.some((entry) => entry.type === 'delete')) {
-        const rendered = await pdfjsLib.getDocument({ data: bytes }).promise;
+        assertPdfHeader(bytes, 'edited PDF before visual-delete rendering');
+        const renderedTask = pdfjsLib.getDocument({ data: bytes.slice() });
+        const rendered = await renderedTask.promise;
         const deletionPages = new Set(finalEdits.filter((entry) => entry.type === 'delete').map((entry) => entry.pageNumber));
         const rasterPages: ReplacementRasterPdfPage[] = [];
-        for (const pageNumber of deletionPages) {
-          const page = await rendered.getPage(pageNumber);
-          const base = page.getViewport({ scale: 1 });
-          const scale = Math.min(2, 5000 / Math.max(base.width, base.height));
-          const viewport = page.getViewport({ scale });
-          const canvas = document.createElement('canvas');
-          canvas.width = Math.ceil(viewport.width);
-          canvas.height = Math.ceil(viewport.height);
-          const context = canvas.getContext('2d');
-          if (!context) throw new Error(`Could not flatten page ${pageNumber}.`);
-          await page.render({ canvas, canvasContext: context, viewport }).promise;
-          rasterPages.push({ pageNumber, imageDataUrl: canvas.toDataURL('image/png'), width: base.width, height: base.height });
+        try {
+          for (const pageNumber of deletionPages) {
+            const page = await rendered.getPage(pageNumber);
+            const base = page.getViewport({ scale: 1 });
+            const scale = Math.min(2, 5000 / Math.max(base.width, base.height));
+            const viewport = page.getViewport({ scale });
+            const canvas = document.createElement('canvas');
+            canvas.width = Math.ceil(viewport.width);
+            canvas.height = Math.ceil(viewport.height);
+            const context = canvas.getContext('2d');
+            if (!context) throw new Error(`Could not flatten page ${pageNumber}.`);
+            await page.render({ canvas, canvasContext: context, viewport }).promise;
+            rasterPages.push({ pageNumber, imageDataUrl: canvas.toDataURL('image/png'), width: base.width, height: base.height });
+          }
+        } finally {
+          await renderedTask.destroy();
         }
+        assertPdfHeader(bytes, 'PDF passed to page replacement');
         bytes = await replacePdfPagesWithImages(bytes, rasterPages);
       }
       const downloadBytes = new Uint8Array(bytes.length);
@@ -2161,8 +2185,7 @@ function PdfTextEditor() {
       savedTimeoutRef.current = window.setTimeout(() => setSaved(false), 2200);
     } catch (reason) {
       console.error('[edit-pdf] export failed', reason);
-      const message = reason instanceof Error ? reason.message : 'Could not create the edited PDF.';
-      setError(message);
+      setError('Could not create the edited PDF. Please try again.');
       setStatus('Could not create the edited PDF.');
     }
   };

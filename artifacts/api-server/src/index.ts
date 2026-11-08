@@ -3,6 +3,16 @@ import path from "node:path";
 import "dotenv/config";
 import app from "./app";
 import { logger } from "./lib/logger";
+import { initializeLibreOfficeAvailability } from "./lib/word-to-pdf";
+import { initializeImageConverterFormats } from "./lib/image-converter-formats";
+
+process.on("unhandledRejection", (reason) => {
+  logger.error({ err: reason }, "Unhandled promise rejection");
+});
+
+process.on("uncaughtException", (error) => {
+  logger.fatal({ err: error }, "Uncaught exception");
+});
 
 const envPath = path.resolve(process.cwd(), ".env");
 if (process.env.NODE_ENV !== "test") {
@@ -25,6 +35,8 @@ export default app;
 
 
 export function startServer() {
+  void initializeLibreOfficeAvailability();
+  void initializeImageConverterFormats();
   logger.info(
     {
       NODE_ENV: process.env.NODE_ENV,

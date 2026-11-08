@@ -1,128 +1,215 @@
-import { Router } from "express";
+import { Router, type NextFunction, type Request, type Response } from "express";
 import multer from "multer";
-import { mkdtemp, rm, writeFile, readdir } from "node:fs/promises";
-import { getSingleUploadedFile } from "./upload-shape";
-import path from "node:path";
+import { fork } from "node:child_process";
+import { mkdtemp, rm } from "node:fs/promises";
+import { fileURLToPath } from "node:url";
 import os from "node:os";
-import { execFile } from "node:child_process";
-import { spawn } from "node:child_process";
-// import tesseract dynamically below to avoid mismatched types at build time
-import { PDFDocument } from "pdf-lib";
-import sharp from "sharp";
+import path from "node:path";
+import { getSingleUploadedFile } from "./upload-shape";
+import { logger } from "../lib/logger";
 
-const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 200 * 1024 * 1024 } });
+const MAX_UPLOAD_BYTES = 20 * 1024 * 1024;
+const MAX_CONCURRENT_JOBS = 2;
+const OCR_TIMEOUT_MS = 30_000;
+const OCR_WORKER_MEMORY_MB = 256;
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: MAX_UPLOAD_BYTES, files: 1, fields: 10 },
+});
 const router = Router();
+let activeOcrJobs = 0;
 
-const SUPPORTED_IMAGE = new Set([".png", ".jpg", ".jpeg"]);
-const SUPPORTED_PDF = new Set([".pdf"]);
+type OcrFileType = "image" | "pdf";
+type OcrWorkerMessage =
+  | { ok: true; text: string; confidence?: number; pages: number }
+  | { ok: false; code: "BAD_INPUT" | "PROCESSING"; message: string };
 
-async function pdfToImagesBuffers(pdfBuffer: Buffer, tempDir: string) {
-  // Use pdftoppm to convert PDF pages to JPEGs
-  const inputPath = path.join(tempDir, "input.pdf");
-  await writeFile(inputPath, pdfBuffer);
-  const outputPrefix = path.join(tempDir, "page");
+class OcrTimeoutError extends Error {}
 
-  await new Promise<void>((resolve, reject) => {
-    execFile(
-      "pdftoppm",
-      ["-jpeg", "-r", "300", inputPath, outputPrefix],
-      { timeout: 120_000, maxBuffer: 50 * 1024 * 1024 },
-      (error, stdout, stderr) => {
-        if (error) {
-          reject(new Error(`pdftoppm failed: ${error.message} ${stderr || ""} ${stdout || ""}`));
-          return;
-        }
-        resolve();
-      },
-    );
+class OcrWorkerError extends Error {
+  constructor(
+    message: string,
+    readonly code: "BAD_INPUT" | "PROCESSING",
+  ) {
+    super(message);
+  }
+}
+
+function isSupportedInput(buffer: Buffer): OcrFileType | null {
+  if (buffer.length >= 5 && buffer.subarray(0, 5).toString("ascii") === "%PDF-") {
+    return "pdf";
+  }
+  if (
+    (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) ||
+    (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) ||
+    (buffer.length >= 12 &&
+      buffer.subarray(0, 4).toString("ascii") === "RIFF" &&
+      buffer.subarray(8, 12).toString("ascii") === "WEBP") ||
+    (buffer.length >= 2 && buffer.subarray(0, 2).toString("ascii") === "BM") ||
+    (buffer.length >= 4 &&
+      (buffer.subarray(0, 4).equals(Buffer.from([0x49, 0x49, 0x2a, 0x00])) ||
+        buffer.subarray(0, 4).equals(Buffer.from([0x4d, 0x4d, 0x00, 0x2a]))))
+  ) {
+    return "image";
+  }
+  return null;
+}
+
+function runOcrInChild(
+  buffer: Buffer,
+  fileType: OcrFileType,
+  tempDir?: string,
+): Promise<OcrWorkerMessage> {
+  return new Promise((resolve, reject) => {
+    const workerPath = fileURLToPath(new URL("./routes/ocr-worker.mjs", import.meta.url));
+    const child = fork(workerPath, [], {
+      execArgv: [`--max-old-space-size=${OCR_WORKER_MEMORY_MB}`],
+      serialization: "advanced",
+      stdio: ["ignore", "ignore", "pipe", "ipc"],
+    });
+    let settled = false;
+
+    const finish = (error?: Error, result?: OcrWorkerMessage) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      if (error) reject(error);
+      else if (result) resolve(result);
+      else reject(new Error("OCR worker returned no result"));
+    };
+
+    child.stderr?.on("data", (chunk: Buffer) => {
+      logger.error({ workerStderr: chunk.toString("utf8").slice(0, 2000) }, "OCR worker diagnostic");
+    });
+    child.once("error", (error) => finish(error));
+    child.once("message", (message: OcrWorkerMessage) => {
+      if (message?.ok) {
+        finish(undefined, message);
+      } else if (message && message.ok === false) {
+        finish(new OcrWorkerError(message.message, message.code));
+      } else {
+        finish(new Error("OCR worker returned an invalid response"));
+      }
+    });
+    child.once("exit", (code, signal) => {
+      if (!settled) {
+        finish(new Error(`OCR worker exited without a result (code=${code}, signal=${signal})`));
+      }
+    });
+
+    const timeout = setTimeout(() => {
+      child.kill("SIGKILL");
+      finish(new OcrTimeoutError("OCR processing timed out"));
+    }, OCR_TIMEOUT_MS);
+    timeout.unref();
+
+    child.send({ buffer, fileType, tempDir }, (error) => {
+      if (error) finish(error);
+    });
   });
-
-  const files = await readdir(tempDir);
-  const images = files.filter((f) => f.toLowerCase().endsWith(".jpg") || f.toLowerCase().endsWith(".jpeg") || f.toLowerCase().endsWith(".png"));
-  const buffers = [] as Buffer[];
-  for (const img of images.sort()) {
-    const p = path.join(tempDir, img);
-    buffers.push(await import("node:fs/promises").then((m) => m.readFile(p)));
-  }
-  return buffers;
 }
 
-async function preprocessImage(buffer: Buffer) {
-  // Auto-rotate, grayscale, enhance contrast, denoise-ish
-  let img = sharp(buffer, { limitInputPixels: false }).rotate();
-  img = img.grayscale().normalize().sharpen().median(1);
-  return await img.jpeg({ quality: 90 }).toBuffer();
-}
-
-router.post("/ocr-image-to-text", upload.single("files"), async (req, res) => {
-  const file = getSingleUploadedFile(req);
-  if (!file) {
-    res.status(400).json({ error: "No file uploaded" });
+function reserveOcrSlot(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+) {
+  if (activeOcrJobs >= MAX_CONCURRENT_JOBS) {
+    res.status(503).json({ error: "OCR is busy. Please try again shortly." });
     return;
   }
 
-  const ext = path.extname(file.originalname || "").toLowerCase();
-  if (!SUPPORTED_IMAGE.has(ext) && !SUPPORTED_PDF.has(ext)) {
-    res.status(400).json({ error: "Unsupported file type. Upload PNG, JPG, JPEG or PDF." });
-    return;
-  }
+  activeOcrJobs += 1;
+  let released = false;
+  const releaseSlot = () => {
+    if (released) return;
+    released = true;
+    activeOcrJobs -= 1;
+  };
+  res.once("finish", releaseSlot);
+  res.once("close", releaseSlot);
 
-  const tempDir = await mkdtemp(path.join(os.tmpdir(), "ocr-"));
+  upload.single("files")(req, res, (error) => {
+    if (!error) {
+      next();
+      return;
+    }
 
+    logger.warn({ err: error }, "OCR upload rejected");
+    if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
+      res.status(413).json({ error: "The upload exceeds the 20 MB limit." });
+      return;
+    }
+    if (error instanceof multer.MulterError) {
+      res.status(400).json({ error: "Invalid upload." });
+      return;
+    }
+    res.status(500).json({ error: "The upload could not be processed." });
+  });
+}
+
+router.post("/ocr-image-to-text", reserveOcrSlot, async (req, res) => {
+  let tempDir: string | undefined;
   try {
-    const tesseract: any = await import("tesseract.js");
-    const createWorker: any = tesseract.createWorker;
-    const PSM: any = tesseract.PSM;
-    const worker: any = await createWorker({ logger: () => {} });
-
-    await worker.load();
-    await worker.loadLanguage("eng+nep");
-    await worker.initialize("eng+nep");
-    try {
-      await worker.setParameters({ tessedit_pageseg_mode: PSM.AUTO });
-    } catch {
-      // ignore if setParameters isn't available on this runtime
+    const file = getSingleUploadedFile(req);
+    if (!file || file.size === 0) {
+      res.status(400).json({ error: "Upload a non-empty image or scanned PDF." });
+      return;
     }
 
-    let imageBuffers: Buffer[] = [];
-    if (SUPPORTED_PDF.has(ext)) {
-      imageBuffers = await pdfToImagesBuffers(file.buffer, tempDir);
-    } else {
-      imageBuffers = [file.buffer];
+    const fileType = isSupportedInput(file.buffer);
+    if (!fileType) {
+      res.status(400).json({ error: "Unsupported file. Upload PNG, JPEG, WEBP, BMP, TIFF, or PDF." });
+      return;
     }
 
-    const results: { text: string; confidence?: number }[] = [];
-
-    for (const buf of imageBuffers) {
-      const pre = await preprocessImage(buf).catch(() => buf);
-      const { data } = await worker.recognize(pre);
-      results.push({ text: data?.text || "", confidence: data?.confidences ? averageConfidence(data.confidences) : data?.confidence });
+    if (fileType === "pdf") {
+      tempDir = await mkdtemp(path.join(os.tmpdir(), "ocr-"));
     }
 
-    await worker.terminate();
+    const result = await runOcrInChild(file.buffer, fileType, tempDir);
+    if (!result.ok) {
+      if (result.code === "BAD_INPUT") {
+        res.status(400).json({ error: result.message });
+        return;
+      }
+      logger.error({ workerMessage: result.message }, "OCR processing failed");
+      res.status(500).json({ error: "OCR processing failed. Please try another file." });
+      return;
+    }
 
-    const combinedText = results.map((r) => r.text).join("\n\n");
-    const avgConf = results.filter((r) => typeof r.confidence === "number").map((r) => r.confidence as number);
-    const confidence = avgConf.length ? Math.round((avgConf.reduce((a, b) => a + b, 0) / avgConf.length) * 100) / 100 : undefined;
-
-    res.json({ text: combinedText, confidence, pages: results.length });
-  } catch (error: any) {
-    console.error("OCR failed", error);
-    res.status(500).json({ error: String(error?.message || "OCR processing failed") });
+    res.json({
+      text: result.text,
+      confidence: result.confidence,
+      pages: result.pages,
+    });
+  } catch (error) {
+    if (error instanceof OcrTimeoutError) {
+      logger.warn({ err: error }, "OCR processing timed out");
+      res.status(504).json({ error: "OCR processing timed out. Please try a smaller file." });
+      return;
+    }
+    if (error instanceof OcrWorkerError) {
+      if (error.code === "BAD_INPUT") {
+        res.status(400).json({ error: error.message });
+        return;
+      }
+      logger.error({ err: error }, "OCR worker failed");
+      res.status(500).json({ error: "OCR processing failed. Please try another file." });
+      return;
+    }
+    logger.error({ err: error }, "OCR request failed");
+    res.status(500).json({ error: "OCR processing failed. Please try again." });
   } finally {
-    await rm(tempDir, { recursive: true, force: true }).catch(() => {});
+    if (tempDir) {
+      try {
+        await rm(tempDir, { recursive: true, force: true });
+      } catch (error) {
+        logger.error({ err: error }, "Failed to clean up OCR temporary files");
+      }
+    }
   }
 });
-
-function averageConfidence(confMap: any) {
-  // tesseract.js may provide per-block confidences; fall back safely
-  try {
-    const arr = Object.values(confMap).map((v: any) => Number(v || 0));
-    if (!arr.length) return undefined;
-    return arr.reduce((a: number, b: number) => a + b, 0) / arr.length;
-  } catch {
-    return undefined;
-  }
-}
 
 export default router;

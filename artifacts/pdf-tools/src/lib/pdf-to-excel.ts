@@ -1,7 +1,36 @@
 import * as XLSX from "xlsx";
+import type { PDFDocumentProxy } from "pdfjs-dist";
 
 export type TextPart = { text: string; x: number; y: number; width: number; height: number };
 export type ExtractedPage = { rows: string[][]; plainRows: string[]; hasTable: boolean };
+
+export async function extractPdfTables(
+  pdf: Pick<PDFDocumentProxy, "numPages" | "getPage">,
+  onPage?: (pageNumber: number, pageCount: number) => void,
+): Promise<ExtractedPage[]> {
+  const pages: ExtractedPage[] = [];
+  for (let pageNumber = 1; pageNumber <= pdf.numPages; pageNumber += 1) {
+    const page = await pdf.getPage(pageNumber);
+    const text = await page.getTextContent();
+    const parts = text.items.flatMap((item): TextPart[] => {
+      if (!("str" in item) || !item.str.trim() || !("transform" in item)) return [];
+      return [{
+        text: item.str,
+        x: item.transform[4] ?? 0,
+        y: item.transform[5] ?? 0,
+        width: item.width ?? 0,
+        height: item.height ?? 0,
+      }];
+    });
+    pages.push(detectTableRows(clusterTextRows(parts)));
+    onPage?.(pageNumber, pdf.numPages);
+  }
+  return pages;
+}
+
+export function hasDetectedTables(pages: ExtractedPage[]) {
+  return pages.some((page) => page.hasTable && page.rows.length > 0);
+}
 
 export function clusterTextRows(parts: TextPart[]) {
   const sorted = parts.filter((part) => part.text.trim()).sort((left, right) => right.y - left.y || left.x - right.x);
@@ -55,5 +84,31 @@ export function createExcelWorkbook(pages: ExtractedPage[], sheetMode: "pages" |
     const rows = pages.flatMap((page) => page.hasTable ? page.rows : page.plainRows.map((line) => [line]));
     XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows.length ? rows : [[""]]), "PDF data");
   }
-  return XLSX.write(workbook, { bookType: "xlsx", type: "array" }) as Uint8Array;
+  const written = XLSX.write(workbook, { bookType: "xlsx", type: "array" }) as ArrayBuffer | Uint8Array;
+  return written instanceof ArrayBuffer ? written : written.slice().buffer as ArrayBuffer;
+}
+
+export function createExcelWorkbookBlob(pages: ExtractedPage[], sheetMode: "pages" | "single") {
+  if (!hasDetectedTables(pages)) {
+    throw new Error("No tables were found in this PDF.");
+  }
+
+  const workbookBytes = createExcelWorkbook(pages, sheetMode);
+  const signature = new Uint8Array(workbookBytes, 0, Math.min(2, workbookBytes.byteLength));
+  if (
+    workbookBytes.byteLength === 0 ||
+    signature.length < 2 ||
+    signature[0] !== 0x50 ||
+    signature[1] !== 0x4b
+  ) {
+    throw new Error("Could not create the Excel file. Please try again.");
+  }
+
+  const blob = new Blob([workbookBytes], {
+    type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+  });
+  if (blob.size === 0) {
+    throw new Error("Could not create the Excel file. Please try again.");
+  }
+  return blob;
 }

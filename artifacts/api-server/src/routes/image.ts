@@ -2,11 +2,22 @@ import { Router } from "express";
 import multer from "multer";
 import sharp, { type Sharp } from "sharp";
 import heicConvert from "heic-convert";
-import potrace from "potrace";
 import path from "path";
 import { getSingleUploadedFile, getUploadedFiles } from "./upload-shape";
+import {
+  getSupportedImageConverterFormats,
+  IMAGE_OUTPUT_FORMATS,
+  initializeImageConverterFormats,
+  isImageOutputFormat,
+  MAX_IMAGE_CONVERTER_PIXELS,
+  type ImageOutputFormat,
+} from "../lib/image-converter-formats";
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 20 * 1024 * 1024 } }); // 20MB limit
+const converterUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024, files: 1 },
+});
 const router = Router();
 
 const INPUT_MIMES = new Set([
@@ -40,32 +51,32 @@ const isSvgFile = (file: Express.Multer.File) => {
   return name.endsWith(".svg") || name.endsWith(".svgz") || mt === "image/svg+xml" || mt === "image/svg";
 };
 
-const OUTPUT_FORMATS = new Set(["png", "jpg", "jpeg", "webp", "bmp", "tiff", "gif", "svg"]);
+const isSupportedOutput = (format: string) =>
+  getSupportedImageConverterFormats().some((entry) => entry.format === format);
 
-function extForFormat(format: string) {
-  if (format === "jpg" || format === "jpeg") return "jpg";
-  if (format === "png") return "png";
-  if (format === "webp") return "webp";
-  if (format === "bmp") return "bmp";
-  if (format === "tiff" || format === "tif") return "tiff";
-  if (format === "gif") return "gif";
-  if (format === "svg") return "svg";
-  return format;
-}
+router.get("/image-converter/formats", async (_req, res) => {
+  await initializeImageConverterFormats();
+  res.json({ formats: getSupportedImageConverterFormats() });
+});
 
-const traceSvg = (buffer: Buffer) => {
-  return new Promise<string>((resolve, reject) => {
-    (potrace as any).trace(buffer, { threshold: 128 }, (err: Error | null, svg?: string) => {
-      if (err) {
-        reject(err);
-        return;
-      }
-      resolve(svg ?? "");
-    });
+router.post("/convert-image", (req, res, next) => {
+  converterUpload.array("files", 1)(req, res, (error) => {
+    if (!error) {
+      next();
+      return;
+    }
+    if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
+      res.status(413).json({ error: "Images must be 20 MB or smaller." });
+      return;
+    }
+    if (error instanceof multer.MulterError) {
+      res.status(400).json({ error: "Upload one image at a time." });
+      return;
+    }
+    next(error);
   });
-};
-
-router.post("/convert-image", upload.array("files"), async (req, res) => {
+}, async (req, res) => {
+  await initializeImageConverterFormats();
   const files = getUploadedFiles(req);
   const outFormatRaw = (req.body && req.body.outputFormat) || "png";
   const outFormat = String(outFormatRaw).toLowerCase();
@@ -79,8 +90,8 @@ router.post("/convert-image", upload.array("files"), async (req, res) => {
 
   const normalizedOutFormat = outFormat === "tif" ? "tiff" : outFormat;
 
-  if (!OUTPUT_FORMATS.has(normalizedOutFormat)) {
-    res.status(400).json({ error: "Unsupported output format" });
+  if (!isImageOutputFormat(normalizedOutFormat) || !isSupportedOutput(normalizedOutFormat)) {
+    res.status(400).json({ error: "Unsupported output format." });
     return;
   }
 
@@ -99,75 +110,32 @@ router.post("/convert-image", upload.array("files"), async (req, res) => {
   }
 
   if (!INPUT_MIMES.has((file.mimetype || "").toLowerCase()) && !isSvgFile(file)) {
-    res.status(400).json({ error: "Unsupported image type" });
+    res.status(400).json({ error: "The uploaded file is not a supported image." });
     return;
   }
 
+  let resolvedFormat = normalizedOutFormat as ImageOutputFormat;
   try {
-    const image = sharp(file.buffer, { failOnError: true, limitInputPixels: false });
-    let resolvedFormat = normalizedOutFormat;
-    let transformed: Sharp = image;
-
-    if (resolvedFormat === "png") {
-      transformed = image.png({ quality: 100 });
-    } else if (resolvedFormat === "webp") {
-      transformed = image.webp({ quality: 90 });
-    } else if (resolvedFormat === "jpg" || resolvedFormat === "jpeg") {
-      transformed = image.jpeg({ quality: 90 });
-    } else if (resolvedFormat === "bmp") {
-      transformed = (image as any).bmp();
-    } else if (resolvedFormat === "tiff") {
-      transformed = image.tiff();
-    } else if (resolvedFormat === "gif") {
-      transformed = image.gif();
+    try {
+      await sharp(file.buffer, { failOn: "error", limitInputPixels: MAX_IMAGE_CONVERTER_PIXELS }).metadata();
+    } catch (error) {
+      console.error("Image converter could not decode the input", error);
+      res.status(400).json({ error: "The uploaded image could not be read." });
+      return;
     }
-
-    const metadata = await image.metadata();
-    let outBuffer: Buffer;
-    let contentType = "image/png";
-    let outExt = extForFormat(resolvedFormat);
-
-    if (resolvedFormat === "svg") {
-      const rasterBuffer = await image.png({ quality: 100 }).toBuffer();
-      const width = Math.max(1, metadata.width || 1);
-      const height = Math.max(1, metadata.height || 1);
-      const encoded = rasterBuffer.toString("base64");
-
-      if (svgMode === "trace") {
-        const traced = await traceSvg(rasterBuffer);
-        outBuffer = Buffer.from(traced);
-      } else {
-        const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${width}" height="${height}" viewBox="0 0 ${width} ${height}"><image width="${width}" height="${height}" href="data:image/png;base64,${encoded}"/></svg>`;
-        outBuffer = Buffer.from(svg);
-      }
-
-      contentType = "image/svg+xml";
-      outExt = "svg";
-    } else {
-      outBuffer = await transformed.toBuffer();
-      if (resolvedFormat === "jpg" || resolvedFormat === "jpeg") {
-        contentType = "image/jpeg";
-      } else if (resolvedFormat === "bmp") {
-        contentType = "image/bmp";
-      } else if (resolvedFormat === "tiff") {
-        contentType = "image/tiff";
-      } else if (resolvedFormat === "gif") {
-        contentType = "image/gif";
-      } else {
-        contentType = `image/${resolvedFormat}`;
-      }
-    }
+    const definition = IMAGE_OUTPUT_FORMATS[resolvedFormat];
+    const outBuffer = await definition.encode(file.buffer, svgMode === "trace" ? "trace" : "embed");
 
     const base = path.basename(file.originalname, path.extname(file.originalname));
-    const outName = `${base}.${outExt}`;
+    const outName = `${base}.${definition.extension}`;
 
-    res.setHeader("content-type", contentType);
+    res.setHeader("content-type", definition.mimeType);
     res.setHeader("content-disposition", `attachment; filename=${outName}`);
     res.send(outBuffer);
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Conversion failed";
     console.error("Image conversion failed", err);
-    res.status(500).json({ error: message });
+    const formatName = resolvedFormat.toUpperCase();
+    res.status(500).json({ error: `Could not convert this image to ${formatName}.` });
   }
 });
 
@@ -206,7 +174,7 @@ router.post("/image-resize", upload.single("files"), async (req, res) => {
   }
 
   try {
-    const image = sharp(file.buffer, { failOnError: true, limitInputPixels: false });
+    const image = sharp(file.buffer, { failOn: "error", limitInputPixels: false });
     const resizeOptions: Parameters<Sharp["resize"]>[0] = {
       fit: "inside",
       withoutEnlargement: true,
@@ -258,7 +226,7 @@ router.post("/image-compress", upload.single("files"), async (req, res) => {
   }
 
   try {
-    const image = sharp(file.buffer, { failOnError: true, limitInputPixels: false });
+    const image = sharp(file.buffer, { failOn: "error", limitInputPixels: false });
     let mime = file.mimetype.toLowerCase();
     // For original HEIC inputs, prefer to compress to JPEG for better size
     if (wasHeic) mime = 'image/jpeg';
@@ -329,7 +297,7 @@ router.post("/image-upscale", upload.single("files"), async (req, res) => {
   }
 
   try {
-    const image = sharp(file.buffer, { failOnError: true, limitInputPixels: false });
+    const image = sharp(file.buffer, { failOn: "error", limitInputPixels: false });
     const metadata = await image.metadata();
     const targetWidth = !isNaN(width) ? width : Math.round((metadata.width || 0) * scale);
     const targetHeight = !isNaN(height) ? height : Math.round((metadata.height || 0) * scale);

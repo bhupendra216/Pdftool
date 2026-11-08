@@ -149,7 +149,7 @@ paths:
     post:
       operationId: ocrImageToText
       tags: [tools]
-      summary: Run OCR on an uploaded image or scanned PDF
+      summary: Run OCR on an uploaded image or scanned PDF (up to 3 PDF pages)
       requestBody:
         required: true
         content:
@@ -160,6 +160,7 @@ paths:
                 files:
                   type: string
                   format: binary
+                  description: PNG, JPEG, WEBP, BMP, TIFF, or a scanned PDF (up to 20 MB)
       responses:
         "200":
           description: OCR result
@@ -173,8 +174,26 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+        "413":
+          description: Upload exceeds the 20 MB limit
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
         "500":
           description: OCR processing failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: OCR service is busy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "504":
+          description: OCR processing timed out
           content:
             application/json:
               schema:

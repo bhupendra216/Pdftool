@@ -5,8 +5,20 @@ import { mkdtemp, rm, writeFile, readFile, readdir } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { PDFDocument } from "pdf-lib";
+import sharp from "sharp";
 import { AlignmentType, Document, Packer, Paragraph, TextRun } from "docx";
 import { getSingleUploadedFile, getUploadedFiles } from "./upload-shape";
+import { GhostscriptError, runGhostscript } from "../lib/ghostscript";
+import { assertSamePdfPageCount, getPdfInfo } from "../lib/pdf-validation";
+import {
+  convertWordToPdf,
+  InvalidWordDocumentError,
+  LibreOfficeBusyError,
+  LibreOfficeTimeoutError,
+  LibreOfficeUnavailableError,
+  runLibreOfficeCommand,
+  validateWordDocument,
+} from "../lib/word-to-pdf";
 
 type PdfToWordOptions = {
   outputFormat: "docx" | "doc";
@@ -28,12 +40,18 @@ function formatContentDisposition(filename: string) {
 }
 
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } });
+const wordUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+const jpgToPdfUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 20 * 1024 * 1024, files: 10 },
+});
 const router = Router();
 
-const WORD_INPUT_EXTS = new Set([".doc", ".docx"]);
 const PDF_INPUT_EXTS = new Set([".pdf"]);
-const JPG_PDF_INPUT_EXTS = new Set([".jpg", ".jpeg", ".png"]);
+const JPG_TO_PDF_MAX_PIXELS = 40_000_000;
 const WORD_OUTPUT_EXTS = new Set(["docx", "doc"]);
+
+class JpgToPdfInputError extends Error {}
 
 function parseBoolean(value: unknown, defaultValue = false): boolean {
   if (typeof value === "boolean") return value;
@@ -107,8 +125,11 @@ async function validatePdfBuffer(file: Express.Multer.File) {
   }
 
   try {
-    const pdf = await PDFDocument.load(file.buffer, { ignoreEncryption: false });
-    return { pageCount: pdf.getPageCount(), ext };
+    const pdf = await getPdfInfo(file.buffer);
+    if (pdf.encrypted) {
+      throw new Error("Password-protected PDFs are not supported. Remove the password and try again.");
+    }
+    return { pageCount: pdf.pageCount, ext };
   } catch (error: any) {
     const message = String(error?.message || error || "Invalid PDF");
     throw new Error(getReadablePdfError(message));
@@ -309,40 +330,28 @@ async function execSofficeConvert(inputPath: string, outputDir: string, outputEx
       ? ["pdf:writer_pdf_Export", "pdf"]
       : [outputExt];
 
-  const errors: string[] = [];
-
   for (const outputFilter of filters) {
     try {
-      await new Promise<void>((resolve, reject) => {
-        execFile(
-          "soffice",
-          [
-            "--headless",
-            "--invisible",
-            "--norestore",
-            "--convert-to",
-            outputFilter,
-            "--outdir",
-            outputDir,
-            inputPath,
-          ],
-          { timeout: 120_000, maxBuffer: 10 * 1024 * 1024 },
-          (error, stdout, stderr) => {
-            if (error) {
-              reject(new Error(`LibreOffice conversion failed: ${error.message}${stderr ? ` - ${stderr}` : ""}${stdout ? ` - ${stdout}` : ""}`));
-              return;
-            }
-            resolve();
-          },
-        );
-      });
+      await runLibreOfficeCommand([
+        "--headless",
+        "--invisible",
+        "--norestore",
+        "--nolockcheck",
+        "--convert-to",
+        outputFilter,
+        "--outdir",
+        outputDir,
+        inputPath,
+      ]);
       return;
-    } catch (error: any) {
-      errors.push(String(error.message || error));
+    } catch (error) {
+      if (error instanceof LibreOfficeUnavailableError || error instanceof LibreOfficeBusyError) {
+        throw error;
+      }
     }
   }
 
-  throw new Error(`LibreOffice conversion failed for filters ${filters.join(", ")}: ${errors.join(" | ")}`);
+  throw new Error("LibreOffice could not convert the document.");
 }
 
 async function findConvertedFile(outputDir: string, expectedBaseName: string, outputExt: string) {
@@ -484,22 +493,91 @@ async function convertPdfToWord(file: Express.Multer.File, options: PdfToWordOpt
   }
 }
 
-async function convertJpgsToPdf(files: Express.Multer.File[]) {
-  const pdfDoc = await PDFDocument.create();
+function getJpgToPdfImageType(file: Express.Multer.File): "jpeg" | "png" {
+  const filename = path.basename(file.originalname || "image");
+  const ext = path.extname(filename).toLowerCase();
+  const buffer = file.buffer;
+  const isJpeg = buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff;
+  const isPng =
+    buffer.length >= 8 &&
+    buffer.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
 
-  for (const file of files) {
-    const ext = path.extname(file.originalname || "").toLowerCase();
-    const buffer = file.buffer;
+  if ((isJpeg && (ext === ".jpg" || ext === ".jpeg")) || (isPng && ext === ".png")) {
+    return isJpeg ? "jpeg" : "png";
+  }
+  throw new JpgToPdfInputError(`${filename} is not a valid JPG or PNG image.`);
+}
 
-    let image;
-    if (ext === ".png") {
-      image = await pdfDoc.embedPng(buffer);
-    } else if (ext === ".jpg" || ext === ".jpeg") {
-      image = await pdfDoc.embedJpg(buffer);
-    } else {
-      throw new Error("Unsupported image format for JPG to PDF conversion");
+async function embedJpeg(pdfDoc: PDFDocument, buffer: Buffer) {
+  try {
+    const metadata = await sharp(buffer, { limitInputPixels: JPG_TO_PDF_MAX_PIXELS }).metadata();
+    if (
+      !metadata.width ||
+      !metadata.height ||
+      metadata.width * metadata.height > JPG_TO_PDF_MAX_PIXELS
+    ) {
+      throw new Error("Image dimensions exceed the supported limit.");
     }
 
+    if (metadata.orientation && metadata.orientation !== 1) {
+      const normalized = await sharp(buffer, { limitInputPixels: JPG_TO_PDF_MAX_PIXELS })
+        .rotate()
+        .jpeg()
+        .toBuffer();
+      return await pdfDoc.embedJpg(normalized);
+    }
+    return await pdfDoc.embedJpg(buffer);
+  } catch (error) {
+    try {
+      const normalized = await sharp(buffer, { limitInputPixels: JPG_TO_PDF_MAX_PIXELS })
+        .rotate()
+        .jpeg()
+        .toBuffer();
+      return await pdfDoc.embedJpg(normalized);
+    } catch {
+      throw error;
+    }
+  }
+}
+
+async function embedPng(pdfDoc: PDFDocument, buffer: Buffer) {
+  try {
+    const metadata = await sharp(buffer, { limitInputPixels: JPG_TO_PDF_MAX_PIXELS }).metadata();
+    if (
+      !metadata.width ||
+      !metadata.height ||
+      metadata.width * metadata.height > JPG_TO_PDF_MAX_PIXELS
+    ) {
+      throw new Error("Image dimensions exceed the supported limit.");
+    }
+    return await pdfDoc.embedPng(buffer);
+  } catch (error) {
+    try {
+      const normalized = await sharp(buffer, { limitInputPixels: JPG_TO_PDF_MAX_PIXELS })
+        .png()
+        .toBuffer();
+      return await pdfDoc.embedPng(normalized);
+    } catch {
+      throw error;
+    }
+  }
+}
+
+async function convertJpgsToPdf(files: Express.Multer.File[]) {
+  const imageTypes = files.map(getJpgToPdfImageType);
+  const pdfDoc = await PDFDocument.create();
+
+  for (const [index, file] of files.entries()) {
+    const filename = path.basename(file.originalname || "image");
+    let image;
+    try {
+      image = imageTypes[index] === "png"
+        ? await embedPng(pdfDoc, file.buffer)
+        : await embedJpeg(pdfDoc, file.buffer);
+    } catch (error) {
+      console.error("JPG to PDF image decoding failed", { filename, error });
+      throw new JpgToPdfInputError(`${filename} could not be read. Please try another JPG or PNG image.`);
+    }
     const page = pdfDoc.addPage([image.width, image.height]);
     page.drawImage(image, {
       x: 0,
@@ -541,7 +619,7 @@ async function convertPdfToJpgWithFallback(inputFile: string, outputPrefix: stri
     }
   }
 
-  await runPdfTool("gs", [
+  await runGhostscript([
     "-q",
     "-dNOPAUSE",
     "-dBATCH",
@@ -549,7 +627,7 @@ async function convertPdfToJpgWithFallback(inputFile: string, outputPrefix: stri
     "-r150",
     `-sOutputFile=${outputPrefix}-%d.jpg`,
     inputFile,
-  ]);
+  ], { expectedOutputPath: `${outputPrefix}-1.jpg` });
 }
 
 export async function convertPdfToJpg(file: Express.Multer.File) {
@@ -595,30 +673,15 @@ export async function convertPdfToJpg(file: Express.Multer.File) {
   }
 }
 
-async function runGhostscript(args: string[]) {
-  return new Promise<void>((resolve, reject) => {
-    execFile(
-      "gs",
-      args,
-      { timeout: 120_000, maxBuffer: 10 * 1024 * 1024 },
-      (error, stdout, stderr) => {
-        if (error) {
-          reject(
-            new Error(
-              `Ghostscript failed: ${error.message}${stderr ? ` - ${stderr}` : ""}${stdout ? ` - ${stdout}` : ""}`,
-            ),
-          );
-          return;
-        }
-        resolve();
-      },
-    );
-  });
-}
-
 async function protectPdf(file: Express.Multer.File, password: string) {
   if (!password) {
     throw new Error("Password is required to protect the PDF.");
+  }
+  const inputInfo = await getPdfInfo(file.buffer);
+  if (inputInfo.encrypted) {
+    const error = new Error("This PDF is already password-protected. Unlock it first.");
+    Object.assign(error, { statusCode: 400 });
+    throw error;
   }
 
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "protect-pdf-"));
@@ -642,14 +705,28 @@ async function protectPdf(file: Express.Multer.File, password: string) {
       "-dPermitExtract=false",
       "-dPermitAnnotate=false",
       inputFile,
-    ]);
-    return { buffer: await readFile(outputFile), filename: "protected.pdf" };
+    ], { expectedOutputPath: outputFile });
+    const buffer = await readFile(outputFile);
+    await assertSamePdfPageCount(file.buffer, buffer);
+    const outputInfo = await getPdfInfo(buffer);
+    if (!outputInfo.encrypted) {
+      throw new Error("PDF protection did not produce an encrypted file.");
+    }
+    return { buffer, filename: "protected.pdf" };
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
 }
 
 async function unlockPdf(file: Express.Multer.File, password: string) {
+  const inputInfo = await getPdfInfo(file.buffer);
+  if (!inputInfo.encrypted) {
+    return { buffer: file.buffer, filename: "unlocked.pdf", notProtected: true };
+  }
+  if (!password) {
+    throw new Error("Password is required to unlock the file.");
+  }
+
   const tempDir = await mkdtemp(path.join(os.tmpdir(), "unlock-pdf-"));
   const inputFile = path.join(tempDir, "input.pdf");
   const outputFile = path.join(tempDir, "unlocked.pdf");
@@ -664,8 +741,17 @@ async function unlockPdf(file: Express.Multer.File, password: string) {
       `-sPDFPassword=${password}`,
       `-sOutputFile=${outputFile}`,
       inputFile,
-    ]);
-    return { buffer: await readFile(outputFile), filename: "unlocked.pdf" };
+    ], { expectedOutputPath: outputFile });
+    const buffer = await readFile(outputFile);
+    await assertSamePdfPageCount(file.buffer, buffer);
+    return { buffer, filename: "unlocked.pdf", notProtected: false };
+  } catch (error) {
+    if (error instanceof GhostscriptError && error.reason === "password") {
+      const passwordError = new Error("Incorrect password.");
+      Object.assign(passwordError, { statusCode: 400 });
+      throw passwordError;
+    }
+    throw error;
   } finally {
     await rm(tempDir, { recursive: true, force: true });
   }
@@ -829,34 +915,87 @@ router.get("/pdf-to-word/result/:jobId", async (req, res) => {
   res.send(buffer);
 });
 
-router.post("/convert-word-to-pdf", upload.single("files"), async (req, res) => {
+router.post("/convert-word-to-pdf", (req, res, next) => {
+  wordUpload.single("files")(req, res, (error) => {
+    if (!error) {
+      next();
+      return;
+    }
+    if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
+      res.status(413).json({ error: "Word documents must be 50 MB or smaller." });
+      return;
+    }
+    if (error instanceof multer.MulterError) {
+      res.status(400).json({ error: "This is not a valid Word document." });
+      return;
+    }
+    next(error);
+  });
+}, async (req, res) => {
   const file = getSingleUploadedFile(req);
   if (!file) {
-    res.status(400).json({ error: "No file uploaded" });
-    return;
-  }
-
-  const ext = path.extname(file.originalname || "").toLowerCase();
-  if (!WORD_INPUT_EXTS.has(ext)) {
-    res.status(400).json({ error: "Unsupported input file type" });
+    res.status(400).json({ error: "This is not a valid Word document." });
     return;
   }
 
   try {
-    const { buffer, filename } = await convertFileWithLibreOffice(file, WORD_INPUT_EXTS, "pdf");
+    validateWordDocument(file.originalname || "", file.buffer);
+  } catch (error) {
+    if (error instanceof InvalidWordDocumentError) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+    throw error;
+  }
+
+  try {
+    const { buffer, filename } = await convertWordToPdf(file.originalname || "document.docx", file.buffer);
     res.setHeader("content-type", "application/pdf");
     res.setHeader("content-disposition", formatContentDisposition(filename));
     res.send(buffer);
-  } catch (error: any) {
+  } catch (error) {
+    if (error instanceof InvalidWordDocumentError) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
+    if (error instanceof LibreOfficeUnavailableError) {
+      res.status(503).json({ error: error.message });
+      return;
+    }
+    if (error instanceof LibreOfficeBusyError) {
+      res.status(503).json({ error: error.message });
+      return;
+    }
+    if (error instanceof LibreOfficeTimeoutError) {
+      res.status(504).json({ error: error.message });
+      return;
+    }
+
     console.error("Word to PDF conversion failed", error);
-    res.status(500).json({ error: error?.message || "Conversion failed" });
+    res.status(500).json({ error: "Word to PDF conversion failed. Please try again." });
   }
 });
 
-router.post("/convert-jpg-to-pdf", upload.array("files"), async (req, res) => {
+router.post("/convert-jpg-to-pdf", (req, res, next) => {
+  jpgToPdfUpload.array("files", 10)(req, res, (error) => {
+    if (!error) {
+      next();
+      return;
+    }
+    if (error instanceof multer.MulterError && error.code === "LIMIT_FILE_SIZE") {
+      res.status(413).json({ error: "Each image must be 20 MB or smaller." });
+      return;
+    }
+    if (error instanceof multer.MulterError) {
+      res.status(400).json({ error: "Upload up to 10 JPG or PNG images at a time." });
+      return;
+    }
+    next(error);
+  });
+}, async (req, res) => {
   const files = getUploadedFiles(req);
   if (!files || files.length === 0) {
-    res.status(400).json({ error: "No files uploaded" });
+    res.status(400).json({ error: "Upload at least one JPG or PNG image." });
     return;
   }
 
@@ -865,9 +1004,13 @@ router.post("/convert-jpg-to-pdf", upload.array("files"), async (req, res) => {
     res.setHeader("content-type", "application/pdf");
     res.setHeader("content-disposition", `attachment; filename=${filename}`);
     res.send(buffer);
-  } catch (error: any) {
+  } catch (error) {
+    if (error instanceof JpgToPdfInputError) {
+      res.status(400).json({ error: error.message });
+      return;
+    }
     console.error("JPG to PDF conversion failed", error);
-    res.status(500).json({ error: error?.message || "Conversion failed" });
+    res.status(500).json({ error: "Could not create the PDF. Please try again." });
   }
 });
 
@@ -903,36 +1046,41 @@ router.post("/compress-pdf", upload.single("files"), async (req, res) => {
     return;
   }
 
+  let tempDir: string | undefined;
   try {
-    await validatePdfBuffer(file);
+    const { pageCount } = await validatePdfBuffer(file);
     const compressionLevel = parsePdfCompressionLevel(req.body as Record<string, unknown>);
-    const tempDir = await mkdtemp(path.join(os.tmpdir(), "compress-pdf-"));
+    tempDir = await mkdtemp(path.join(os.tmpdir(), "compress-pdf-"));
     const inputFile = path.join(tempDir, "input.pdf");
     const outputFile = path.join(tempDir, "compressed.pdf");
     const base = path.basename(file.originalname || "document", path.extname(file.originalname || ""));
     const outputName = `${base}-compressed.pdf`;
 
-    try {
-      await writeFile(inputFile, file.buffer);
-      await runGhostscript(getGhostscriptCompressionArgs(inputFile, outputFile, compressionLevel));
-      const buffer = await readFile(outputFile);
-
-      res.setHeader("content-type", "application/pdf");
-      res.setHeader("content-disposition", formatContentDisposition(outputName));
-      res.send(buffer);
-    } finally {
-      await rm(tempDir, { recursive: true, force: true });
+    await writeFile(inputFile, file.buffer);
+    await runGhostscript(getGhostscriptCompressionArgs(inputFile, outputFile, compressionLevel), {
+      expectedOutputPath: outputFile,
+    });
+    const buffer = await readFile(outputFile);
+    if ((await getPdfInfo(buffer)).pageCount !== pageCount) {
+      throw new Error("PDF compression changed the page count. No output was returned.");
     }
-  } catch (error: any) {
-    const message = String(error?.message || error || "Compression failed");
+
+    res.setHeader("content-type", "application/pdf");
+    res.setHeader("content-disposition", formatContentDisposition(outputName));
+    res.send(buffer);
+  } catch (error) {
     console.error("PDF compression failed", error);
-    res.status(500).json({ error: message });
+    const statusCode = error && typeof error === "object" && "statusCode" in error ? Number(error.statusCode) : 500;
+    const message = error instanceof Error ? error.message : "PDF compression failed.";
+    res.status(statusCode >= 400 && statusCode < 600 ? statusCode : 500).json({ error: message });
+  } finally {
+    if (tempDir) await rm(tempDir, { recursive: true, force: true });
   }
 });
 
 router.post("/protect-pdf", upload.single("files"), async (req, res) => {
   const file = getSingleUploadedFile(req);
-  const password = String(req.body.password || "").trim();
+  const password = typeof req.body?.password === "string" ? req.body.password : "";
 
   if (!file) {
     res.status(400).json({ error: "No file uploaded" });
@@ -957,21 +1105,19 @@ router.post("/protect-pdf", upload.single("files"), async (req, res) => {
     res.send(buffer);
   } catch (error: any) {
     console.error("Protect PDF conversion failed", error);
-    res.status(500).json({ error: error?.message || "Conversion failed" });
+    const statusCode = Number(error?.statusCode);
+    res.status(statusCode >= 400 && statusCode < 600 ? statusCode : 500).json({
+      error: error?.message || "PDF protection failed.",
+    });
   }
 });
 
 router.post("/unlock-pdf", upload.single("files"), async (req, res) => {
   const file = getSingleUploadedFile(req);
-  const password = String(req.body.password || "").trim();
+  const password = typeof req.body?.password === "string" ? req.body.password : "";
 
   if (!file) {
     res.status(400).json({ error: "No file uploaded" });
-    return;
-  }
-
-  if (!password) {
-    res.status(400).json({ error: "Password is required to unlock the file." });
     return;
   }
 
@@ -982,13 +1128,19 @@ router.post("/unlock-pdf", upload.single("files"), async (req, res) => {
   }
 
   try {
-    const { buffer, filename } = await unlockPdf(file, password);
+    const { buffer, filename, notProtected } = await unlockPdf(file, password);
     res.setHeader("content-type", "application/pdf");
     res.setHeader("content-disposition", `attachment; filename=${filename}`);
+    if (notProtected) {
+      res.setHeader("x-pdf-password-status", "not-protected");
+    }
     res.send(buffer);
   } catch (error: any) {
     console.error("Unlock PDF conversion failed", error);
-    res.status(500).json({ error: error?.message || "Conversion failed" });
+    const statusCode = Number(error?.statusCode);
+    res.status(statusCode >= 400 && statusCode < 600 ? statusCode : 500).json({
+      error: error?.message || "PDF unlocking failed.",
+    });
   }
 });
 
